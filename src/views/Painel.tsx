@@ -11,28 +11,16 @@ export default function Painel() {
   const navigate = useNavigate();
   const orgaoLogado = sessionStorage.getItem('orgaoLogado');
 
-  // Estados
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Estado para o formulário (um objeto com todos os campos vazios)
   const [formData, setFormData] = useState({
-    numeroContrato: '',
-    numeroProcesso: '',
-    numeroPregao: '',
-    numeroAta: '',
-    fornecedor: '',
-    objetoCompleto: '',
-    objetoResumido: '',
-    dataInicio: '',
-    dataFim: '',
-    valorTotal: '',
-    fiscalContrato: '',
-    observacao: ''
+    numeroContrato: '', numeroProcesso: '', numeroPregao: '', numeroAta: '',
+    fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '',
+    dataFim: '', valorTotal: '', fiscalContrato: '', observacao: ''
   });
 
-  // Nomes amigáveis dos órgãos
   const nomesOrgaos: { [key: string]: string } = {
     'prefeitura': 'Prefeitura Municipal de Pesqueira',
     'fmas': 'Fundo Municipal de Assistência Social',
@@ -40,17 +28,12 @@ export default function Painel() {
     'fms': 'Fundo Municipal de Saúde'
   };
 
-  // Efeito para buscar os contratos no Firebase em tempo real
   useEffect(() => {
     if (!orgaoLogado) {
       navigate('/');
       return;
     }
-
-    // Cria uma "query" (busca) para pegar apenas os contratos do órgão logado
     const q = query(collection(db, 'contratos'), where('orgaoId', '==', orgaoLogado));
-
-    // onSnapshot fica "escutando" o banco. Mudou lá, muda aqui na hora!
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const listaContratos: Contrato[] = [];
       querySnapshot.forEach((doc) => {
@@ -58,8 +41,7 @@ export default function Painel() {
       });
       setContratos(listaContratos);
     });
-
-    return () => unsubscribe(); // Limpa a escuta ao sair da tela
+    return () => unsubscribe();
   }, [orgaoLogado, navigate]);
 
   const fazerLogout = () => {
@@ -75,18 +57,18 @@ export default function Painel() {
   const salvarContrato = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
     try {
-      // Salva no Firebase na coleção "contratos"
+      const valorTotalNumerico = Number(formData.valorTotal);
+      
       await addDoc(collection(db, 'contratos'), {
         ...formData,
         orgaoId: orgaoLogado,
-        valorTotal: Number(formData.valorTotal) // Garante que o valor seja salvo como número
+        valorTotal: valorTotalNumerico,
+        saldoContrato: valorTotalNumerico // O saldo começa igual ao valor total!
       });
 
       alert('Contrato salvo com sucesso!');
-      setIsModalOpen(false); // Fecha o modal
-      // Limpa o formulário
+      setIsModalOpen(false);
       setFormData({
         numeroContrato: '', numeroProcesso: '', numeroPregao: '', numeroAta: '',
         fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '',
@@ -94,7 +76,7 @@ export default function Painel() {
       });
     } catch (error) {
       console.error("Erro ao adicionar documento: ", error);
-      alert('Erro ao salvar o contrato. Verifique o console.');
+      alert('Erro ao salvar o contrato.');
     } finally {
       setLoading(false);
     }
@@ -121,24 +103,33 @@ export default function Painel() {
             <tr>
               <th>Nº Contrato</th>
               <th>Fornecedor</th>
-              <th>Objeto Resumido</th>
-              <th>Fim do Contrato</th>
-              <th>Valor Total (R$)</th>
+              <th>Saldo Atual</th>
+              <th>Ações</th> {/* NOVA COLUNA DE AÇÕES */}
             </tr>
           </thead>
           <tbody>
             {contratos.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ textAlign: 'center' }}>Nenhum contrato cadastrado.</td>
+                <td colSpan={4} style={{ textAlign: 'center' }}>Nenhum contrato cadastrado.</td>
               </tr>
             ) : (
               contratos.map((contrato) => (
                 <tr key={contrato.id}>
                   <td>{contrato.numeroContrato}</td>
                   <td>{contrato.fornecedor}</td>
-                  <td>{contrato.objetoResumido}</td>
-                  <td>{contrato.dataFim}</td>
-                  <td>{contrato.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                  {/* Mostramos o Saldo na tabela inicial com formatação de Moeda */}
+                  <td style={{ fontWeight: 'bold', color: contrato.saldoContrato < 0 ? 'red' : 'green' }}>
+                    {contrato.saldoContrato ? contrato.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ 0,00'}
+                  </td>
+                  <td>
+                    {/* BOTÃO PARA A NOVA PÁGINA DE DETALHES */}
+                    <button 
+                      style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }}
+                      onClick={() => navigate(`/contrato/${contrato.id}`)}
+                    >
+                      Ver Detalhes / Itens
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
@@ -146,7 +137,7 @@ export default function Painel() {
         </table>
       </main>
 
-      {/* MODAL DE NOVO CONTRATO */}
+      {/* O Modal continua exatamente igual */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -166,11 +157,11 @@ export default function Painel() {
                   <input type="text" name="numeroPregao" value={formData.numeroPregao} onChange={lidarComMudanca} />
                 </div>
                 <div className="form-group">
-                  <label>Ata de Registro de Preços</label>
+                  <label>Ata de Reg. de Preços</label>
                   <input type="text" name="numeroAta" value={formData.numeroAta} onChange={lidarComMudanca} />
                 </div>
                 <div className="form-group full-width">
-                  <label>Fornecedor (Empresa)</label>
+                  <label>Fornecedor</label>
                   <input type="text" name="fornecedor" required value={formData.fornecedor} onChange={lidarComMudanca} />
                 </div>
                 <div className="form-group full-width">
@@ -182,11 +173,11 @@ export default function Painel() {
                   <textarea name="objetoCompleto" rows={3} style={{ width: '100%' }} value={formData.objetoCompleto} onChange={lidarComMudanca}></textarea>
                 </div>
                 <div className="form-group">
-                  <label>Data de Início</label>
+                  <label>Data Início</label>
                   <input type="date" name="dataInicio" required value={formData.dataInicio} onChange={lidarComMudanca} />
                 </div>
                 <div className="form-group">
-                  <label>Data de Fim</label>
+                  <label>Data Fim</label>
                   <input type="date" name="dataFim" required value={formData.dataFim} onChange={lidarComMudanca} />
                 </div>
                 <div className="form-group">
@@ -194,7 +185,7 @@ export default function Painel() {
                   <input type="number" step="0.01" name="valorTotal" required value={formData.valorTotal} onChange={lidarComMudanca} />
                 </div>
                 <div className="form-group">
-                  <label>Fiscal do Contrato</label>
+                  <label>Fiscal</label>
                   <input type="text" name="fiscalContrato" value={formData.fiscalContrato} onChange={lidarComMudanca} />
                 </div>
                 <div className="form-group full-width">
@@ -202,12 +193,9 @@ export default function Painel() {
                   <input type="text" name="observacao" value={formData.observacao} onChange={lidarComMudanca} />
                 </div>
               </div>
-
               <div className="modal-acoes">
                 <button type="button" className="btn-cancelar" onClick={() => setIsModalOpen(false)}>Cancelar</button>
-                <button type="submit" className="btn-salvar" disabled={loading}>
-                  {loading ? 'Salvando...' : 'Salvar Contrato'}
-                </button>
+                <button type="submit" className="btn-salvar" disabled={loading}>{loading ? 'Salvando...' : 'Salvar'}</button>
               </div>
             </form>
           </div>
