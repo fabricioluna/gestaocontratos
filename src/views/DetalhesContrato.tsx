@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, collection, query, where, addDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { db } from '../firebase';
-import type { Contrato, ItemContrato } from '../types';
+import type { Contrato } from '../types';
 import logo from '../assets/logopmp.png';
 import './DetalhesContrato.css';
 
@@ -201,11 +201,10 @@ export default function DetalhesContrato() {
   const totalUnidades = itensConsumo.reduce((acc, curr) => acc + curr.quantidade, 0);
   const totalConsumido = itensConsumo.reduce((acc, curr) => acc + curr.valorTotalItem, 0);
 
-  // A MÁGICA DO CONTROLE DE SALDO FÍSICO-FINANCEIRO POR ITEM
+  // GERAÇÃO DA TABELA DE SALDOS
   const gerarTabelaSaldos = () => {
     const mapaSaldos = new Map();
 
-    // 1. Coloca todos os itens do catálogo no mapa
     itensCatalogo.forEach(cat => {
       const chave = `${cat.numeroLote}|${cat.numeroItem}`;
       mapaSaldos.set(chave, {
@@ -213,15 +212,14 @@ export default function DetalhesContrato() {
         item: cat.numeroItem,
         descricao: cat.discriminacao,
         unidade: cat.unidade,
-        qtdOriginal: cat.quantidade,
+        qtdContratada: cat.quantidade,
         vlUnitario: cat.valorUnitario,
-        vlTotalOriginal: cat.valorTotalItem,
+        vlContratado: cat.valorTotalItem,
         qtdConsumida: 0,
         vlConsumido: 0
       });
     });
 
-    // 2. Adiciona o consumo item a item (Se o usuário lançar um item que não tava no catálogo, ele cria uma linha nova)
     itensConsumo.forEach(cons => {
       const chave = `${cons.numeroLote}|${cons.numeroItem}`;
       if (mapaSaldos.has(chave)) {
@@ -234,9 +232,9 @@ export default function DetalhesContrato() {
           item: cons.numeroItem,
           descricao: cons.discriminacao,
           unidade: cons.unidade,
-          qtdOriginal: 0, // Não estava no catálogo original
+          qtdContratada: 0,
           vlUnitario: cons.valorUnitario,
-          vlTotalOriginal: 0,
+          vlContratado: 0,
           qtdConsumida: cons.quantidade,
           vlConsumido: cons.valorTotalItem
         });
@@ -312,18 +310,30 @@ export default function DetalhesContrato() {
           </div>
         </div>
 
-        {/* PLANILHA 1: CATÁLOGO ORIGINAL E ESTÁTICO */}
-        {itensCatalogo.length > 0 && (
+        {/* PLANILHA 1: CATÁLOGO ORIGINAL FIXO */}
+        {itensCatalogo.length > 0 ? (
           <div className="secao-itens" style={{ marginBottom: '30px' }}>
-            <h3 style={{ color: '#004a99' }}>📋 1. Catálogo Original (Sem Consumo)</h3>
-            <p style={{ fontSize: '12px', color: '#666', marginTop: '-10px', marginBottom: '15px' }}>Esta é a relação estática de produtos e serviços licitados no início do contrato.</p>
+            <h3 style={{ color: '#004a99' }}>📋 Planilha Original do Contrato</h3>
             <table className="tabela-itens">
-              <thead><tr><th>Lote/Item</th><th>Descrição do Produto</th><th>Unidade</th><th>Qtd Contratada</th><th>V. Unitário</th><th>Total Autorizado</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Lote</th>
+                  <th>Item</th>
+                  <th>Descrição</th>
+                  <th>Unidade</th>
+                  <th>Quantidade</th>
+                  <th>Valor Unitário</th>
+                  <th>Valor Total</th>
+                </tr>
+              </thead>
               <tbody>
                 {itensCatalogo.map(item => (
                   <tr key={item.id}>
-                    <td style={{ fontWeight: 'bold' }}>{item.numeroLote !== 'Único' ? `Lote ${item.numeroLote} / ` : ''}Item {item.numeroItem}</td>
-                    <td>{item.discriminacao}</td><td>{item.unidade}</td><td>{item.quantidade}</td>
+                    <td style={{ textAlign: 'center' }}>{item.numeroLote === 'Único' || !item.numeroLote ? '-' : item.numeroLote}</td>
+                    <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{item.numeroItem}</td>
+                    <td>{item.discriminacao}</td>
+                    <td style={{ textAlign: 'center' }}>{item.unidade}</td>
+                    <td style={{ textAlign: 'center' }}>{item.quantidade}</td>
                     <td>{item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                     <td style={{ color: '#555', fontWeight: 'bold' }}>{item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                   </tr>
@@ -331,41 +341,45 @@ export default function DetalhesContrato() {
               </tbody>
             </table>
           </div>
+        ) : (
+          <div className="secao-itens" style={{ marginBottom: '30px', textAlign: 'center', color: '#666' }}>
+            <h3 style={{ color: '#004a99' }}>📋 Planilha Original do Contrato</h3>
+            <p>Nenhum item original foi importado na criação deste contrato.</p>
+          </div>
         )}
 
-        {/* PLANILHA 2: CONTROLE DE SALDO POR ITEM (A MÁGICA ACONTECE AQUI) */}
+        {/* PLANILHA 2: CONTROLE DE SALDO POR ITEM */}
         {tabelaDeSaldos.length > 0 && (
-          <div className="secao-itens" style={{ marginBottom: '30px' }}>
-            <h3 style={{ color: '#2e7d32' }}>📊 2. Controle Físico-Financeiro (Saldos por Item)</h3>
-            <p style={{ fontSize: '12px', color: '#666', marginTop: '-10px', marginBottom: '15px' }}>Esta planilha calcula automaticamente o que foi consumido e mostra o saldo de cada item.</p>
+          <div className="secao-itens" style={{ marginBottom: '30px', overflowX: 'auto' }}>
+            <h3 style={{ color: '#2e7d32' }}>📊 Controle Físico-Financeiro (Saldos por Item)</h3>
             <table className="tabela-saldos">
               <thead>
                 <tr>
-                  <th>Item</th>
+                  <th>Lote/Item</th>
                   <th>Descrição</th>
                   <th>Und</th>
                   <th>Vl. Unit.</th>
-                  <th>Qtd Orig.</th>
-                  <th>Vl Orig.</th>
-                  <th style={{ backgroundColor: '#fff3cd', color: '#856404' }}>Qtd Cons.</th>
+                  <th>Qtd Contratada</th>
+                  <th>Vl. Contratado</th>
+                  <th style={{ backgroundColor: '#fff3cd', color: '#856404' }}>Qtd Consumida</th>
                   <th style={{ backgroundColor: '#fff3cd', color: '#856404' }}>Vl Consumido</th>
-                  <th className="th-saldo">Saldo Qtd</th>
-                  <th className="th-saldo">Saldo Valor</th>
+                  <th className="th-saldo">Qtd Saldo</th>
+                  <th className="th-saldo">Vl. Saldo</th>
                 </tr>
               </thead>
               <tbody>
                 {tabelaDeSaldos.map((linha, index) => {
-                  const saldoQtd = linha.qtdOriginal - linha.qtdConsumida;
-                  const saldoValor = linha.vlTotalOriginal - linha.vlConsumido;
+                  const saldoQtd = linha.qtdContratada - linha.qtdConsumida;
+                  const saldoValor = linha.vlContratado - linha.vlConsumido;
                   return (
                     <tr key={index}>
-                      <td style={{ fontWeight: 'bold' }}>{linha.lote !== 'Único' ? `${linha.lote} / ` : ''}{linha.item}</td>
+                      <td style={{ fontWeight: 'bold' }}>{linha.lote !== 'Único' && linha.lote ? `${linha.lote} / ` : ''}{linha.item}</td>
                       <td className="desc-esquerda">{linha.descricao}</td>
                       <td>{linha.unidade}</td>
                       <td>{linha.vlUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                       
-                      <td>{linha.qtdOriginal}</td>
-                      <td>{linha.vlTotalOriginal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                      <td>{linha.qtdContratada}</td>
+                      <td>{linha.vlContratado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                       
                       <td style={{ backgroundColor: '#fffdf5', fontWeight: 'bold', color: '#856404' }}>{linha.qtdConsumida}</td>
                       <td style={{ backgroundColor: '#fffdf5', fontWeight: 'bold', color: '#856404' }}>{linha.vlConsumido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
@@ -382,18 +396,27 @@ export default function DetalhesContrato() {
 
         {/* PLANILHA 3: HISTÓRICO DE AUDITORIA (LOG) */}
         <div className="secao-itens">
-          <h3 style={{ color: '#dc3545' }}>📝 3. Histórico de Lançamentos (Auditoria de Empenhos)</h3>
-          <p style={{ fontSize: '12px', color: '#666', marginTop: '-10px', marginBottom: '15px' }}>Diário de bordo mostrando dia e hora de cada consumo registrado no sistema.</p>
+          <h3 style={{ color: '#dc3545' }}>📝 Histórico de Lançamentos (Auditoria de Empenhos)</h3>
           <table className="tabela-itens">
-            <thead><tr><th>Lote/Item</th><th>Produto / Objeto</th><th>Qtd Consumida</th><th>V. Unitário</th><th>Valor Descontado</th><th>Data do Log</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Lote/Item</th>
+                <th>Descrição</th>
+                <th>Qtd Consumida</th>
+                <th>Vl. Unit.</th>
+                <th>Valor Consumido</th>
+                <th>Data do Log</th>
+              </tr>
+            </thead>
             <tbody>
               {itensConsumo.length === 0 ? (
                 <tr><td colSpan={6} style={{textAlign: 'center'}}>Nenhum empenho/consumo registrado ainda.</td></tr>
               ) : (
                 itensConsumo.map(item => (
                   <tr key={item.id}>
-                    <td style={{ fontWeight: 'bold' }}>{item.numeroLote !== 'Único' ? `Lote ${item.numeroLote} / ` : ''}Item {item.numeroItem}</td>
-                    <td>{item.discriminacao}</td><td>{item.quantidade} {item.unidade}</td>
+                    <td style={{ fontWeight: 'bold' }}>{item.numeroLote !== 'Único' && item.numeroLote ? `${item.numeroLote} / ` : ''}{item.numeroItem}</td>
+                    <td>{item.discriminacao}</td>
+                    <td style={{ textAlign: 'center' }}>{item.quantidade}</td>
                     <td>{item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                     <td style={{ color: '#dc3545', fontWeight: 'bold' }}>{item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                     <td style={{ color: '#666', fontSize: '12px' }}>{item.dataAdicao}</td>
