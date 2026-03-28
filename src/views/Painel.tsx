@@ -1,7 +1,7 @@
 // src/views/Painel.tsx
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, query, where, onSnapshot, writeBatch, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, onSnapshot, writeBatch, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { db } from '../firebase';
 import type { Contrato } from '../types';
@@ -56,7 +56,6 @@ export default function Painel() {
   const [itensPrevia, setItensPrevia] = useState<any[]>([]);
   const [formItem, setFormItem] = useState({ numeroLote: '', numeroItem: '', discriminacao: '', unidade: '', quantidade: '', valorUnitario: '' });
 
-  // ESTADO PARA ORDENAÇÃO DAS COLUNAS
   const [ordenacao, setOrdenacao] = useState<{ campo: string, direcao: 'asc' | 'desc' }>({ campo: 'dataInicio', direcao: 'desc' });
 
   const nomesOrgaos: { [key: string]: string } = {
@@ -81,7 +80,6 @@ export default function Painel() {
     return () => unsubscribe();
   }, [orgaoLogado, navigate]);
 
-  // FUNÇÃO DE ORDENAÇÃO
   const lidarComOrdenacao = (campo: string) => {
     setOrdenacao(prev => ({
       campo,
@@ -207,7 +205,6 @@ export default function Painel() {
         const batch = writeBatch(db);
         itensPrevia.forEach(item => {
           const itemRef = doc(collection(db, 'itens'));
-          // A MÁGICA: Aqui dizemos que esses itens são apenas o CATÁLOGO, não é consumo!
           batch.set(itemRef, { ...item, contratoId: contratoRef.id, dataAdicao: dataAtual, tipoRegistro: 'catalogo' });
         });
         await batch.commit();
@@ -245,6 +242,36 @@ export default function Painel() {
     } catch (error) { alert("Erro ao editar contrato."); } finally { setLoading(false); }
   };
 
+  // NOVA FUNÇÃO: EXCLUIR CONTRATO E SEUS ITENS
+  const excluirContrato = async (contratoId: string) => {
+    if (window.confirm('Tem certeza que deseja excluir este contrato e todos os itens vinculados a ele? Esta ação não pode ser desfeita.')) {
+      setLoading(true);
+      try {
+        // 1. Excluir o documento do contrato
+        await deleteDoc(doc(db, 'contratos', contratoId));
+        
+        // 2. Buscar e excluir todos os itens vinculados a ele (Catálogo e Consumo)
+        const qItens = query(collection(db, 'itens'), where('contratoId', '==', contratoId));
+        const querySnapshot = await getDocs(qItens);
+        
+        if (!querySnapshot.empty) {
+          const batch = writeBatch(db);
+          querySnapshot.forEach((itemDoc) => {
+            batch.delete(itemDoc.ref);
+          });
+          await batch.commit();
+        }
+        
+        alert('Contrato excluído com sucesso!');
+      } catch (error) {
+        console.error(error);
+        alert('Erro ao excluir contrato.');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   return (
     <div className="painel-container">
       <header className="header">
@@ -268,7 +295,7 @@ export default function Painel() {
               <th onClick={() => lidarComOrdenacao('dataFim')} style={{ cursor: 'pointer', userSelect: 'none' }}>Validade {renderSeta('dataFim')}</th>
               <th>Saldo Atual</th>
               <th>Última Atualização</th>
-              <th style={{ minWidth: '220px' }}>Ações</th>
+              <th style={{ minWidth: '240px' }}>Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -287,8 +314,11 @@ export default function Painel() {
                   </td>
                   <td>{c.dataUltimaAtualizacao || 'N/A'}</td>
                   <td style={{ display: 'flex', gap: '5px' }}>
-                    <button style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => navigate(`/contrato/${c.id}`)}>Ver Detalhes</button>
+                    <button style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => navigate(`/contrato/${c.id}`)}>Ver Detalhes</button>
                     <button style={{ backgroundColor: '#ffc107', color: '#333', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => abrirEdicao(c)}>✏️ Editar</button>
+                    
+                    {/* BOTÃO EXCLUIR NO PAINEL */}
+                    <button style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => excluirContrato(c.id!)} disabled={loading}>🗑️ Excluir</button>
                   </td>
                 </tr>
               ))
@@ -382,10 +412,7 @@ export default function Painel() {
                 <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formEdit.observacao} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group full-width"><label>Valor Global do Contrato (R$)</label><input type="text" name="valorTotal" required value={formEdit.valorTotal} onChange={lidarComMudancaEdit} style={{ border: '2px solid #ffc107', fontWeight: 'bold' }} /></div>
               </div>
-              <div className="modal-acoes">
-                <button type="button" className="btn-cancelar" onClick={() => setIsModalEditOpen(false)}>Cancelar</button>
-                <button type="submit" className="btn-salvar" disabled={loading} style={{ backgroundColor: '#ffc107', color: '#333' }}>{loading ? 'A Guardar...' : 'Salvar Alterações'}</button>
-              </div>
+              <div className="modal-acoes"><button type="button" className="btn-cancelar" onClick={() => setIsModalEditOpen(false)}>Cancelar</button><button type="submit" className="btn-salvar" disabled={loading} style={{ backgroundColor: '#ffc107', color: '#333' }}>{loading ? 'A Guardar...' : 'Salvar Alterações'}</button></div>
             </form>
           </div>
         </div>

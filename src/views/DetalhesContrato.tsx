@@ -1,10 +1,10 @@
 // src/views/DetalhesContrato.tsx
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, collection, query, where, addDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, addDoc, updateDoc, writeBatch, deleteDoc, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { db } from '../firebase';
-import type { Contrato } from '../types';
+import type { Contrato, ItemContrato } from '../types';
 import logo from '../assets/logopmp.png';
 import './DetalhesContrato.css';
 
@@ -41,6 +41,13 @@ const formatarDataBr = (dataString: string) => {
   const partes = dataString.split('-');
   if (partes.length === 3) return `${partes[2]}/${partes[1]}/${partes[0]}`;
   return dataString;
+};
+
+const siglasOrgaos: { [key: string]: string } = {
+  'prefeitura': 'PMP',
+  'fmas': 'FMAS',
+  'fme': 'FME',
+  'fms': 'FMS'
 };
 
 export default function DetalhesContrato() {
@@ -108,6 +115,34 @@ export default function DetalhesContrato() {
       alert('Contrato atualizado com sucesso!');
       setIsModalEditOpen(false);
     } catch (error) { alert("Erro ao editar contrato."); } finally { setLoading(false); }
+  };
+
+  // NOVA FUNÇÃO: EXCLUIR CONTRATO PELA TELA DE DETALHES
+  const excluirContrato = async () => {
+    if (!id) return;
+    if (window.confirm("Tem certeza que deseja excluir este contrato e TODO o seu histórico? Esta ação não pode ser desfeita.")) {
+      setLoading(true);
+      try {
+        await deleteDoc(doc(db, 'contratos', id));
+        
+        const qItens = query(collection(db, 'itens'), where('contratoId', '==', id));
+        const querySnapshot = await getDocs(qItens);
+        
+        if (!querySnapshot.empty) {
+          const batch = writeBatch(db);
+          querySnapshot.forEach((itemDoc) => {
+            batch.delete(itemDoc.ref);
+          });
+          await batch.commit();
+        }
+        
+        alert("Contrato excluído com sucesso!");
+        navigate('/painel');
+      } catch (error) {
+        alert("Erro ao excluir contrato.");
+        setLoading(false);
+      }
+    }
   };
 
   const lidarComMudancaItem = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -193,7 +228,6 @@ export default function DetalhesContrato() {
 
   if (!contrato) return <div style={{textAlign: 'center', padding: '50px'}}>A carregar relatório...</div>;
 
-  // SEPARAÇÃO INTELIGENTE DE CATÁLOGO E CONSUMO
   const itensCatalogo = itens.filter(i => i.tipoRegistro === 'catalogo');
   const itensConsumo = itens.filter(i => i.tipoRegistro !== 'catalogo');
 
@@ -201,7 +235,6 @@ export default function DetalhesContrato() {
   const totalUnidades = itensConsumo.reduce((acc, curr) => acc + curr.quantidade, 0);
   const totalConsumido = itensConsumo.reduce((acc, curr) => acc + curr.valorTotalItem, 0);
 
-  // GERAÇÃO DA TABELA DE SALDOS
   const gerarTabelaSaldos = () => {
     const mapaSaldos = new Map();
 
@@ -258,7 +291,7 @@ export default function DetalhesContrato() {
       <header className="header">
         <div className="header-logo">
           <img src={logo} alt="Logo PMP" className="logo-pequena" />
-          <h2>Relatório de Contrato: {contrato.numeroContrato} / {contrato.dataInicio.substring(0, 4)}</h2>
+          <h2>Relatório de Contrato: {contrato.numeroContrato} / {contrato.dataInicio.substring(0, 4)} / {siglasOrgaos[contrato.orgaoId] || ''}</h2>
         </div>
         <button className="btn-sair" onClick={() => navigate('/painel')}>Voltar ao Painel</button>
       </header>
@@ -266,6 +299,8 @@ export default function DetalhesContrato() {
       <main className="detalhes-container">
         
         <div className="acoes-relatorio">
+          {/* BOTÃO EXCLUIR AQUI NO RELATÓRIO TAMBÉM */}
+          <button className="btn-acao" style={{ backgroundColor: '#dc3545', color: 'white' }} onClick={excluirContrato} disabled={loading}>🗑️ Excluir Contrato</button>
           <button className="btn-acao btn-editar" onClick={() => setIsModalEditOpen(true)}>✏️ Editar Contrato</button>
           <button className="btn-acao btn-lancar" onClick={() => setIsModalLancamentoOpen(true)}>+ Lançar Consumo (Empenho)</button>
         </div>
@@ -310,7 +345,6 @@ export default function DetalhesContrato() {
           </div>
         </div>
 
-        {/* PLANILHA 1: CATÁLOGO ORIGINAL FIXO */}
         {itensCatalogo.length > 0 ? (
           <div className="secao-itens" style={{ marginBottom: '30px' }}>
             <h3 style={{ color: '#004a99' }}>📋 Planilha Original do Contrato</h3>
@@ -348,7 +382,6 @@ export default function DetalhesContrato() {
           </div>
         )}
 
-        {/* PLANILHA 2: CONTROLE DE SALDO POR ITEM */}
         {tabelaDeSaldos.length > 0 && (
           <div className="secao-itens" style={{ marginBottom: '30px', overflowX: 'auto' }}>
             <h3 style={{ color: '#2e7d32' }}>📊 Controle Físico-Financeiro (Saldos por Item)</h3>
@@ -394,7 +427,6 @@ export default function DetalhesContrato() {
           </div>
         )}
 
-        {/* PLANILHA 3: HISTÓRICO DE AUDITORIA (LOG) */}
         <div className="secao-itens">
           <h3 style={{ color: '#dc3545' }}>📝 Histórico de Lançamentos (Auditoria de Empenhos)</h3>
           <table className="tabela-itens">
@@ -416,7 +448,7 @@ export default function DetalhesContrato() {
                   <tr key={item.id}>
                     <td style={{ fontWeight: 'bold' }}>{item.numeroLote !== 'Único' && item.numeroLote ? `${item.numeroLote} / ` : ''}{item.numeroItem}</td>
                     <td>{item.discriminacao}</td>
-                    <td style={{ textAlign: 'center' }}>{item.quantidade}</td>
+                    <td style={{ textAlign: 'center' }}>{item.quantidade} {item.unidade}</td>
                     <td>{item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                     <td style={{ color: '#dc3545', fontWeight: 'bold' }}>{item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                     <td style={{ color: '#666', fontSize: '12px' }}>{item.dataAdicao}</td>
@@ -428,7 +460,6 @@ export default function DetalhesContrato() {
         </div>
       </main>
 
-      {/* MODAL 1: LANÇAR CONSUMO (EMPENHO) */}
       {isModalLancamentoOpen && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '800px' }}>
@@ -454,7 +485,6 @@ export default function DetalhesContrato() {
         </div>
       )}
 
-      {/* MODAL 2: EDITAR CONTRATO */}
       {isModalEditOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
