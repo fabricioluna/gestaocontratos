@@ -117,7 +117,6 @@ export default function DetalhesContrato() {
     } catch (error) { alert("Erro ao editar contrato."); } finally { setLoading(false); }
   };
 
-  // NOVA FUNÇÃO: EXCLUIR CONTRATO PELA TELA DE DETALHES
   const excluirContrato = async () => {
     if (!id) return;
     if (window.confirm("Tem certeza que deseja excluir este contrato e TODO o seu histórico? Esta ação não pode ser desfeita.")) {
@@ -228,8 +227,11 @@ export default function DetalhesContrato() {
 
   if (!contrato) return <div style={{textAlign: 'center', padding: '50px'}}>A carregar relatório...</div>;
 
-  const itensCatalogo = itens.filter(i => i.tipoRegistro === 'catalogo');
-  const itensConsumo = itens.filter(i => i.tipoRegistro !== 'catalogo');
+  // =========================================================================
+  // A MÁGICA RETROATIVA: Se o item não tiver etiqueta, ele vira Catálogo!
+  // =========================================================================
+  const itensCatalogo = itens.filter(i => i.tipoRegistro === 'catalogo' || !i.tipoRegistro);
+  const itensConsumo = itens.filter(i => i.tipoRegistro === 'consumo');
 
   const totalItens = itensConsumo.length;
   const totalUnidades = itensConsumo.reduce((acc, curr) => acc + curr.quantidade, 0);
@@ -299,7 +301,6 @@ export default function DetalhesContrato() {
       <main className="detalhes-container">
         
         <div className="acoes-relatorio">
-          {/* BOTÃO EXCLUIR AQUI NO RELATÓRIO TAMBÉM */}
           <button className="btn-acao" style={{ backgroundColor: '#dc3545', color: 'white' }} onClick={excluirContrato} disabled={loading}>🗑️ Excluir Contrato</button>
           <button className="btn-acao btn-editar" onClick={() => setIsModalEditOpen(true)}>✏️ Editar Contrato</button>
           <button className="btn-acao btn-lancar" onClick={() => setIsModalLancamentoOpen(true)}>+ Lançar Consumo (Empenho)</button>

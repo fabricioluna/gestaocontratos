@@ -12,7 +12,7 @@ import './Painel.css';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
-// Melhorada para limpar espaços e moedas antes de converter
+// Limpa espaços e caracteres indesejados antes de converter para número
 const parseMoeda = (valor: string | number) => {
   if (!valor) return 0;
   if (typeof valor === 'number') return valor;
@@ -135,7 +135,7 @@ export default function Painel() {
   };
 
   // =========================================================================
-  // EXTRAÇÃO MÁGICA DE DADOS (COM VALIDAÇÃO CRUZADA E CORREÇÃO DE ITEM 1)
+  // EXTRAÇÃO MÁGICA DE DADOS (COM ISOLAMENTO DE TABELA DE ITENS)
   // =========================================================================
   const importarContratoArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -163,10 +163,10 @@ export default function Painel() {
         return;
       }
 
-      // 1. Limpa os espaços duplos
+      // Limpar as quebras de linha e padronizar os espaços
       const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
 
-      // 2. Extração dos Metadados (Regex Refinadas)
+      // 1. Extração dos Metadados (Cabecalho do Contrato)
       const matchContrato = textoLimpo.match(/CONTRATO N[ºOo]\s*(\d+)/i);
       const matchProcesso = textoLimpo.match(/PROCESSO LICITATÓRIO N[ºOo]\s*(\d+)/i);
       const matchPregao = textoLimpo.match(/PREGÃO ELETRÔNICO N[ºOo]\s*(\d+)/i) || textoLimpo.match(/DISPENSA N[ºOo]\s*(\d+)/i) || textoLimpo.match(/INEXIGIBILIDADE N[ºOo]\s*(\d+)/i);
@@ -176,8 +176,7 @@ export default function Painel() {
       const matchObjetoResumido = textoLimpo.match(/REFERENTE [AÀ]\s+(.+?)\s+QUE FAZEM/i);
       const matchObjetoCompleto = textoLimpo.match(/objeto do presente termo de contrato é [ao]\s+(.+?)(?:,\s*conforme|\.\s*Vinculam)/i) || textoLimpo.match(/objeto do presente termo de contrato é [ao]\s+(.+?)\./i);
       
-      // Busca o valor no texto (apenas como fallback de segurança)
-      const matchValorTexto = textoLimpo.match(/valor total da contratação é de\s*(?:R\$)?\s*([\d.,]+)/i);
+      const matchValorTexto = textoLimpo.match(/valor total da contratação é de\s*(?:R\$)?\s*([\d.,]+)/i) || textoLimpo.match(/valor total.*?é\s*(?:de)?\s*(?:R\$)?\s*([\d.,]+)/i);
       
       const matchFiscal = textoLimpo.match(/designado[a]? pela CONTRATANTE,\s*([^,]+)/i);
       const matchData = textoLimpo.match(/Pesqueira,\s*(\d{1,2})\s*de\s*([a-zA-Zç]+)\s*de\s*(\d{4})/i);
@@ -212,15 +211,28 @@ export default function Painel() {
       }
 
       // ==========================================
-      // 3. EXTRAÇÃO DA TABELA DE ITENS (Sem pular o 1º)
+      // 2. ISOLAMENTO DA TABELA DE ITENS (A GRANDE SACADA)
       // ==========================================
-      // Regex ancorada no formato exato: Número, Descrição, Unidade, Quantidade, ValorUnit, ValorTotal
-      const regexItens = /\b(\d+)\.?\s+([\s\S]+?)\s+\b(UNID|UND|FARDO|CX|KG|L|PCT|M|M2|M3|SERVIÇO|SV|PÇ|PEÇA|PAR|G|TON|KIT|CJ|CONJ)\b\s+([\d.,]+)\s*(?:R\$|\$)?\s*([\d.,]+)\s*(?:R\$|\$)?\s*([\d.,]+)/gi;
+      let textoParaItens = textoLimpo;
+      
+      // Procura onde a tabela de preços começa para ignorar o "2º CONTRATO" lá de cima
+      const indexCabecalho = textoLimpo.search(/VALOR\s+UNIT.*?VALOR\s+TOTAL/i);
+      if (indexCabecalho !== -1) {
+        textoParaItens = textoLimpo.substring(indexCabecalho);
+      } else {
+        const indexFallback = textoLimpo.search(/\bITEM\b.*?\bDESCRI[ÇC][ÃA]O\b/i);
+        if (indexFallback !== -1) {
+          textoParaItens = textoLimpo.substring(indexFallback);
+        }
+      }
+
+      // Regex ancorada no formato exato: Número, Descrição (LIMITADA A 800 CARACTERES), Unidade, Quantidade, ValorUnit, ValorTotal
+      const regexItens = /(?:^|\s)\b(\d{1,3})\b\s*[-.]?\s*([A-ZÀ-Ú0-9].{2,800}?)\s+\b(UNID|UND|FARDO|CX|KG|L|PCT|M|M2|M3|SERVIÇO|SV|PÇ|PEÇA|PAR|G|TON|KIT|CJ|CONJ|PNEU|PNEUS|LITRO|JOGO|FRASCO|ROLO|GL|GAL[ÃA]O|LATA|CAIXA)\b\s+(\d+(?:[.,]\d+)?)\s*(?:R\$|\$)?\s*([\d.,]+)\s*(?:R\$|\$)?\s*([\d.,]+)/gi;
       const novosItensExtraidos = [];
       let matchItem;
       let somaItensCalculada = 0;
       
-      while ((matchItem = regexItens.exec(textoLimpo)) !== null) {
+      while ((matchItem = regexItens.exec(textoParaItens)) !== null) {
         const qtd = parseMoeda(matchItem[4]);
         const vUnit = parseMoeda(matchItem[5]);
         const vTot = parseMoeda(matchItem[6]);
@@ -238,21 +250,21 @@ export default function Painel() {
       }
 
       // ==========================================
-      // 4. VALIDAÇÃO CRUZADA DO VALOR TOTAL
+      // 3. VALIDAÇÃO CRUZADA DO VALOR TOTAL
       // ==========================================
       let valorTextoExtraido = matchValorTexto ? parseMoeda(matchValorTexto[1]) : 0;
       let valorFinalParaSalvar = 0;
 
-      // A matemática dos itens lidos é a nossa maior fonte de verdade
+      // A matemática da tabela sempre vence o texto para evitar erros
       if (somaItensCalculada > 0) {
-        valorFinalParaSalvar = somaItensCalculada;
+        valorFinalParaSalvar = somaItensCalculada; 
       } else if (valorTextoExtraido > 0) {
-        valorFinalParaSalvar = valorTextoExtraido; // Se não achar tabela, confia no texto
+        valorFinalParaSalvar = valorTextoExtraido; 
       }
 
       const valorTotalFormatado = valorFinalParaSalvar > 0 ? valorFinalParaSalvar.toFixed(2).replace('.', ',') : '';
 
-      // 5. Preenche a tela
+      // 4. Preenche a tela
       setFormData(prev => ({
         ...prev,
         numeroContrato: numeroContrato || prev.numeroContrato,
@@ -270,9 +282,9 @@ export default function Painel() {
 
       if (novosItensExtraidos.length > 0) {
         setItensPrevia(novosItensExtraidos);
-        alert(`Perfeito! O valor de R$ ${valorTotalFormatado} foi validado através da soma matemática dos ${novosItensExtraidos.length} itens do catálogo.`);
+        alert(`Sucesso! O valor global (R$ ${valorTotalFormatado}) foi validado através da soma matemática da tabela, e ${novosItensExtraidos.length} itens foram carregados corretamente.`);
       } else {
-        alert(`O contrato e o valor (R$ ${valorTotalFormatado}) foram extraídos, mas a tabela de itens não seguiu o padrão esperado. Adicione-os manualmente ou via Excel.`);
+        alert(`O contrato foi lido (R$ ${valorTotalFormatado}), mas a tabela de itens não seguiu o padrão esperado e deverá ser adicionada manualmente ou via Excel.`);
       }
 
     } catch (error) {
