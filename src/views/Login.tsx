@@ -4,28 +4,32 @@ import logo from '../assets/logopmp.png';
 import './Login.css';
 
 export default function Login() {
-  // Estados para guardar o que o usuário digita
   const [orgao, setOrgao] = useState('prefeitura');
   const [login, setLogin] = useState('');
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState(false);
   
-  const navigate = useNavigate(); // Ferramenta de navegação do React Router
+  const navigate = useNavigate();
 
   const fazerLogin = (e: React.FormEvent) => {
-    e.preventDefault(); // Evita que a página recarregue ao enviar o formulário
+    e.preventDefault();
     let autenticado = false;
 
-    // Nossa lógica de autenticação
-    if (orgao === 'prefeitura' && login === 'prefeitura' && senha === 'pmp10') autenticado = true;
-    else if (orgao === 'fmas' && login === 'fmas' && senha === 'fmas10') autenticado = true;
-    else if (orgao === 'fme' && login === 'fme' && senha === 'fme10') autenticado = true;
-    else if (orgao === 'fms' && login === 'fms' && senha === 'fms10') autenticado = true;
+    // NOVAS CREDENCIAIS CONFIGURADAS AQUI
+    if (orgao === 'prefeitura' && login === 'prefeitura' && senha === 'pmp10') {
+      autenticado = true;
+    } else if (orgao === 'fmas' && login === 'assistencia' && senha === 'fmas10') {
+      autenticado = true;
+    } else if (orgao === 'fme' && login === 'educacao' && senha === 'fme10') {
+      autenticado = true;
+    } else if (orgao === 'fms' && login === 'saude' && senha === 'fms10') {
+      autenticado = true;
+    }
 
     if (autenticado) {
       sessionStorage.setItem('orgaoLogado', orgao);
       setErro(false);
-      navigate('/painel'); // Redireciona sem recarregar a página!
+      navigate('/painel');
     } else {
       setErro(true);
     }
@@ -42,9 +46,9 @@ export default function Login() {
             <label htmlFor="orgao">Selecione o Órgão/Fundo:</label>
             <select id="orgao" value={orgao} onChange={(e) => setOrgao(e.target.value)}>
               <option value="prefeitura">Prefeitura Municipal</option>
-              <option value="fmas">Fundo Mun. de Assistência Social</option>
-              <option value="fme">Fundo Mun. de Educação</option>
-              <option value="fms">Fundo Mun. de Saúde</option>
+              <option value="fmas">Fundo Mun. de Assistência Social (FMAS)</option>
+              <option value="fme">Fundo Mun. de Educação (FME)</option>
+              <option value="fms">Fundo Mun. de Saúde (FMS)</option>
             </select>
           </div>
 

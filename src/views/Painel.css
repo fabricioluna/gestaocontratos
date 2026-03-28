@@ -4,10 +4,11 @@
   min-height: 100vh;
 }
 
+/* CABEÇALHO MODERNO */
 .header {
   background-color: #004a99;
   color: white;
-  padding: 15px 30px;
+  padding: 10px 30px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -21,9 +22,40 @@
 }
 
 .logo-pequena {
-  height: 50px;
+  height: 45px;
+  background-color: white; /* Fundo branco adicionado */
+  padding: 5px;
+  border-radius: 8px; /* Bordas arredondadas */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  object-fit: contain;
 }
 
+.header-logo h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* BOTÃO SAIR MODERNO */
+.btn-sair {
+  background-color: transparent;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  padding: 6px 15px;
+  border-radius: 20px; /* Estilo pílula */
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-sair:hover {
+  background-color: white;
+  color: #cc0000;
+  border-color: white;
+}
+
+/* CONTEÚDO PRINCIPAL */
 .conteudo {
   max-width: 1200px;
   margin: 30px auto;
@@ -50,41 +82,30 @@
   font-weight: bold;
 }
 
-.btn-sair {
-  background-color: #cc0000;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.tabela-contratos {
+/* TABELAS */
+.tabela-contratos, .tabela-previa {
   width: 100%;
   border-collapse: collapse;
+  font-size: 14px;
 }
 
-.tabela-contratos th, .tabela-contratos td {
+.tabela-contratos th, .tabela-contratos td, .tabela-previa th, .tabela-previa td {
   border: 1px solid #ddd;
   padding: 12px;
   text-align: left;
 }
 
-.tabela-contratos th {
+.tabela-contratos th, .tabela-previa th {
   background-color: #f8f9fa;
+  color: #333;
 }
 
-/* Estilos do Modal (Janela flutuante) */
+/* MODAL */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background-color: rgba(0,0,0,0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  background-color: rgba(0,0,0,0.6);
+  display: flex; justify-content: center; align-items: center;
   z-index: 1000;
 }
 
@@ -93,7 +114,7 @@
   padding: 30px;
   border-radius: 8px;
   width: 100%;
-  max-width: 800px;
+  max-width: 900px;
   max-height: 90vh;
   overflow-y: auto;
 }
@@ -105,30 +126,25 @@
   margin-bottom: 20px;
 }
 
-.form-group.full-width {
-  grid-column: span 2;
+.form-group.full-width { grid-column: span 2; }
+
+.form-group label {
+  display: block; font-weight: bold; margin-bottom: 5px; font-size: 13px; color: #555;
 }
 
-.modal-acoes {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+.form-group input, .form-group textarea {
+  width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;
 }
 
-.btn-cancelar {
-  background-color: #6c757d;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 4px;
-  cursor: pointer;
+/* SEÇÃO DE ITENS NO MODAL */
+.secao-itens-modal {
+  background-color: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  margin-bottom: 20px;
 }
 
-.btn-salvar {
-  background-color: #004a99;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 4px;
-  cursor: pointer;
-}
+.modal-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.btn-cancelar { background-color: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
+.btn-salvar { background-color: #004a99; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }

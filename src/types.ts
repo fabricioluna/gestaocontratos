@@ -13,15 +13,15 @@ export interface Contrato {
   dataInicio: string;
   dataFim: string;
   valorTotal: number;
-  saldoContrato: number; // NOVO: Saldo que será atualizado automaticamente
+  saldoContrato: number;
   fiscalContrato: string;
   observacao: string;
+  dataUltimaAtualizacao?: string; // NOVO: Guarda a data/hora da última mexida
 }
 
-// NOVO: Molde para os Itens do Contrato
 export interface ItemContrato {
   id?: string;
-  contratoId: string; // Para sabermos a qual contrato este item pertence
+  contratoId: string;
   numeroLote: string;
   numeroItem: string;
   discriminacao: string;
@@ -29,4 +29,5 @@ export interface ItemContrato {
   quantidade: number;
   valorUnitario: number;
   valorTotalItem: number;
+  dataAdicao?: string; // NOVO: O nosso "Log" de quando o saldo foi reduzido
 }
