@@ -3,20 +3,21 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, query, where, onSnapshot, writeBatch, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
-import * as mammoth from 'mammoth'; // Leitor de DOCX
-import * as pdfjsLib from 'pdfjs-dist'; // Leitor de PDF
+import * as mammoth from 'mammoth'; 
+import * as pdfjsLib from 'pdfjs-dist'; 
 import { db } from '../firebase';
 import type { Contrato } from '../types';
 import logo from '../assets/logopmp.png';
 import './Painel.css';
 
-// Configuração obrigatória do Worker do PDF.js para funcionar no navegador
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
+// Melhorada para limpar espaços e moedas antes de converter
 const parseMoeda = (valor: string | number) => {
   if (!valor) return 0;
   if (typeof valor === 'number') return valor;
-  return Number(valor.replace(/\./g, '').replace(',', '.'));
+  const strLimpa = valor.replace(/[^\d.,]/g, '');
+  return Number(strLimpa.replace(/\./g, '').replace(',', '.'));
 };
 
 const extrairNumeroPlanilha = (valor: any) => {
@@ -38,7 +39,6 @@ const formatarDataBr = (dataString: string) => {
   return dataString;
 };
 
-// Dicionário para converter o mês escrito no contrato para número
 const mesesParaNumeros: { [key: string]: string } = {
   'janeiro': '01', 'fevereiro': '02', 'março': '03', 'abril': '04', 'maio': '05', 'junho': '06',
   'julho': '07', 'agosto': '08', 'setembro': '09', 'outubro': '10', 'novembro': '11', 'dezembro': '12'
@@ -48,7 +48,7 @@ export default function Painel() {
   const navigate = useNavigate();
   const orgaoLogado = sessionStorage.getItem('orgaoLogado');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const docInputRef = useRef<HTMLInputElement>(null); // Ref para o leitor de PDF/Word
+  const docInputRef = useRef<HTMLInputElement>(null); 
 
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [loading, setLoading] = useState(false);
@@ -135,7 +135,7 @@ export default function Painel() {
   };
 
   // =========================================================================
-  // MÁGICA: EXTRAÇÃO AUTOMÁTICA DE DADOS DO ARQUIVO (WORD OU PDF)
+  // EXTRAÇÃO MÁGICA DE DADOS (COM VALIDAÇÃO CRUZADA E CORREÇÃO DE ITEM 1)
   // =========================================================================
   const importarContratoArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -147,7 +147,6 @@ export default function Painel() {
       let textoCompleto = '';
 
       if (file.name.toLowerCase().endsWith('.pdf')) {
-        // Leitura de PDF
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
@@ -156,7 +155,6 @@ export default function Painel() {
           textoCompleto += strings.join(" ") + "\n";
         }
       } else if (file.name.toLowerCase().endsWith('.docx')) {
-        // Leitura de DOCX (Word)
         const result = await mammoth.extractRawText({ arrayBuffer });
         textoCompleto = result.value;
       } else {
@@ -165,39 +163,38 @@ export default function Painel() {
         return;
       }
 
-      // Limpar o texto de espaços duplos ou quebras de linha estranhas para facilitar a busca
+      // 1. Limpa os espaços duplos
       const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
 
-      // Expressões Regulares (Inteligência baseada no seu padrão de contrato)
+      // 2. Extração dos Metadados (Regex Refinadas)
       const matchContrato = textoLimpo.match(/CONTRATO N[ºOo]\s*(\d+)/i);
       const matchProcesso = textoLimpo.match(/PROCESSO LICITATÓRIO N[ºOo]\s*(\d+)/i);
       const matchPregao = textoLimpo.match(/PREGÃO ELETRÔNICO N[ºOo]\s*(\d+)/i) || textoLimpo.match(/DISPENSA N[ºOo]\s*(\d+)/i) || textoLimpo.match(/INEXIGIBILIDADE N[ºOo]\s*(\d+)/i);
       const matchAta = textoLimpo.match(/ATA DE REGISTRO DE PREÇOS N[ºOo]\s*(\d+)/i);
       
-      // Captura o fornecedor logo após "e a empresa"
-      const matchFornecedor = textoLimpo.match(/e a empresa\s+(.+?)(?:,|\s+com sede|\s+inscrita)/i);
+      const matchFornecedor = textoLimpo.match(/e a empresa\s+(.+?)(?:,|\s+com sede|\s+inscrita|\s+CNPJ|\.\s+A PREFEITURA)/i);
+      const matchObjetoResumido = textoLimpo.match(/REFERENTE [AÀ]\s+(.+?)\s+QUE FAZEM/i);
+      const matchObjetoCompleto = textoLimpo.match(/objeto do presente termo de contrato é [ao]\s+(.+?)(?:,\s*conforme|\.\s*Vinculam)/i) || textoLimpo.match(/objeto do presente termo de contrato é [ao]\s+(.+?)\./i);
       
-      // Captura o objeto até encontrar um ponto final ou a palavra "conforme"
-      const matchObjeto = textoLimpo.match(/objeto do presente termo de contrato é [ao]\s+(.+?)(?:\.| conforme| e em)/i);
+      // Busca o valor no texto (apenas como fallback de segurança)
+      const matchValorTexto = textoLimpo.match(/valor total da contratação é de\s*(?:R\$)?\s*([\d.,]+)/i);
       
-      const matchValor = textoLimpo.match(/valor total.*?R\$\s*([\d.,]+)/i);
       const matchFiscal = textoLimpo.match(/designado[a]? pela CONTRATANTE,\s*([^,]+)/i);
-      
-      // Captura a data de assinatura no final do documento
       const matchData = textoLimpo.match(/Pesqueira,\s*(\d{1,2})\s*de\s*([a-zA-Zç]+)\s*de\s*(\d{4})/i);
 
-      // Formatando as informações encontradas
+      // Tratamento dos metadados
       const numeroContrato = matchContrato ? matchContrato[1].padStart(3, '0') : '';
       const numeroProcesso = matchProcesso ? matchProcesso[1].padStart(3, '0') : '';
       const numeroPregao = matchPregao ? matchPregao[1].padStart(3, '0') : '';
       const numeroAta = matchAta ? matchAta[1].padStart(3, '0') : '';
       const fornecedor = matchFornecedor ? matchFornecedor[1].trim() : '';
-      const objetoBase = matchObjeto ? matchObjeto[1].trim() : '';
       
-      // Monta o objeto completo e o resumido
-      const objetoCompleto = objetoBase ? objetoBase.charAt(0).toUpperCase() + objetoBase.slice(1) : '';
-      const objetoResumido = objetoCompleto ? objetoCompleto.substring(0, 80) + '...' : '';
-      const valorTotal = matchValor ? matchValor[1] : '';
+      const objCompletoBruto = matchObjetoCompleto ? matchObjetoCompleto[1].trim() : '';
+      const objetoCompletoFormatado = objCompletoBruto ? objCompletoBruto.charAt(0).toUpperCase() + objCompletoBruto.slice(1) : '';
+      
+      const objResumidoBruto = matchObjetoResumido ? matchObjetoResumido[1].trim() : '';
+      const objetoResumidoFormatado = objResumidoBruto ? objResumidoBruto.charAt(0).toUpperCase() + objResumidoBruto.slice(1) : (objetoCompletoFormatado ? objetoCompletoFormatado.substring(0, 80) + '...' : '');
+
       const fiscalContrato = matchFiscal ? matchFiscal[1].trim() : '';
 
       let dataInicioFormatada = '';
@@ -210,13 +207,52 @@ export default function Painel() {
         const mesNumero = mesesParaNumeros[mesEscrito] || '01';
         
         dataInicioFormatada = `${ano}-${mesNumero}-${dia}`;
-        
-        // Calcula a Validade Padrão de 1 ano para frente
         const anoFim = parseInt(ano) + 1;
         dataFimFormatada = `${anoFim}-${mesNumero}-${dia}`;
       }
 
-      // Preenche o formulário para o usuário confirmar
+      // ==========================================
+      // 3. EXTRAÇÃO DA TABELA DE ITENS (Sem pular o 1º)
+      // ==========================================
+      // Regex ancorada no formato exato: Número, Descrição, Unidade, Quantidade, ValorUnit, ValorTotal
+      const regexItens = /\b(\d+)\.?\s+([\s\S]+?)\s+\b(UNID|UND|FARDO|CX|KG|L|PCT|M|M2|M3|SERVIÇO|SV|PÇ|PEÇA|PAR|G|TON|KIT|CJ|CONJ)\b\s+([\d.,]+)\s*(?:R\$|\$)?\s*([\d.,]+)\s*(?:R\$|\$)?\s*([\d.,]+)/gi;
+      const novosItensExtraidos = [];
+      let matchItem;
+      let somaItensCalculada = 0;
+      
+      while ((matchItem = regexItens.exec(textoLimpo)) !== null) {
+        const qtd = parseMoeda(matchItem[4]);
+        const vUnit = parseMoeda(matchItem[5]);
+        const vTot = parseMoeda(matchItem[6]);
+        
+        novosItensExtraidos.push({
+          numeroLote: 'Único',
+          numeroItem: matchItem[1],
+          discriminacao: matchItem[2].trim(),
+          unidade: matchItem[3].toUpperCase(),
+          quantidade: qtd,
+          valorUnitario: vUnit,
+          valorTotalItem: vTot
+        });
+        somaItensCalculada += vTot;
+      }
+
+      // ==========================================
+      // 4. VALIDAÇÃO CRUZADA DO VALOR TOTAL
+      // ==========================================
+      let valorTextoExtraido = matchValorTexto ? parseMoeda(matchValorTexto[1]) : 0;
+      let valorFinalParaSalvar = 0;
+
+      // A matemática dos itens lidos é a nossa maior fonte de verdade
+      if (somaItensCalculada > 0) {
+        valorFinalParaSalvar = somaItensCalculada;
+      } else if (valorTextoExtraido > 0) {
+        valorFinalParaSalvar = valorTextoExtraido; // Se não achar tabela, confia no texto
+      }
+
+      const valorTotalFormatado = valorFinalParaSalvar > 0 ? valorFinalParaSalvar.toFixed(2).replace('.', ',') : '';
+
+      // 5. Preenche a tela
       setFormData(prev => ({
         ...prev,
         numeroContrato: numeroContrato || prev.numeroContrato,
@@ -224,22 +260,27 @@ export default function Painel() {
         numeroPregao: numeroPregao || prev.numeroPregao,
         numeroAta: numeroAta || prev.numeroAta,
         fornecedor: fornecedor || prev.fornecedor,
-        objetoCompleto: objetoCompleto || prev.objetoCompleto,
-        objetoResumido: objetoResumido || prev.objetoResumido,
-        valorTotal: valorTotal || prev.valorTotal,
+        objetoCompleto: objetoCompletoFormatado || prev.objetoCompleto,
+        objetoResumido: objetoResumidoFormatado || prev.objetoResumido,
+        valorTotal: valorTotalFormatado || prev.valorTotal,
         fiscalContrato: fiscalContrato || prev.fiscalContrato,
         dataInicio: dataInicioFormatada || prev.dataInicio,
         dataFim: dataFimFormatada || prev.dataFim
       }));
 
-      alert("Contrato analisado com sucesso! Verifique os campos preenchidos e faça os ajustes necessários.");
+      if (novosItensExtraidos.length > 0) {
+        setItensPrevia(novosItensExtraidos);
+        alert(`Perfeito! O valor de R$ ${valorTotalFormatado} foi validado através da soma matemática dos ${novosItensExtraidos.length} itens do catálogo.`);
+      } else {
+        alert(`O contrato e o valor (R$ ${valorTotalFormatado}) foram extraídos, mas a tabela de itens não seguiu o padrão esperado. Adicione-os manualmente ou via Excel.`);
+      }
 
     } catch (error) {
       console.error(error);
       alert("Erro ao ler o documento. Verifique se o arquivo não está corrompido.");
     } finally {
       setLoading(false);
-      if (docInputRef.current) docInputRef.current.value = ''; // Limpa o input
+      if (docInputRef.current) docInputRef.current.value = '';
     }
   };
   // =========================================================================
