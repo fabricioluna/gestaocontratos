@@ -1,1 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Contratos - PMP</title>
+    <link rel="stylesheet" href="css/login.css">
+</head>
+<body>
 
+    <div class="login-container">
+        <img src="assets/logopmp.png" alt="Logo Prefeitura de Pesqueira" class="logo">
+        
+        <h2>Gestão de Contratos</h2>
+
+        <div class="form-group">
+            <label for="orgao">Selecione o Órgão/Fundo:</label>
+            <select id="orgao">
+                <option value="prefeitura">Prefeitura Municipal</option>
+                <option value="fmas">Fundo Mun. de Assistência Social</option>
+                <option value="fme">Fundo Mun. de Educação</option>
+                <option value="fms">Fundo Mun. de Saúde</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="login">Login:</label>
+            <input type="text" id="login" placeholder="Digite seu login">
+        </div>
+
+        <div class="form-group">
+            <label for="senha">Senha:</label>
+            <input type="password" id="senha" placeholder="Digite sua senha">
+        </div>
+
+        <button onclick="fazerLogin()">Entrar</button>
+
+        <p id="error-msg" class="error-message">Login ou senha incorretos!</p>
+    </div>
+
+    <script src="js/login.js"></script>
+</body>
+</html>
