@@ -1,11 +1,88 @@
 /* src/views/DetalhesContrato.css */
+
+.painel-container {
+  background-color: #f4f7f6;
+  min-height: 100vh;
+}
+
+.header {
+  background-color: #004a99;
+  color: white;
+  padding: 10px 30px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.logo-pequena {
+  height: 40px;
+  background-color: white;
+  padding: 5px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  object-fit: contain;
+}
+
+.header-logo h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+.btn-sair {
+  background-color: transparent;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  padding: 6px 15px;
+  border-radius: 20px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: normal;
+}
+
+.btn-sair:hover {
+  background-color: white;
+  color: #004a99;
+  border-color: white;
+}
+
 .detalhes-container {
   max-width: 1200px;
   margin: 30px auto;
-  padding: 20px;
+  padding: 0 20px;
 }
 
-/* RELATÓRIO COMPLETO */
+.acoes-relatorio {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  justify-content: flex-end;
+}
+
+.btn-acao {
+  padding: 10px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  border: none;
+  color: white;
+  font-size: 14px;
+}
+
+.btn-editar { background-color: #ffc107; color: #333; }
+.btn-editar:hover { background-color: #e0a800; }
+.btn-lancar { background-color: #28a745; }
+.btn-lancar:hover { background-color: #218838; }
+
 .painel-relatorio {
   display: grid;
   grid-template-columns: 2fr 1fr;
@@ -13,119 +90,77 @@
   margin-bottom: 30px;
 }
 
-.card-relatorio {
+.card-relatorio, .card-financeiro {
   background-color: white;
   padding: 20px;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  border-top: 5px solid #004a99;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
-.card-financeiro {
-  background-color: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  border-top: 5px solid #28a745;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
+.card-relatorio { border-top: 5px solid #004a99; }
+.card-financeiro { border-top: 5px solid #28a745; display: flex; flex-direction: column; justify-content: space-between; }
 
 .dados-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 15px;
-  font-size: 14px;
-  margin-top: 15px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 14px; margin-top: 15px;
 }
 
-.dados-grid p { margin: 0; padding: 5px 0; border-bottom: 1px solid #eee; }
+.dados-grid p { margin: 0; padding: 5px 0; border-bottom: 1px solid #eee; color: #555; }
 .dados-grid strong { color: #333; }
 
 .bloco-saldo {
-  text-align: center;
-  padding: 15px;
-  background-color: #f8f9fa;
-  border-radius: 8px;
-  margin-bottom: 15px;
+  text-align: center; padding: 15px; background-color: #f8f9fa; border-radius: 8px; margin-bottom: 15px; border: 1px solid #eee;
 }
 
-.valor-global { font-size: 18px; color: #555; }
-.valor-saldo { font-size: 28px; font-weight: bold; margin: 10px 0; }
+.valor-saldo { font-size: 26px; font-weight: bold; margin: 10px 0; }
 .saldo-positivo { color: #28a745; }
 .saldo-negativo { color: #dc3545; }
 
 .metricas-itens {
-  display: flex;
-  justify-content: space-around;
-  background-color: #e9ecef;
-  padding: 10px;
-  border-radius: 8px;
-  text-align: center;
-  font-size: 14px;
+  display: flex; justify-content: space-around; background-color: #e9ecef; padding: 10px; border-radius: 8px; text-align: center; font-size: 13px; color: #555;
 }
 
-.metricas-itens strong { display: block; font-size: 20px; color: #004a99; }
+.metricas-itens strong { display: block; font-size: 18px; color: #004a99; }
 
-/* SEÇÃO DE ITENS E FORMULÁRIO */
 .secao-itens {
-  background-color: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px; overflow-x: auto;
 }
 
-.form-item {
-  background-color: #f4f7f6;
-  padding: 15px;
-  border-radius: 6px;
-  margin-bottom: 20px;
+.secao-itens h3 { margin-top: 0; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+
+/* NOVA TABELA DE SALDOS COM LETRA UM POUCO MENOR PARA CABER TUDO */
+.tabela-saldos {
+  width: 100%; border-collapse: collapse; font-size: 12px; min-width: 1000px;
 }
 
-.tabela-itens {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
+.tabela-saldos th, .tabela-saldos td {
+  border: 1px solid #eee; padding: 8px 6px; text-align: center;
 }
 
-.tabela-itens th, .tabela-itens td {
-  border: 1px solid #ddd;
-  padding: 10px;
-  text-align: left;
-}
+.tabela-saldos td.desc-esquerda { text-align: left; }
 
-.tabela-itens th { background-color: #f8f9fa; color: #333; }
-/* src/views/DetalhesContrato.css */
+.tabela-saldos th { background-color: #f8f9fa; color: #333; font-weight: bold; }
+.tabela-saldos th.th-saldo { background-color: #e2f0d9; color: #2e7d32; }
+.tabela-saldos tr:hover { background-color: #fcfcfc; }
 
-/* ... (mantenha tudo que já existia acima) ... */
+.tabela-itens { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tabela-itens th, .tabela-itens td { border: 1px solid #eee; padding: 10px; text-align: left; }
+.tabela-itens th { background-color: #f8f9fa; color: #333; font-weight: bold; }
+.tabela-itens tr:hover { background-color: #fcfcfc; }
 
-/* ESTILOS DOS MODAIS NA TELA DE DETALHES */
 .modal-overlay {
-  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-  background-color: rgba(0,0,0,0.6);
-  display: flex; justify-content: center; align-items: center; z-index: 1000;
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px);
 }
 
 .modal-content {
-  background-color: white; padding: 30px; border-radius: 8px;
-  width: 100%; max-width: 900px; max-height: 90vh; overflow-y: auto;
+  background-color: white; padding: 30px; border-radius: 8px; width: 100%; max-width: 900px; max-height: 90vh; overflow-y: auto; box-shadow: 0 5px 15px rgba(0,0,0,0.3);
 }
 
-.form-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;
-}
-
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
 .form-group.full-width { grid-column: span 2; }
 .form-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 13px; color: #555; }
 .form-group input, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+.form-group textarea { resize: vertical; }
 
-.modal-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.modal-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px; }
 .btn-cancelar { background-color: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
 .btn-salvar { background-color: #004a99; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-
-/* BOTÕES DE AÇÃO NO CABEÇALHO DO RELATÓRIO */
-.acoes-relatorio { display: flex; gap: 10px; margin-bottom: 20px; justify-content: flex-end; }
-.btn-acao { padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; border: none; color: white; }
-.btn-editar { background-color: #ffc107; color: #333; }
-.btn-lancar { background-color: #28a745; }
