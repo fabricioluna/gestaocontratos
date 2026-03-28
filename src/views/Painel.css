@@ -1,150 +1,286 @@
 /* src/views/Painel.css */
+
+/* =========================================
+   BASE E FUNDO
+========================================= */
 .painel-container {
-  background-color: #f4f7f6;
+  background-color: #f0f4f8; 
   min-height: 100vh;
+  font-family: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: #334155;
 }
 
-/* CABEÇALHO MODERNO */
+/* =========================================
+   CABEÇALHO (HEADER) - MODERNO, BLINDADO E ALINHADO
+========================================= */
 .header {
-  background-color: #004a99;
+  background: linear-gradient(135deg, #0a2540 0%, #144066 100%); 
   color: white;
-  padding: 10px 30px;
+  padding: 12px 24px;
   display: flex;
-  justify-content: space-between;
+  justify-content: space-between; 
   align-items: center;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  gap: 20px; 
 }
 
+/* O segredo para o texto não empurrar a tela: flex: 1 e min-width: 0 */
 .header-logo {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 16px;
+  flex: 1; 
+  min-width: 0; 
 }
 
 .logo-pequena {
-  height: 45px;
-  background-color: white; /* Fundo branco adicionado */
-  padding: 5px;
-  border-radius: 8px; /* Bordas arredondadas */
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  object-fit: contain;
+  height: 40px; 
+  width: auto;
+  background-color: white;
+  padding: 6px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  flex-shrink: 0; 
 }
 
+/* O texto do Fundo numa única linha com "..." no final */
 .header-logo h2 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 500;
-  letter-spacing: 0.5px;
+  font-size: 18px; 
+  font-weight: 600;
+  white-space: nowrap; 
+  overflow: hidden;
+  text-overflow: ellipsis; 
+  letter-spacing: -0.3px;
 }
 
-/* BOTÃO SAIR MODERNO */
+/* =========================================
+   BOTÃO SAIR (SQUIRCLE COM ÍCONE E TEXTO)
+========================================= */
 .btn-sair {
-  background-color: transparent;
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  padding: 6px 15px;
-  border-radius: 20px; /* Estilo pílula */
+  background-color: rgba(255, 255, 255, 0.1); 
+  color: white; 
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  width: auto; /* Permite crescer para caber o texto */
+  padding: 0 16px; /* Espaçamento interno nas laterais */
+  height: 42px; 
+  border-radius: 10px; /* Bordas curvas (Squircle moderno) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px; /* Espaço entre o ícone e o texto */
+  font-weight: 600;
   font-size: 14px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  flex-shrink: 0; 
+  transition: all 0.2s ease;
+  margin-left: auto; /* Força o botão para a extrema direita */
 }
 
 .btn-sair:hover {
-  background-color: white;
-  color: #cc0000;
-  border-color: white;
+  background-color: rgba(239, 68, 68, 0.8); /* Vermelho vibrante e transparente ao passar o rato */
+  color: white;
+  border-color: transparent;
+  transform: translateY(-2px); 
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
-/* CONTEÚDO PRINCIPAL */
+/* =========================================
+   CONTEÚDO PRINCIPAL E CARDS
+========================================= */
 .conteudo {
-  max-width: 1200px;
+  max-width: 1250px;
   margin: 30px auto;
-  padding: 20px;
+  padding: 30px;
   background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  border-radius: 12px; 
+  box-shadow: 0 4px 20px rgba(0,0,0,0.05); 
 }
 
 .acoes-topo {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
+.acoes-topo h2 {
+  margin: 0;
+  font-size: 22px;
+  color: #0f172a;
+}
+
+/* =========================================
+   BOTÕES DE AÇÃO GERAIS
+========================================= */
 .btn-novo {
-  background-color: #28a745;
+  background-color: #10b981; 
   color: white;
   border: none;
   padding: 10px 20px;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  font-weight: bold;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
 }
 
-/* TABELAS */
+.btn-novo:hover {
+  background-color: #059669;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3);
+}
+
+/* =========================================
+   TABELA CLEAN E MODERNA
+========================================= */
 .tabela-contratos, .tabela-previa {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate; 
+  border-spacing: 0;
   font-size: 14px;
 }
 
-.tabela-contratos th, .tabela-contratos td, .tabela-previa th, .tabela-previa td {
-  border: 1px solid #ddd;
-  padding: 12px;
-  text-align: left;
-}
-
 .tabela-contratos th, .tabela-previa th {
-  background-color: #f8f9fa;
-  color: #333;
+  background-color: #f8fafc;
+  color: #64748b;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase; 
+  letter-spacing: 0.5px;
+  padding: 14px 16px;
+  text-align: left;
+  border-bottom: 2px solid #e2e8f0; 
 }
 
-/* MODAL */
+.tabela-contratos td, .tabela-previa td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #e2e8f0; 
+  color: #334155;
+  vertical-align: middle;
+}
+
+.tabela-contratos tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+.tabela-contratos tbody tr:hover {
+  background-color: #f0f9ff; 
+}
+
+/* =========================================
+   MODAL (POP-UP) E FORMULÁRIOS
+========================================= */
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; width: 100vw; height: 100vh;
-  background-color: rgba(0,0,0,0.6);
+  background-color: rgba(15, 23, 42, 0.7); 
   display: flex; justify-content: center; align-items: center;
   z-index: 1000;
+  backdrop-filter: blur(4px); 
 }
 
 .modal-content {
   background-color: white;
-  padding: 30px;
-  border-radius: 8px;
+  padding: 35px;
+  border-radius: 12px;
   width: 100%;
-  max-width: 900px;
+  max-width: 950px;
   max-height: 90vh;
   overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 15px;
-  margin-bottom: 20px;
+  gap: 18px;
+  margin-bottom: 25px;
 }
 
 .form-group.full-width { grid-column: span 2; }
 
 .form-group label {
-  display: block; font-weight: bold; margin-bottom: 5px; font-size: 13px; color: #555;
+  display: block; 
+  font-weight: 600; 
+  margin-bottom: 6px; 
+  font-size: 13px; 
+  color: #475569;
 }
 
 .form-group input, .form-group textarea {
-  width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;
+  width: 100%; 
+  padding: 10px 14px; 
+  border: 1px solid #cbd5e1; 
+  border-radius: 6px; 
+  box-sizing: border-box;
+  font-size: 14px;
+  background-color: #f8fafc;
+  color: #1e293b;
+  transition: all 0.2s ease;
+  font-family: inherit;
 }
 
-/* SEÇÃO DE ITENS NO MODAL */
+.form-group input:focus, .form-group textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* =========================================
+   SEÇÃO DE ITENS NO MODAL E BOTÕES FINAIS
+========================================= */
 .secao-itens-modal {
-  background-color: #f8f9fa;
-  padding: 15px;
+  background-color: #f8fafc;
+  padding: 20px;
   border-radius: 8px;
-  border: 1px solid #ddd;
+  border: 1px dashed #cbd5e1;
   margin-bottom: 20px;
 }
 
-.modal-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
-.btn-cancelar { background-color: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
-.btn-salvar { background-color: #004a99; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+.modal-acoes { 
+  display: flex; 
+  justify-content: flex-end; 
+  gap: 12px; 
+  margin-top: 30px; 
+  padding-top: 20px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.btn-cancelar { 
+  background-color: white; 
+  color: #64748b; 
+  border: 1px solid #cbd5e1; 
+  padding: 10px 20px; 
+  border-radius: 6px; 
+  cursor: pointer; 
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-cancelar:hover {
+  background-color: #f1f5f9;
+  color: #334155;
+}
+
+.btn-salvar { 
+  background-color: #004a99; 
+  color: white; 
+  border: none; 
+  padding: 10px 24px; 
+  border-radius: 6px; 
+  cursor: pointer; 
+  font-weight: 600; 
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 74, 153, 0.2);
+}
+
+.btn-salvar:hover {
+  background-color: #003366;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(0, 74, 153, 0.3);
+}
