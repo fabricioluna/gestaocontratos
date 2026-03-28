@@ -14,7 +14,7 @@ const parseMoeda = (valor: string) => {
   return Number(valor.replace(/\./g, '').replace(',', '.'));
 };
 
-// Formata a data de AAAA-MM-DD para DD/MM/AAAA
+// Formata a data de AAAA-MM-DD para DD/MM/AAAA na tabela
 const formatarDataBr = (dataString: string) => {
   if (!dataString) return 'N/A';
   const partes = dataString.split('-');
@@ -33,6 +33,7 @@ export default function Painel() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Todos os dados do Contrato
   const [formData, setFormData] = useState({
     numeroContrato: '', numeroProcesso: '', numeroPregao: '', numeroAta: '',
     fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '',
@@ -50,10 +51,9 @@ export default function Painel() {
   };
 
   useEffect(() => {
-    // CORREÇÃO DO ERRO DO TYPESCRIPT AQUI:
     if (!orgaoLogado) {
       navigate('/');
-      return; // Retorna vazio em vez de retornar a promise do navigate
+      return; 
     }
     
     const q = query(collection(db, 'contratos'), where('orgaoId', '==', orgaoLogado));
@@ -69,8 +69,18 @@ export default function Painel() {
   const lidarComMudanca = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
+  
   const lidarComMudancaItem = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormItem(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  // MÁGICA: Preenche com zeros à esquerda até ter 3 dígitos (ex: 1 vira 001)
+  const formatarTresDigitos = (e: React.FocusEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    // Só formata se o usuário digitou apenas números (para não estragar se ele digitar "001/2024")
+    if (value && /^\d+$/.test(value)) {
+      setFormData(prev => ({ ...prev, [name]: value.padStart(3, '0') }));
+    }
   };
 
   const adicionarItemPrevia = () => {
@@ -209,7 +219,7 @@ export default function Painel() {
               <th>Nº Contrato</th>
               <th>Objeto Resumido</th>
               <th>Fornecedor</th>
-              <th>Validade</th> {/* NOVA COLUNA */}
+              <th>Validade</th>
               <th>Saldo Atual</th>
               <th>Última Atualização</th>
               <th>Ações</th>
@@ -225,7 +235,7 @@ export default function Painel() {
                   <td>{c.numeroContrato}</td>
                   <td>{c.objetoResumido}</td>
                   <td>{c.fornecedor}</td>
-                  <td style={{ fontWeight: 'bold' }}>{formatarDataBr(c.dataFim)}</td> {/* AQUI EXIBIMOS A VALIDADE FORMATADA */}
+                  <td style={{ fontWeight: 'bold' }}>{formatarDataBr(c.dataFim)}</td>
                   <td style={{ fontWeight: 'bold', color: c.saldoContrato < 0 ? 'red' : 'green' }}>
                     {c.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                   </td>
@@ -243,7 +253,7 @@ export default function Painel() {
         </table>
       </main>
 
-      {/* MODAL FICA EXATAMENTE IGUAL AO ANTERIOR */}
+      {/* MODAL COM TODOS OS CAMPOS RESTAURADOS */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -252,13 +262,31 @@ export default function Painel() {
             <form onSubmit={salvarContratoCompleto}>
               <h3 style={{ borderBottom: '1px solid #ddd', paddingBottom: '5px' }}>1. Dados do Contrato</h3>
               <div className="form-grid">
-                <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formData.numeroContrato} onChange={lidarComMudanca} /></div>
-                <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formData.numeroProcesso} onChange={lidarComMudanca} /></div>
+                {/* O evento onBlur chama a formatação dos 3 dígitos quando o usuário clica fora do campo */}
+                <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formData.numeroContrato} onChange={lidarComMudanca} onBlur={formatarTresDigitos} placeholder="Ex: 001" /></div>
+                <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formData.numeroProcesso} onChange={lidarComMudanca} onBlur={formatarTresDigitos} placeholder="Ex: 050" /></div>
+                
+                {/* CAMPOS DE PREGÃO E ATA RESTAURADOS */}
+                <div className="form-group"><label>Nº Pregão/Dispensa/Inex</label><input type="text" name="numeroPregao" value={formData.numeroPregao} onChange={lidarComMudanca} onBlur={formatarTresDigitos} placeholder="Ex: 010" /></div>
+                <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formData.numeroAta} onChange={lidarComMudanca} onBlur={formatarTresDigitos} placeholder="Ex: 100" /></div>
+                
                 <div className="form-group full-width"><label>Fornecedor (Empresa)</label><input type="text" name="fornecedor" required value={formData.fornecedor} onChange={lidarComMudanca} /></div>
                 <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formData.objetoResumido} onChange={lidarComMudanca} /></div>
+                
+                {/* OBJETO COMPLETO ADICIONADO (TEXTAREA) */}
+                <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formData.objetoCompleto} onChange={lidarComMudanca} placeholder="Descrição detalhada..."></textarea></div>
+
                 <div className="form-group"><label>Data Início</label><input type="date" name="dataInicio" required value={formData.dataInicio} onChange={lidarComMudanca} /></div>
                 <div className="form-group"><label>Data Fim (Validade)</label><input type="date" name="dataFim" required value={formData.dataFim} onChange={lidarComMudanca} /></div>
-                <div className="form-group"><label>Valor Global (R$)</label><input type="text" name="valorTotal" placeholder="Ex: 1500,50" required value={formData.valorTotal} onChange={lidarComMudanca} /></div>
+                
+                {/* FISCAL E OBSERVAÇÃO RESTAURADOS */}
+                <div className="form-group"><label>Fiscal do Contrato</label><input type="text" name="fiscalContrato" value={formData.fiscalContrato} onChange={lidarComMudanca} /></div>
+                <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formData.observacao} onChange={lidarComMudanca} /></div>
+
+                <div className="form-group full-width">
+                  <label style={{ color: '#004a99', fontSize: '15px' }}>Valor Global do Contrato (R$)</label>
+                  <input type="text" name="valorTotal" placeholder="Ex: 1500,50" required value={formData.valorTotal} onChange={lidarComMudanca} style={{ border: '2px solid #004a99', fontWeight: 'bold' }} />
+                </div>
               </div>
 
               <h3 style={{ borderBottom: '1px solid #ddd', paddingBottom: '5px', marginTop: '30px' }}>2. Itens do Contrato (Opcional)</h3>
