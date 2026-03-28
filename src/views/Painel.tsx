@@ -14,6 +14,17 @@ const parseMoeda = (valor: string) => {
   return Number(valor.replace(/\./g, '').replace(',', '.'));
 };
 
+// Nova função para garantir que o Excel leia os números corretamente, mesmo se vierem como texto com vírgula
+const extrairNumeroPlanilha = (valor: any) => {
+  if (typeof valor === 'number') return valor;
+  if (!valor) return 0;
+  const str = String(valor).trim();
+  if (str.includes(',')) {
+    return Number(str.replace(/\./g, '').replace(',', '.'));
+  }
+  return Number(str);
+};
+
 // Formata a data de AAAA-MM-DD para DD/MM/AAAA na tabela
 const formatarDataBr = (dataString: string) => {
   if (!dataString) return 'N/A';
@@ -33,7 +44,6 @@ export default function Painel() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Todos os dados do Contrato
   const [formData, setFormData] = useState({
     numeroContrato: '', numeroProcesso: '', numeroPregao: '', numeroAta: '',
     fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '',
@@ -74,10 +84,8 @@ export default function Painel() {
     setFormItem(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  // MÁGICA: Preenche com zeros à esquerda até ter 3 dígitos (ex: 1 vira 001)
   const formatarTresDigitos = (e: React.FocusEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    // Só formata se o usuário digitou apenas números (para não estragar se ele digitar "001/2024")
     if (value && /^\d+$/.test(value)) {
       setFormData(prev => ({ ...prev, [name]: value.padStart(3, '0') }));
     }
@@ -135,8 +143,13 @@ export default function Painel() {
           const numeroItem = String(linha['ITEM'] || '');
           const discriminacao = String(linha['DESCRIÇÃO'] || linha['DESCRICAO'] || linha['DISCRIMINAÇÃO'] || '');
           const unidade = String(linha['UNIDADE'] || linha['UND.'] || linha['UND'] || 'UND');
-          const quantidade = Number(linha['QUANTIDADE'] || linha['QTD.'] || linha['QTD']) || 0;
-          const valorUnitario = Number(linha['VALOR UNITÁRIO'] || linha['VALOR UNITARIO'] || linha['VALOR UND.'] || linha['VALOR UND']) || 0;
+          
+          // Usando a nova função para garantir a extração correta dos números
+          const quantidade = extrairNumeroPlanilha(linha['QUANTIDADE'] || linha['QTD.'] || linha['QTD']) || 0;
+          
+          // AQUI ESTÁ A MÁGICA: Adicionado o "VL. UNIT." e o "VL. UNIT"
+          const valorUnitario = extrairNumeroPlanilha(linha['VALOR UNITÁRIO'] || linha['VALOR UNITARIO'] || linha['VALOR UND.'] || linha['VALOR UND'] || linha['VL. UNIT.'] || linha['VL. UNIT'] || linha['VL UNIT.']) || 0;
+          
           const valorTotalItem = quantidade * valorUnitario;
 
           if (discriminacao && quantidade > 0) {
@@ -150,6 +163,8 @@ export default function Painel() {
           const novoTotal = parseMoeda(formData.valorTotal) + somaImportacao;
           setFormData({ ...formData, valorTotal: novoTotal.toFixed(2).replace('.', ',') });
           alert(`${novosItens.length} itens carregados na prévia!`);
+        } else {
+          alert('Nenhum item válido encontrado. Verifique se as colunas estão corretas.');
         }
       } catch (error) {
         alert("Erro ao ler planilha.");
@@ -253,7 +268,6 @@ export default function Painel() {
         </table>
       </main>
 
-      {/* MODAL COM TODOS OS CAMPOS RESTAURADOS */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -262,24 +276,20 @@ export default function Painel() {
             <form onSubmit={salvarContratoCompleto}>
               <h3 style={{ borderBottom: '1px solid #ddd', paddingBottom: '5px' }}>1. Dados do Contrato</h3>
               <div className="form-grid">
-                {/* O evento onBlur chama a formatação dos 3 dígitos quando o usuário clica fora do campo */}
                 <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formData.numeroContrato} onChange={lidarComMudanca} onBlur={formatarTresDigitos} placeholder="Ex: 001" /></div>
                 <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formData.numeroProcesso} onChange={lidarComMudanca} onBlur={formatarTresDigitos} placeholder="Ex: 050" /></div>
                 
-                {/* CAMPOS DE PREGÃO E ATA RESTAURADOS */}
                 <div className="form-group"><label>Nº Pregão/Dispensa/Inex</label><input type="text" name="numeroPregao" value={formData.numeroPregao} onChange={lidarComMudanca} onBlur={formatarTresDigitos} placeholder="Ex: 010" /></div>
                 <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formData.numeroAta} onChange={lidarComMudanca} onBlur={formatarTresDigitos} placeholder="Ex: 100" /></div>
                 
                 <div className="form-group full-width"><label>Fornecedor (Empresa)</label><input type="text" name="fornecedor" required value={formData.fornecedor} onChange={lidarComMudanca} /></div>
                 <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formData.objetoResumido} onChange={lidarComMudanca} /></div>
                 
-                {/* OBJETO COMPLETO ADICIONADO (TEXTAREA) */}
                 <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formData.objetoCompleto} onChange={lidarComMudanca} placeholder="Descrição detalhada..."></textarea></div>
 
                 <div className="form-group"><label>Data Início</label><input type="date" name="dataInicio" required value={formData.dataInicio} onChange={lidarComMudanca} /></div>
                 <div className="form-group"><label>Data Fim (Validade)</label><input type="date" name="dataFim" required value={formData.dataFim} onChange={lidarComMudanca} /></div>
                 
-                {/* FISCAL E OBSERVAÇÃO RESTAURADOS */}
                 <div className="form-group"><label>Fiscal do Contrato</label><input type="text" name="fiscalContrato" value={formData.fiscalContrato} onChange={lidarComMudanca} /></div>
                 <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formData.observacao} onChange={lidarComMudanca} /></div>
 
