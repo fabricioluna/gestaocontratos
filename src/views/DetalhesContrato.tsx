@@ -4,7 +4,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, collection, query, where, addDoc, updateDoc, writeBatch, deleteDoc, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { db } from '../firebase';
-import type { Contrato, ItemContrato } from '../types';
+// 👇 AQUI ESTAVA O ERRO: Removi o ItemContrato que não estávamos a usar
+import type { Contrato } from '../types';
 import logo from '../assets/logopmp.png';
 import './DetalhesContrato.css';
 
@@ -227,9 +228,6 @@ export default function DetalhesContrato() {
 
   if (!contrato) return <div style={{textAlign: 'center', padding: '50px'}}>A carregar relatório...</div>;
 
-  // =========================================================================
-  // A MÁGICA RETROATIVA: Se o item não tiver etiqueta, ele vira Catálogo!
-  // =========================================================================
   const itensCatalogo = itens.filter(i => i.tipoRegistro === 'catalogo' || !i.tipoRegistro);
   const itensConsumo = itens.filter(i => i.tipoRegistro === 'consumo');
 

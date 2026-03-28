@@ -10,39 +10,10 @@ import type { Contrato } from '../types';
 import logo from '../assets/logopmp.png';
 import './Painel.css';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+import { parseMoeda, extrairNumeroPlanilha, formatarDataBr } from '../utils/formatters';
+import { extrairDadosContratoComIA } from '../services/geminiService';
 
-// Limpa espaços e caracteres indesejados antes de converter para número
-const parseMoeda = (valor: string | number) => {
-  if (!valor) return 0;
-  if (typeof valor === 'number') return valor;
-  const strLimpa = valor.replace(/[^\d.,]/g, '');
-  return Number(strLimpa.replace(/\./g, '').replace(',', '.'));
-};
-
-const extrairNumeroPlanilha = (valor: any) => {
-  if (typeof valor === 'number') return valor;
-  if (!valor) return 0;
-  const str = String(valor).trim();
-  if (str.includes(',')) {
-    return Number(str.replace(/\./g, '').replace(',', '.'));
-  }
-  return Number(str);
-};
-
-const formatarDataBr = (dataString: string) => {
-  if (!dataString) return 'N/A';
-  const partes = dataString.split('-');
-  if (partes.length === 3) {
-    return `${partes[2]}/${partes[1]}/${partes[0]}`;
-  }
-  return dataString;
-};
-
-const mesesParaNumeros: { [key: string]: string } = {
-  'janeiro': '01', 'fevereiro': '02', 'março': '03', 'abril': '04', 'maio': '05', 'junho': '06',
-  'julho': '07', 'agosto': '08', 'setembro': '09', 'outubro': '10', 'novembro': '11', 'dezembro': '12'
-};
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
 
 export default function Painel() {
   const navigate = useNavigate();
@@ -78,11 +49,7 @@ export default function Painel() {
   };
 
   useEffect(() => {
-    if (!orgaoLogado) {
-      navigate('/');
-      return; 
-    }
-    
+    if (!orgaoLogado) { navigate('/'); return; }
     const q = query(collection(db, 'contratos'), where('orgaoId', '==', orgaoLogado));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const lista: Contrato[] = [];
@@ -93,19 +60,14 @@ export default function Painel() {
   }, [orgaoLogado, navigate]);
 
   const lidarComOrdenacao = (campo: string) => {
-    setOrdenacao(prev => ({
-      campo,
-      direcao: prev.campo === campo && prev.direcao === 'asc' ? 'desc' : 'asc'
-    }));
+    setOrdenacao(prev => ({ campo, direcao: prev.campo === campo && prev.direcao === 'asc' ? 'desc' : 'asc' }));
   };
 
   const contratosOrdenados = [...contratos].sort((a, b) => {
     let valorA: any = a[ordenacao.campo as keyof Contrato] || '';
     let valorB: any = b[ordenacao.campo as keyof Contrato] || '';
-
     if (typeof valorA === 'string') valorA = valorA.toLowerCase();
     if (typeof valorB === 'string') valorB = valorB.toLowerCase();
-
     if (valorA < valorB) return ordenacao.direcao === 'asc' ? -1 : 1;
     if (valorA > valorB) return ordenacao.direcao === 'asc' ? 1 : -1;
     return 0;
@@ -125,7 +87,6 @@ export default function Painel() {
   const lidarComMudancaItem = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormItem((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
   };
-
   const formatarTresDigitos = (e: React.FocusEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     if (value && /^\d+$/.test(value)) {
@@ -135,7 +96,7 @@ export default function Painel() {
   };
 
   // =========================================================================
-  // EXTRAÇÃO MÁGICA DE DADOS (COM ISOLAMENTO DE TABELA DE ITENS)
+  // EXTRAÇÃO MÁGICA 4.0: MOVIDA A INTELIGÊNCIA ARTIFICIAL (GEMINI)
   // =========================================================================
   const importarContratoArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -147,7 +108,8 @@ export default function Painel() {
       let textoCompleto = '';
 
       if (file.name.toLowerCase().endsWith('.pdf')) {
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const typedArray = new Uint8Array(arrayBuffer);
+        const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const content = await page.getTextContent();
@@ -157,145 +119,43 @@ export default function Painel() {
       } else if (file.name.toLowerCase().endsWith('.docx')) {
         const result = await mammoth.extractRawText({ arrayBuffer });
         textoCompleto = result.value;
-      } else {
-        alert("Formato não suportado. Envie um arquivo PDF ou Word (.docx).");
-        setLoading(false);
-        return;
       }
 
-      // Limpar as quebras de linha e padronizar os espaços
       const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
 
-      // 1. Extração dos Metadados (Cabecalho do Contrato)
-      const matchContrato = textoLimpo.match(/CONTRATO N[ºOo]\s*(\d+)/i);
-      const matchProcesso = textoLimpo.match(/PROCESSO LICITATÓRIO N[ºOo]\s*(\d+)/i);
-      const matchPregao = textoLimpo.match(/PREGÃO ELETRÔNICO N[ºOo]\s*(\d+)/i) || textoLimpo.match(/DISPENSA N[ºOo]\s*(\d+)/i) || textoLimpo.match(/INEXIGIBILIDADE N[ºOo]\s*(\d+)/i);
-      const matchAta = textoLimpo.match(/ATA DE REGISTRO DE PREÇOS N[ºOo]\s*(\d+)/i);
-      
-      const matchFornecedor = textoLimpo.match(/e a empresa\s+(.+?)(?:,|\s+com sede|\s+inscrita|\s+CNPJ|\.\s+A PREFEITURA)/i);
-      const matchObjetoResumido = textoLimpo.match(/REFERENTE [AÀ]\s+(.+?)\s+QUE FAZEM/i);
-      const matchObjetoCompleto = textoLimpo.match(/objeto do presente termo de contrato é [ao]\s+(.+?)(?:,\s*conforme|\.\s*Vinculam)/i) || textoLimpo.match(/objeto do presente termo de contrato é [ao]\s+(.+?)\./i);
-      
-      const matchValorTexto = textoLimpo.match(/valor total da contratação é de\s*(?:R\$)?\s*([\d.,]+)/i) || textoLimpo.match(/valor total.*?é\s*(?:de)?\s*(?:R\$)?\s*([\d.,]+)/i);
-      
-      const matchFiscal = textoLimpo.match(/designado[a]? pela CONTRATANTE,\s*([^,]+)/i);
-      const matchData = textoLimpo.match(/Pesqueira,\s*(\d{1,2})\s*de\s*([a-zA-Zç]+)\s*de\s*(\d{4})/i);
+      // Envia para o Gemini analisar
+      const dadosIA = await extrairDadosContratoComIA(textoLimpo);
 
-      // Tratamento dos metadados
-      const numeroContrato = matchContrato ? matchContrato[1].padStart(3, '0') : '';
-      const numeroProcesso = matchProcesso ? matchProcesso[1].padStart(3, '0') : '';
-      const numeroPregao = matchPregao ? matchPregao[1].padStart(3, '0') : '';
-      const numeroAta = matchAta ? matchAta[1].padStart(3, '0') : '';
-      const fornecedor = matchFornecedor ? matchFornecedor[1].trim() : '';
-      
-      const objCompletoBruto = matchObjetoCompleto ? matchObjetoCompleto[1].trim() : '';
-      const objetoCompletoFormatado = objCompletoBruto ? objCompletoBruto.charAt(0).toUpperCase() + objCompletoBruto.slice(1) : '';
-      
-      const objResumidoBruto = matchObjetoResumido ? matchObjetoResumido[1].trim() : '';
-      const objetoResumidoFormatado = objResumidoBruto ? objResumidoBruto.charAt(0).toUpperCase() + objResumidoBruto.slice(1) : (objetoCompletoFormatado ? objetoCompletoFormatado.substring(0, 80) + '...' : '');
-
-      const fiscalContrato = matchFiscal ? matchFiscal[1].trim() : '';
-
-      let dataInicioFormatada = '';
-      let dataFimFormatada = '';
-
-      if (matchData) {
-        const dia = matchData[1].padStart(2, '0');
-        const mesEscrito = matchData[2].toLowerCase();
-        const ano = matchData[3];
-        const mesNumero = mesesParaNumeros[mesEscrito] || '01';
-        
-        dataInicioFormatada = `${ano}-${mesNumero}-${dia}`;
-        const anoFim = parseInt(ano) + 1;
-        dataFimFormatada = `${anoFim}-${mesNumero}-${dia}`;
-      }
-
-      // ==========================================
-      // 2. ISOLAMENTO DA TABELA DE ITENS (A GRANDE SACADA)
-      // ==========================================
-      let textoParaItens = textoLimpo;
-      
-      // Procura onde a tabela de preços começa para ignorar o "2º CONTRATO" lá de cima
-      const indexCabecalho = textoLimpo.search(/VALOR\s+UNIT.*?VALOR\s+TOTAL/i);
-      if (indexCabecalho !== -1) {
-        textoParaItens = textoLimpo.substring(indexCabecalho);
-      } else {
-        const indexFallback = textoLimpo.search(/\bITEM\b.*?\bDESCRI[ÇC][ÃA]O\b/i);
-        if (indexFallback !== -1) {
-          textoParaItens = textoLimpo.substring(indexFallback);
-        }
-      }
-
-      // Regex ancorada no formato exato: Número, Descrição (LIMITADA A 800 CARACTERES), Unidade, Quantidade, ValorUnit, ValorTotal
-      const regexItens = /(?:^|\s)\b(\d{1,3})\b\s*[-.]?\s*([A-ZÀ-Ú0-9].{2,800}?)\s+\b(UNID|UND|FARDO|CX|KG|L|PCT|M|M2|M3|SERVIÇO|SV|PÇ|PEÇA|PAR|G|TON|KIT|CJ|CONJ|PNEU|PNEUS|LITRO|JOGO|FRASCO|ROLO|GL|GAL[ÃA]O|LATA|CAIXA)\b\s+(\d+(?:[.,]\d+)?)\s*(?:R\$|\$)?\s*([\d.,]+)\s*(?:R\$|\$)?\s*([\d.,]+)/gi;
-      const novosItensExtraidos = [];
-      let matchItem;
-      let somaItensCalculada = 0;
-      
-      while ((matchItem = regexItens.exec(textoParaItens)) !== null) {
-        const qtd = parseMoeda(matchItem[4]);
-        const vUnit = parseMoeda(matchItem[5]);
-        const vTot = parseMoeda(matchItem[6]);
-        
-        novosItensExtraidos.push({
-          numeroLote: 'Único',
-          numeroItem: matchItem[1],
-          discriminacao: matchItem[2].trim(),
-          unidade: matchItem[3].toUpperCase(),
-          quantidade: qtd,
-          valorUnitario: vUnit,
-          valorTotalItem: vTot
-        });
-        somaItensCalculada += vTot;
-      }
-
-      // ==========================================
-      // 3. VALIDAÇÃO CRUZADA DO VALOR TOTAL
-      // ==========================================
-      let valorTextoExtraido = matchValorTexto ? parseMoeda(matchValorTexto[1]) : 0;
-      let valorFinalParaSalvar = 0;
-
-      // A matemática da tabela sempre vence o texto para evitar erros
-      if (somaItensCalculada > 0) {
-        valorFinalParaSalvar = somaItensCalculada; 
-      } else if (valorTextoExtraido > 0) {
-        valorFinalParaSalvar = valorTextoExtraido; 
-      }
-
-      const valorTotalFormatado = valorFinalParaSalvar > 0 ? valorFinalParaSalvar.toFixed(2).replace('.', ',') : '';
-
-      // 4. Preenche a tela
       setFormData(prev => ({
         ...prev,
-        numeroContrato: numeroContrato || prev.numeroContrato,
-        numeroProcesso: numeroProcesso || prev.numeroProcesso,
-        numeroPregao: numeroPregao || prev.numeroPregao,
-        numeroAta: numeroAta || prev.numeroAta,
-        fornecedor: fornecedor || prev.fornecedor,
-        objetoCompleto: objetoCompletoFormatado || prev.objetoCompleto,
-        objetoResumido: objetoResumidoFormatado || prev.objetoResumido,
-        valorTotal: valorTotalFormatado || prev.valorTotal,
-        fiscalContrato: fiscalContrato || prev.fiscalContrato,
-        dataInicio: dataInicioFormatada || prev.dataInicio,
-        dataFim: dataFimFormatada || prev.dataFim
+        numeroContrato: dadosIA.numeroContrato || prev.numeroContrato,
+        numeroProcesso: dadosIA.numeroProcesso || prev.numeroProcesso,
+        numeroPregao: dadosIA.numeroPregao || prev.numeroPregao,
+        numeroAta: dadosIA.numeroAta || prev.numeroAta,
+        fornecedor: dadosIA.fornecedor || prev.fornecedor,
+        objetoCompleto: dadosIA.objetoCompleto || prev.objetoCompleto,
+        objetoResumido: dadosIA.objetoResumido || prev.objetoResumido,
+        valorTotal: dadosIA.valorTotal ? dadosIA.valorTotal.toFixed(2).replace('.', ',') : prev.valorTotal,
+        fiscalContrato: dadosIA.fiscalContrato || prev.fiscalContrato,
+        dataInicio: dadosIA.dataInicio || prev.dataInicio,
+        dataFim: dadosIA.dataFim || prev.dataFim
       }));
 
-      if (novosItensExtraidos.length > 0) {
-        setItensPrevia(novosItensExtraidos);
-        alert(`Sucesso! O valor global (R$ ${valorTotalFormatado}) foi validado através da soma matemática da tabela, e ${novosItensExtraidos.length} itens foram carregados corretamente.`);
+      if (dadosIA.itens && dadosIA.itens.length > 0) {
+        setItensPrevia(dadosIA.itens);
+        alert(`Gemini AI analisou com sucesso! ${dadosIA.itens.length} itens do catálogo foram perfeitamente importados.`);
       } else {
-        alert(`O contrato foi lido (R$ ${valorTotalFormatado}), mas a tabela de itens não seguiu o padrão esperado e deverá ser adicionada manualmente ou via Excel.`);
+        alert("O Gemini extraiu os dados do contrato, mas não encontrou uma tabela de itens clara.");
       }
 
     } catch (error) {
       console.error(error);
-      alert("Erro ao ler o documento. Verifique se o arquivo não está corrompido.");
+      alert("Erro ao processar o documento com a Inteligência Artificial. Verifique o console.");
     } finally {
       setLoading(false);
       if (docInputRef.current) docInputRef.current.value = '';
     }
   };
-  // =========================================================================
 
   const adicionarItemPrevia = () => {
     const qtd = parseMoeda(formItem.quantidade);
@@ -422,25 +282,18 @@ export default function Painel() {
       setLoading(true);
       try {
         await deleteDoc(doc(db, 'contratos', contratoId));
-        
         const qItens = query(collection(db, 'itens'), where('contratoId', '==', contratoId));
         const querySnapshot = await getDocs(qItens);
-        
         if (!querySnapshot.empty) {
           const batch = writeBatch(db);
-          querySnapshot.forEach((itemDoc) => {
-            batch.delete(itemDoc.ref);
-          });
+          querySnapshot.forEach((itemDoc) => { batch.delete(itemDoc.ref); });
           await batch.commit();
         }
-        
         alert('Contrato excluído com sucesso!');
       } catch (error) {
         console.error(error);
         alert('Erro ao excluir contrato.');
-      } finally {
-        setLoading(false);
-      }
+      } finally { setLoading(false); }
     }
   };
 
@@ -497,17 +350,15 @@ export default function Painel() {
         </table>
       </main>
 
-      {/* MODAL NOVO CONTRATO COM AUTO-PREENCHIMENTO MAGICO */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
-            
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #ddd', paddingBottom: '10px', marginBottom: '15px' }}>
               <h2 style={{ margin: 0 }}>Cadastrar Novo Contrato</h2>
               <div>
                 <input type="file" accept=".docx, .pdf" ref={docInputRef} onChange={importarContratoArquivo} style={{ display: 'none' }} id="upload-doc" />
-                <label htmlFor="upload-doc" style={{ backgroundColor: '#17a2b8', color: 'white', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  {loading ? 'A processar...' : '🪄 Auto-Preencher com Arquivo (PDF ou DOCX)'}
+                <label htmlFor="upload-doc" style={{ backgroundColor: '#20c997', color: 'white', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '5px', boxShadow: '0 2px 5px rgba(0,0,0,0.2)' }}>
+                  {loading ? 'A processar IA...' : '✨ Auto-Preencher com IA (Gemini)'}
                 </label>
               </div>
             </div>
@@ -548,11 +399,11 @@ export default function Painel() {
               {itensPrevia.length > 0 && (
                 <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '20px' }}>
                   <table className="tabela-previa">
-                    <thead><tr><th>Item</th><th>Descrição</th><th>Qtd</th><th>Unitário</th><th>Total</th><th>Ação</th></tr></thead>
+                    <thead><tr><th>Lote</th><th>Item</th><th>Descrição</th><th>Qtd</th><th>Unitário</th><th>Total</th><th>Ação</th></tr></thead>
                     <tbody>
                       {itensPrevia.map((item, index) => (
                         <tr key={index}>
-                          <td>{item.numeroItem}</td><td>{item.discriminacao}</td><td>{item.quantidade}</td>
+                          <td>{item.numeroLote}</td><td>{item.numeroItem}</td><td>{item.discriminacao}</td><td>{item.quantidade}</td>
                           <td>{item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                           <td>{item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                           <td><button type="button" onClick={() => removerItemPrevia(index)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>❌</button></td>
@@ -572,7 +423,6 @@ export default function Painel() {
         </div>
       )}
 
-      {/* MODAL EDITAR CONTRATO */}
       {isModalEditOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -597,7 +447,6 @@ export default function Painel() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
