@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Contrato } from '../types';
+import type { Contrato } from '../types';
 import logo from '../assets/logopmp.png';
 import './Painel.css';
 
