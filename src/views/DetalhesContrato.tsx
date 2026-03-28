@@ -4,8 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, collection, query, where, addDoc, updateDoc, writeBatch, deleteDoc, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { db } from '../firebase';
-// 👇 AQUI ESTAVA O ERRO: Removi o ItemContrato que não estávamos a usar
-import type { Contrato } from '../types';
+import type { Contrato } from '../types'; // IMPORT CORRIGIDO: Sem o ItemContrato
 import logo from '../assets/logopmp.png';
 import './DetalhesContrato.css';
 
