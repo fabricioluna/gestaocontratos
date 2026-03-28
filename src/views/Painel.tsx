@@ -3,10 +3,15 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, query, where, onSnapshot, writeBatch, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
+import * as mammoth from 'mammoth'; // Leitor de DOCX
+import * as pdfjsLib from 'pdfjs-dist'; // Leitor de PDF
 import { db } from '../firebase';
 import type { Contrato } from '../types';
 import logo from '../assets/logopmp.png';
 import './Painel.css';
+
+// Configuração obrigatória do Worker do PDF.js para funcionar no navegador
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 const parseMoeda = (valor: string | number) => {
   if (!valor) return 0;
@@ -33,10 +38,17 @@ const formatarDataBr = (dataString: string) => {
   return dataString;
 };
 
+// Dicionário para converter o mês escrito no contrato para número
+const mesesParaNumeros: { [key: string]: string } = {
+  'janeiro': '01', 'fevereiro': '02', 'março': '03', 'abril': '04', 'maio': '05', 'junho': '06',
+  'julho': '07', 'agosto': '08', 'setembro': '09', 'outubro': '10', 'novembro': '11', 'dezembro': '12'
+};
+
 export default function Painel() {
   const navigate = useNavigate();
   const orgaoLogado = sessionStorage.getItem('orgaoLogado');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null); // Ref para o leitor de PDF/Word
 
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [loading, setLoading] = useState(false);
@@ -121,6 +133,116 @@ export default function Painel() {
       if (isModalEditOpen) setFormEdit((prev: any) => ({ ...prev, [name]: value.padStart(3, '0') }));
     }
   };
+
+  // =========================================================================
+  // MÁGICA: EXTRAÇÃO AUTOMÁTICA DE DADOS DO ARQUIVO (WORD OU PDF)
+  // =========================================================================
+  const importarContratoArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      let textoCompleto = '';
+
+      if (file.name.toLowerCase().endsWith('.pdf')) {
+        // Leitura de PDF
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const strings = content.items.map((item: any) => item.str);
+          textoCompleto += strings.join(" ") + "\n";
+        }
+      } else if (file.name.toLowerCase().endsWith('.docx')) {
+        // Leitura de DOCX (Word)
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        textoCompleto = result.value;
+      } else {
+        alert("Formato não suportado. Envie um arquivo PDF ou Word (.docx).");
+        setLoading(false);
+        return;
+      }
+
+      // Limpar o texto de espaços duplos ou quebras de linha estranhas para facilitar a busca
+      const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
+
+      // Expressões Regulares (Inteligência baseada no seu padrão de contrato)
+      const matchContrato = textoLimpo.match(/CONTRATO N[ºOo]\s*(\d+)/i);
+      const matchProcesso = textoLimpo.match(/PROCESSO LICITATÓRIO N[ºOo]\s*(\d+)/i);
+      const matchPregao = textoLimpo.match(/PREGÃO ELETRÔNICO N[ºOo]\s*(\d+)/i) || textoLimpo.match(/DISPENSA N[ºOo]\s*(\d+)/i) || textoLimpo.match(/INEXIGIBILIDADE N[ºOo]\s*(\d+)/i);
+      const matchAta = textoLimpo.match(/ATA DE REGISTRO DE PREÇOS N[ºOo]\s*(\d+)/i);
+      
+      // Captura o fornecedor logo após "e a empresa"
+      const matchFornecedor = textoLimpo.match(/e a empresa\s+(.+?)(?:,|\s+com sede|\s+inscrita)/i);
+      
+      // Captura o objeto até encontrar um ponto final ou a palavra "conforme"
+      const matchObjeto = textoLimpo.match(/objeto do presente termo de contrato é [ao]\s+(.+?)(?:\.| conforme| e em)/i);
+      
+      const matchValor = textoLimpo.match(/valor total.*?R\$\s*([\d.,]+)/i);
+      const matchFiscal = textoLimpo.match(/designado[a]? pela CONTRATANTE,\s*([^,]+)/i);
+      
+      // Captura a data de assinatura no final do documento
+      const matchData = textoLimpo.match(/Pesqueira,\s*(\d{1,2})\s*de\s*([a-zA-Zç]+)\s*de\s*(\d{4})/i);
+
+      // Formatando as informações encontradas
+      const numeroContrato = matchContrato ? matchContrato[1].padStart(3, '0') : '';
+      const numeroProcesso = matchProcesso ? matchProcesso[1].padStart(3, '0') : '';
+      const numeroPregao = matchPregao ? matchPregao[1].padStart(3, '0') : '';
+      const numeroAta = matchAta ? matchAta[1].padStart(3, '0') : '';
+      const fornecedor = matchFornecedor ? matchFornecedor[1].trim() : '';
+      const objetoBase = matchObjeto ? matchObjeto[1].trim() : '';
+      
+      // Monta o objeto completo e o resumido
+      const objetoCompleto = objetoBase ? objetoBase.charAt(0).toUpperCase() + objetoBase.slice(1) : '';
+      const objetoResumido = objetoCompleto ? objetoCompleto.substring(0, 80) + '...' : '';
+      const valorTotal = matchValor ? matchValor[1] : '';
+      const fiscalContrato = matchFiscal ? matchFiscal[1].trim() : '';
+
+      let dataInicioFormatada = '';
+      let dataFimFormatada = '';
+
+      if (matchData) {
+        const dia = matchData[1].padStart(2, '0');
+        const mesEscrito = matchData[2].toLowerCase();
+        const ano = matchData[3];
+        const mesNumero = mesesParaNumeros[mesEscrito] || '01';
+        
+        dataInicioFormatada = `${ano}-${mesNumero}-${dia}`;
+        
+        // Calcula a Validade Padrão de 1 ano para frente
+        const anoFim = parseInt(ano) + 1;
+        dataFimFormatada = `${anoFim}-${mesNumero}-${dia}`;
+      }
+
+      // Preenche o formulário para o usuário confirmar
+      setFormData(prev => ({
+        ...prev,
+        numeroContrato: numeroContrato || prev.numeroContrato,
+        numeroProcesso: numeroProcesso || prev.numeroProcesso,
+        numeroPregao: numeroPregao || prev.numeroPregao,
+        numeroAta: numeroAta || prev.numeroAta,
+        fornecedor: fornecedor || prev.fornecedor,
+        objetoCompleto: objetoCompleto || prev.objetoCompleto,
+        objetoResumido: objetoResumido || prev.objetoResumido,
+        valorTotal: valorTotal || prev.valorTotal,
+        fiscalContrato: fiscalContrato || prev.fiscalContrato,
+        dataInicio: dataInicioFormatada || prev.dataInicio,
+        dataFim: dataFimFormatada || prev.dataFim
+      }));
+
+      alert("Contrato analisado com sucesso! Verifique os campos preenchidos e faça os ajustes necessários.");
+
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao ler o documento. Verifique se o arquivo não está corrompido.");
+    } finally {
+      setLoading(false);
+      if (docInputRef.current) docInputRef.current.value = ''; // Limpa o input
+    }
+  };
+  // =========================================================================
 
   const adicionarItemPrevia = () => {
     const qtd = parseMoeda(formItem.quantidade);
@@ -242,15 +364,12 @@ export default function Painel() {
     } catch (error) { alert("Erro ao editar contrato."); } finally { setLoading(false); }
   };
 
-  // NOVA FUNÇÃO: EXCLUIR CONTRATO E SEUS ITENS
   const excluirContrato = async (contratoId: string) => {
     if (window.confirm('Tem certeza que deseja excluir este contrato e todos os itens vinculados a ele? Esta ação não pode ser desfeita.')) {
       setLoading(true);
       try {
-        // 1. Excluir o documento do contrato
         await deleteDoc(doc(db, 'contratos', contratoId));
         
-        // 2. Buscar e excluir todos os itens vinculados a ele (Catálogo e Consumo)
         const qItens = query(collection(db, 'itens'), where('contratoId', '==', contratoId));
         const querySnapshot = await getDocs(qItens);
         
@@ -316,8 +435,6 @@ export default function Painel() {
                   <td style={{ display: 'flex', gap: '5px' }}>
                     <button style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => navigate(`/contrato/${c.id}`)}>Ver Detalhes</button>
                     <button style={{ backgroundColor: '#ffc107', color: '#333', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => abrirEdicao(c)}>✏️ Editar</button>
-                    
-                    {/* BOTÃO EXCLUIR NO PAINEL */}
                     <button style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => excluirContrato(c.id!)} disabled={loading}>🗑️ Excluir</button>
                   </td>
                 </tr>
@@ -327,13 +444,23 @@ export default function Painel() {
         </table>
       </main>
 
-      {/* MODAL NOVO CONTRATO */}
+      {/* MODAL NOVO CONTRATO COM AUTO-PREENCHIMENTO MAGICO */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h2>Cadastrar Novo Contrato e Catálogo</h2>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #ddd', paddingBottom: '10px', marginBottom: '15px' }}>
+              <h2 style={{ margin: 0 }}>Cadastrar Novo Contrato</h2>
+              <div>
+                <input type="file" accept=".docx, .pdf" ref={docInputRef} onChange={importarContratoArquivo} style={{ display: 'none' }} id="upload-doc" />
+                <label htmlFor="upload-doc" style={{ backgroundColor: '#17a2b8', color: 'white', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  {loading ? 'A processar...' : '🪄 Auto-Preencher com Arquivo (PDF ou DOCX)'}
+                </label>
+              </div>
+            </div>
+            
             <form onSubmit={salvarContratoCompleto}>
-              <h3 style={{ borderBottom: '1px solid #ddd', paddingBottom: '5px' }}>1. Dados Gerais</h3>
+              <h3 style={{ color: '#555', marginTop: 0 }}>1. Dados Gerais</h3>
               <div className="form-grid">
                 <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formData.numeroContrato} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
                 <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formData.numeroProcesso} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
