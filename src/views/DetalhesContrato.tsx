@@ -34,13 +34,6 @@ const formatarDataBr = (dataString: string) => {
   return dataString;
 };
 
-const siglasOrgaos: { [key: string]: string } = {
-  'prefeitura': 'PMP',
-  'fmas': 'FMAS',
-  'fme': 'FME',
-  'fms': 'FMS'
-};
-
 const nomesOrgaos: { [key: string]: string } = {
   'prefeitura': 'Prefeitura Municipal de Pesqueira',
   'fmas': 'Fundo Municipal de Assistência Social (FMAS)',
