@@ -34,6 +34,13 @@ const formatarDataBr = (dataString: string) => {
   return dataString;
 };
 
+const siglasOrgaos: { [key: string]: string } = {
+  'prefeitura': 'PMP',
+  'fmas': 'FMAS',
+  'fme': 'FME',
+  'fms': 'FMS'
+};
+
 const nomesOrgaos: { [key: string]: string } = {
   'prefeitura': 'Prefeitura Municipal de Pesqueira',
   'fmas': 'Fundo Municipal de Assistência Social (FMAS)',
@@ -206,7 +213,6 @@ export default function DetalhesContrato() {
       
       docPdf.setFontSize(10);
       docPdf.setTextColor(100, 100, 100);
-      // ALTERAÇÃO AQUI: Usando o nome do órgão por extenso
       docPdf.text(`Órgão: ${nomesOrgaos[contrato.orgaoId] || ''} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 26);
 
       let currentY = 40;
@@ -396,25 +402,31 @@ export default function DetalhesContrato() {
           <button className="btn-acao" style={{ backgroundColor: '#17a2b8', color: 'white' }} onClick={gerarRelatorioPDF}>📄 Gerar Relatório</button>
           <button className="btn-acao" style={{ backgroundColor: '#dc3545', color: 'white' }} onClick={excluirContrato} disabled={loading}>🗑️ Excluir Contrato</button>
           <button className="btn-acao btn-editar" onClick={() => setIsModalEditOpen(true)}>✏️ Editar Contrato</button>
-          <button className="btn-acao btn-lancar" onClick={() => setIsModalLancamentoOpen(true)}>+ Lançar Consumo (Empenho)</button>
+          
+          {/* BOTÃO DESATIVADO TEMPORARIAMENTE */}
+          <button 
+            className="btn-acao btn-lancar" 
+            onClick={() => setIsModalLancamentoOpen(true)}
+            disabled
+            title="Funcionalidade em manutenção para a implementação de Secretarias (Fase 2)"
+            style={{ opacity: 0.5, cursor: 'not-allowed' }}
+          >
+            + Lançar Consumo (Empenho)
+          </button>
         </div>
 
         <div className="painel-relatorio">
           
-          {/* --- NOVO DESIGN DO CARD DE DADOS GERAIS (DASHBOARD) --- */}
           <div className="card-relatorio">
             <h3 style={{ color: '#004a99', marginTop: 0, marginBottom: '20px', borderBottom: '2px solid #f1f5f9', paddingBottom: '10px' }}>
               Dados Gerais do Contrato
             </h3>
             
-            {/* Destaque Principal */}
             <h4 className="fornecedor-destaque">{contrato.fornecedor}</h4>
             <p className="objeto-destaque">{contrato.objetoResumido}</p>
 
-            {/* Grid de Cards Menores */}
             <div className="dashboard-cards">
               
-              {/* Identificação */}
               <div className="info-card">
                 <span className="card-label">Processo Nº</span>
                 <span className="card-value">{contrato.numeroProcesso || '-'}</span>
@@ -430,7 +442,6 @@ export default function DetalhesContrato() {
                 <span className="card-value">{contrato.numeroModalidade || contrato.numeroPregao || '-'}</span>
               </div>
 
-              {/* A ATA SÓ APARECE NO DASHBOARD SE ESTIVER PREENCHIDA */}
               {contrato.numeroAta && contrato.numeroAta.trim() !== '' && (
                 <div className="info-card">
                   <span className="card-label">Ata Nº</span>
@@ -438,7 +449,6 @@ export default function DetalhesContrato() {
                 </div>
               )}
 
-              {/* Vigência e Datas */}
               <div className="info-card">
                 <span className="card-label">Data Início</span>
                 <span className="card-value">{formatarDataBr(contrato.dataInicio)}</span>
@@ -454,14 +464,12 @@ export default function DetalhesContrato() {
                 </span>
               </div>
 
-              {/* Responsabilidade */}
               <div className="info-card" style={{ gridColumn: 'span 2' }}>
                 <span className="card-label">Fiscal Responsável</span>
                 <span className="card-value">{contrato.fiscalContrato || 'Não informado'}</span>
               </div>
             </div>
 
-            {/* AS OBSERVAÇÕES SÓ APARECEM SE PREENCHIDAS */}
             {contrato.observacao && contrato.observacao.trim() !== '' && (
               <div className="observacao-bloco">
                 <span className="card-label">Observações</span>
@@ -484,7 +492,6 @@ export default function DetalhesContrato() {
                 <div style={{ borderTop: '1px solid #ddd', margin: '10px 0' }}></div>
                 <div style={{ fontSize: '12px', color: '#666' }}>Saldo Atual Disponível</div>
                 
-                {/* ALERTA DE SALDO CRÍTICO */}
                 <div className={`valor-saldo ${contrato.saldoContrato >= 0 ? 'saldo-positivo' : 'saldo-negativo'}`} style={alertaSaldoCritico ? { color: '#e65100', border: '2px solid #e65100', padding: '10px', backgroundColor: '#fff3e0' } : {}}>
                   {alertaSaldoCritico && <div style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px' }}>⚠️ SALDO INFERIOR A 30%</div>}
                   {contrato.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
