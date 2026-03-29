@@ -4,8 +4,6 @@ import { collection, addDoc, query, where, onSnapshot, writeBatch, doc, updateDo
 import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth'; 
 import * as pdfjsLib from 'pdfjs-dist'; 
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { db } from '../firebase';
 import type { Contrato } from '../types';
 import logo from '../assets/logopmp.png';
@@ -24,20 +22,22 @@ export default function Painel() {
 
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [loading, setLoading] = useState(false);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isModalEditOpen, setIsModalEditOpen] = useState(false);
-  const [termoBusca, setTermoBusca] = useState('');
 
   const [formData, setFormData] = useState({
-    numeroContrato: '', numeroProcesso: '', modalidade: '', numeroPregao: '', numeroAta: '',
+    numeroContrato: '', numeroProcesso: '', numeroPregao: '', numeroAta: '',
     fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '',
     dataFim: '', valorTotal: '', fiscalContrato: '', observacao: ''
   });
 
   const [formEdit, setFormEdit] = useState<any>({});
   const [contratoEditId, setContratoEditId] = useState<string>('');
+
   const [itensPrevia, setItensPrevia] = useState<any[]>([]);
   const [formItem, setFormItem] = useState({ numeroLote: '', numeroItem: '', discriminacao: '', unidade: '', quantidade: '', valorUnitario: '' });
+
   const [ordenacao, setOrdenacao] = useState<{ campo: string, direcao: 'asc' | 'desc' }>({ campo: 'dataInicio', direcao: 'desc' });
 
   const nomesOrgaos: { [key: string]: string } = {
@@ -72,24 +72,15 @@ export default function Painel() {
     return 0;
   });
 
-  const contratosFiltrados = contratosOrdenados.filter((c) => {
-    const termo = termoBusca.toLowerCase();
-    return (
-      (c.numeroContrato || '').toLowerCase().includes(termo) ||
-      (c.fornecedor || '').toLowerCase().includes(termo) ||
-      (c.objetoResumido || '').toLowerCase().includes(termo)
-    );
-  });
-
   const renderSeta = (campo: string) => {
     if (ordenacao.campo !== campo) return <span style={{ color: '#ccc', marginLeft: '5px' }}>↕</span>;
     return <span style={{ marginLeft: '5px' }}>{ordenacao.direcao === 'asc' ? '▲' : '▼'}</span>;
   };
 
-  const lidarComMudanca = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const lidarComMudanca = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
   };
-  const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormEdit((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
   };
   const lidarComMudancaItem = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,10 +97,12 @@ export default function Painel() {
   const importarContratoArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     setLoading(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
       let textoCompleto = '';
+
       if (file.name.toLowerCase().endsWith('.pdf')) {
         const typedArray = new Uint8Array(arrayBuffer);
         const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
@@ -123,19 +116,36 @@ export default function Painel() {
         const result = await mammoth.extractRawText({ arrayBuffer });
         textoCompleto = result.value;
       }
+
       const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
+
       const dadosIA = await extrairDadosContratoComIA(textoLimpo);
+
       setFormData(prev => ({
         ...prev,
-        ...dadosIA,
-        valorTotal: dadosIA.valorTotal ? dadosIA.valorTotal.toFixed(2).replace('.', ',') : prev.valorTotal
+        numeroContrato: dadosIA.numeroContrato || prev.numeroContrato,
+        numeroProcesso: dadosIA.numeroProcesso || prev.numeroProcesso,
+        numeroPregao: dadosIA.numeroPregao || prev.numeroPregao,
+        numeroAta: dadosIA.numeroAta || prev.numeroAta,
+        fornecedor: dadosIA.fornecedor || prev.fornecedor,
+        objetoCompleto: dadosIA.objetoCompleto || prev.objetoCompleto,
+        objetoResumido: dadosIA.objetoResumido || prev.objetoResumido,
+        valorTotal: dadosIA.valorTotal ? dadosIA.valorTotal.toFixed(2).replace('.', ',') : prev.valorTotal,
+        fiscalContrato: dadosIA.fiscalContrato || prev.fiscalContrato,
+        dataInicio: dadosIA.dataInicio || prev.dataInicio,
+        dataFim: dadosIA.dataFim || prev.dataFim
       }));
+
       if (dadosIA.itens && dadosIA.itens.length > 0) {
         setItensPrevia(dadosIA.itens);
-        alert(`Gemini 2.0 analisou com sucesso! ${dadosIA.itens.length} itens carregados.`);
+        alert(`Gemini AI analisou com sucesso! ${dadosIA.itens.length} itens do catálogo foram perfeitamente importados.`);
+      } else {
+        alert("O Gemini extraiu os dados do contrato, mas não encontrou uma tabela de itens clara.");
       }
+
     } catch (error) {
-      alert("Erro ao processar o documento com a Inteligência Artificial.");
+      console.error(error);
+      alert("Erro ao processar o documento com a Inteligência Artificial. Verifique o console.");
     } finally {
       setLoading(false);
       if (docInputRef.current) docInputRef.current.value = '';
@@ -145,7 +155,7 @@ export default function Painel() {
   const adicionarItemPrevia = () => {
     const qtd = parseMoeda(formItem.quantidade);
     const vUnit = parseMoeda(formItem.valorUnitario);
-    if (!formItem.discriminacao || qtd <= 0 || vUnit <= 0) return alert("Preencha corretamente.");
+    if (!formItem.discriminacao || qtd <= 0 || vUnit <= 0) return alert("Preencha descrição, quantidade e valor corretamente.");
     const novoItem = {
       numeroLote: formItem.numeroLote || 'Único',
       numeroItem: formItem.numeroItem || String(itensPrevia.length + 1),
@@ -177,21 +187,31 @@ export default function Painel() {
         const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
         let somaImportacao = 0;
         const novosItens: any[] = [];
+
         data.forEach((row: any) => {
           const linha: any = {};
           for (const key in row) linha[key.trim().toUpperCase()] = row[key];
+          const numeroLote = String(linha['LOTE'] || 'Único'); 
+          const numeroItem = String(linha['ITEM'] || '');
           const discriminacao = String(linha['DESCRIÇÃO'] || linha['DESCRICAO'] || linha['DISCRIMINAÇÃO'] || '');
+          const unidade = String(linha['UNIDADE'] || linha['UND.'] || linha['UND'] || 'UND');
           const quantidade = extrairNumeroPlanilha(linha['QUANTIDADE'] || linha['QTD.'] || linha['QTD']) || 0;
           const valorUnitario = extrairNumeroPlanilha(linha['VALOR UNITÁRIO'] || linha['VALOR UNITARIO'] || linha['VALOR UND.'] || linha['VALOR UND'] || linha['VL. UNIT.'] || linha['VL. UNIT'] || linha['VL UNIT.']) || 0;
+          const valorTotalItem = quantidade * valorUnitario;
+
           if (discriminacao && quantidade > 0) {
-            novosItens.push({ numeroLote: String(linha['LOTE'] || 'Único'), numeroItem: String(linha['ITEM'] || ''), discriminacao, unidade: String(linha['UNIDADE'] || 'UND'), quantidade, valorUnitario, valorTotalItem: quantidade * valorUnitario });
-            somaImportacao += (quantidade * valorUnitario);
+            novosItens.push({ numeroLote, numeroItem, discriminacao, unidade, quantidade, valorUnitario, valorTotalItem });
+            somaImportacao += valorTotalItem;
           }
         });
-        setItensPrevia([...itensPrevia, ...novosItens]);
-        const novoTotal = parseMoeda(formData.valorTotal) + somaImportacao;
-        setFormData({ ...formData, valorTotal: novoTotal.toFixed(2).replace('.', ',') });
-      } catch (error) { alert("Erro ao ler planilha."); }
+
+        if (novosItens.length > 0) {
+          setItensPrevia([...itensPrevia, ...novosItens]);
+          const novoTotal = parseMoeda(formData.valorTotal) + somaImportacao;
+          setFormData({ ...formData, valorTotal: novoTotal.toFixed(2).replace('.', ',') });
+          alert(`${novosItens.length} itens carregados no catálogo!`);
+        } else { alert('Nenhum item válido encontrado.'); }
+      } catch (error) { alert("Erro ao ler planilha."); } finally { if (fileInputRef.current) fileInputRef.current.value = ''; }
     };
     reader.readAsBinaryString(file);
   };
@@ -202,6 +222,7 @@ export default function Painel() {
     try {
       const valorGlobalNum = parseMoeda(formData.valorTotal);
       const dataAtual = new Date().toLocaleString('pt-BR');
+
       const contratoRef = await addDoc(collection(db, 'contratos'), {
         ...formData,
         orgaoId: orgaoLogado,
@@ -209,6 +230,7 @@ export default function Painel() {
         saldoContrato: valorGlobalNum,
         dataUltimaAtualizacao: dataAtual
       });
+
       if (itensPrevia.length > 0) {
         const batch = writeBatch(db);
         itensPrevia.forEach(item => {
@@ -217,9 +239,10 @@ export default function Painel() {
         });
         await batch.commit();
       }
-      alert('Contrato salvo com sucesso!');
+
+      alert('Contrato e catálogo salvos com sucesso!');
       setIsModalOpen(false);
-      setFormData({ numeroContrato: '', numeroProcesso: '', modalidade: '', numeroPregao: '', numeroAta: '', fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
+      setFormData({ numeroContrato: '', numeroProcesso: '', numeroPregao: '', numeroAta: '', fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
       setItensPrevia([]);
     } catch (error) { alert('Erro ao salvar.'); } finally { setLoading(false); }
   };
@@ -239,48 +262,41 @@ export default function Painel() {
       const contratoOriginal = contratos.find(c => c.id === contratoEditId);
       if(contratoOriginal) {
         const valorJaConsumido = contratoOriginal.valorTotal - contratoOriginal.saldoContrato;
+        const novoSaldo = novoValorGlobal - valorJaConsumido;
         await updateDoc(doc(db, 'contratos', contratoEditId), {
-          ...formEdit, valorTotal: novoValorGlobal, saldoContrato: novoValorGlobal - valorJaConsumido, dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
+          ...formEdit, valorTotal: novoValorGlobal, saldoContrato: novoSaldo, dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
         });
       }
-      alert('Contrato atualizado!');
+      alert('Contrato atualizado com sucesso!');
       setIsModalEditOpen(false);
-    } catch (error) { alert("Erro ao editar."); } finally { setLoading(false); }
+    } catch (error) { alert("Erro ao editar contrato."); } finally { setLoading(false); }
   };
 
   const excluirContrato = async (contratoId: string) => {
-    if (window.confirm('Excluir contrato e histórico?')) {
+    if (window.confirm('Tem certeza que deseja excluir este contrato e todos os itens vinculados a ele? Esta ação não pode ser desfeita.')) {
       setLoading(true);
       try {
         await deleteDoc(doc(db, 'contratos', contratoId));
         const qItens = query(collection(db, 'itens'), where('contratoId', '==', contratoId));
         const querySnapshot = await getDocs(qItens);
-        const batch = writeBatch(db);
-        querySnapshot.forEach((itemDoc) => batch.delete(itemDoc.ref));
-        await batch.commit();
-        alert('Excluído!');
-      } catch (error) { alert('Erro ao excluir.'); } finally { setLoading(false); }
+        if (!querySnapshot.empty) {
+          const batch = writeBatch(db);
+          querySnapshot.forEach((itemDoc) => { batch.delete(itemDoc.ref); });
+          await batch.commit();
+        }
+        alert('Contrato excluído com sucesso!');
+      } catch (error) {
+        console.error(error);
+        alert('Erro ao excluir contrato.');
+      } finally { setLoading(false); }
     }
   };
-
-  const verificarStatusVencimento = (dataFim: string) => {
-    if (!dataFim) return 'normal';
-    const fim = new Date(dataFim + 'T00:00:00');
-    const hoje = new Date();
-    const dias = Math.ceil((fim.getTime() - hoje.getTime()) / (1000 * 3600 * 24));
-    if (dias <= 30) return 'critico';
-    if (dias <= 90) return 'alerta';
-    return 'normal';
-  };
-
-  const nomeOrgaoFormatado = orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Carregando...';
 
   return (
     <div className="painel-container">
       <header className="header">
         <div className="header-logo">
           <img src={logo} alt="Logo PMP" className="logo-pequena" />
-<<<<<<< HEAD
           <h2 title={orgaoLogado ? nomesOrgaos[orgaoLogado] : ''}>
             {orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Carregando...'}
           </h2>
@@ -293,112 +309,147 @@ export default function Painel() {
           </svg>
           Sair da Conta
         </button>
-=======
-          <h2>{nomeOrgaoFormatado}</h2>
-        </div>
-        <button className="btn-sair" onClick={() => { sessionStorage.clear(); navigate('/'); }}>Sair</button>
->>>>>>> 9bd3d3bf05d8d655f365745c529fcd9c99e8b444
       </header>
 
       <main className="conteudo">
         <div className="acoes-topo">
           <h2>Contratos Cadastrados</h2>
-          <div style={{ display: 'flex', gap: '15px' }}>
-            <input type="text" placeholder="🔍 Buscar..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} />
-            <button className="btn-novo" onClick={() => setIsModalOpen(true)}>+ Novo Contrato</button>
-          </div>
+          <button className="btn-novo" onClick={() => setIsModalOpen(true)}>+ Novo Contrato</button>
         </div>
 
         <table className="tabela-contratos">
           <thead>
             <tr>
-              <th onClick={() => lidarComOrdenacao('dataInicio')}>Ano {renderSeta('dataInicio')}</th>
-              <th onClick={() => lidarComOrdenacao('numeroContrato')}>Nº {renderSeta('numeroContrato')}</th>
-              <th onClick={() => lidarComOrdenacao('objetoResumido')}>Objeto {renderSeta('objetoResumido')}</th>
-              <th onClick={() => lidarComOrdenacao('fornecedor')}>Fornecedor {renderSeta('fornecedor')}</th>
-              <th onClick={() => lidarComOrdenacao('dataFim')}>Validade {renderSeta('dataFim')}</th>
+              <th onClick={() => lidarComOrdenacao('dataInicio')} style={{ cursor: 'pointer', userSelect: 'none' }}>Ano {renderSeta('dataInicio')}</th>
+              <th onClick={() => lidarComOrdenacao('numeroContrato')} style={{ cursor: 'pointer', userSelect: 'none' }}>Nº Contrato {renderSeta('numeroContrato')}</th>
+              <th onClick={() => lidarComOrdenacao('objetoResumido')} style={{ cursor: 'pointer', userSelect: 'none' }}>Objeto Resumido {renderSeta('objetoResumido')}</th>
+              <th onClick={() => lidarComOrdenacao('fornecedor')} style={{ cursor: 'pointer', userSelect: 'none' }}>Fornecedor {renderSeta('fornecedor')}</th>
+              <th onClick={() => lidarComOrdenacao('dataFim')} style={{ cursor: 'pointer', userSelect: 'none' }}>Validade {renderSeta('dataFim')}</th>
               <th>Saldo Atual</th>
-              <th>Ações</th>
+              <th>Última Atualização</th>
+              <th style={{ minWidth: '240px' }}>Ações</th>
             </tr>
           </thead>
           <tbody>
-            {contratosFiltrados.map((c) => (
-              <tr key={c.id}>
-                <td>{c.dataInicio.substring(0, 4)}</td>
-                <td>{c.numeroContrato}</td>
-                <td>{c.objetoResumido}</td>
-                <td>{c.fornecedor}</td>
-                <td className={`prazo-${verificarStatusVencimento(c.dataFim)}`}>{formatarDataBr(c.dataFim)}</td>
-                <td style={{ color: c.saldoContrato < 0 ? 'red' : 'green' }}>{c.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                <td>
-                  <button onClick={() => navigate(`/contrato/${c.id}`)}>Ver</button>
-                  <button onClick={() => abrirEdicao(c)}>✏️</button>
-                  <button onClick={() => excluirContrato(c.id!)}>🗑️</button>
-                </td>
-              </tr>
-            ))}
+            {contratosOrdenados.length === 0 ? (
+              <tr><td colSpan={8} style={{ textAlign: 'center' }}>Nenhum contrato cadastrado.</td></tr>
+            ) : (
+              contratosOrdenados.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.dataInicio.substring(0, 4)}</td>
+                  <td>{c.numeroContrato}</td>
+                  <td>{c.objetoResumido}</td>
+                  <td>{c.fornecedor}</td>
+                  <td style={{ fontWeight: 'bold' }}>{formatarDataBr(c.dataFim)}</td>
+                  <td style={{ fontWeight: 'bold', color: c.saldoContrato < 0 ? 'red' : 'green' }}>
+                    {c.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </td>
+                  <td>{c.dataUltimaAtualizacao || 'N/A'}</td>
+                  <td style={{ display: 'flex', gap: '5px' }}>
+                    <button style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => navigate(`/contrato/${c.id}`)}>Ver Detalhes</button>
+                    <button style={{ backgroundColor: '#ffc107', color: '#333', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => abrirEdicao(c)}>✏️ Editar</button>
+                    <button style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => excluirContrato(c.id!)} disabled={loading}>🗑️ Excluir</button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </main>
 
-      {/* MODAL NOVO - AGORA DENTRO DO PAINEL PARA PRESERVAR CSS */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #ddd', paddingBottom: '10px', marginBottom: '15px' }}>
-              <h2>Novo Contrato</h2>
-              <label htmlFor="upload-doc" style={{ backgroundColor: '#20c997', color: 'white', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer' }}>
-                {loading ? 'Processando IA...' : '✨ Preencher com IA'}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #ddd', paddingBottom: '10px', marginBottom: '15px' }}>
+              <h2 style={{ margin: 0 }}>Cadastrar Novo Contrato</h2>
+              <div>
                 <input type="file" accept=".docx, .pdf" ref={docInputRef} onChange={importarContratoArquivo} style={{ display: 'none' }} id="upload-doc" />
-              </label>
-            </div>
-            <form onSubmit={salvarContratoCompleto}>
-              <div className="form-grid">
-                <div className="form-group"><label>Nº Contrato</label><input type="text" name="numeroContrato" value={formData.numeroContrato} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
-                <div className="form-group"><label>Nº Processo</label><input type="text" name="numeroProcesso" value={formData.numeroProcesso} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
-                <div className="form-group">
-                  <label>Modalidade</label>
-                  <select name="modalidade" required value={formData.modalidade} onChange={lidarComMudanca}>
-                    <option value="">Selecione...</option>
-                    <option value="Pregão Eletrônico">Pregão Eletrônico</option>
-                    <option value="Dispensa">Dispensa</option>
-                    <option value="Concorrência Eletrônica">Concorrência Eletrônica</option>
-                    <option value="Inexigibilidade">Inexigibilidade</option>
-                    <option value="Edital">Edital</option>
-                    <option value="Credenciamento">Credenciamento</option>
-                    <option value="Chamamento">Chamamento</option>
-                  </select>
-                </div>
-                <div className="form-group"><label>Nº Licitação</label><input type="text" name="numeroPregao" value={formData.numeroPregao} onChange={lidarComMudanca} /></div>
-                <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" value={formData.fornecedor} onChange={lidarComMudanca} /></div>
-                <div className="form-group full-width"><label>Objeto</label><input type="text" name="objetoResumido" value={formData.objetoResumido} onChange={lidarComMudanca} /></div>
-                <div className="form-group"><label>Início</label><input type="date" name="dataInicio" value={formData.dataInicio} onChange={lidarComMudanca} /></div>
-                <div className="form-group"><label>Fim</label><input type="date" name="dataFim" value={formData.dataFim} onChange={lidarComMudanca} /></div>
-                <div className="form-group full-width"><label>Valor Global</label><input type="text" name="valorTotal" value={formData.valorTotal} onChange={lidarComMudanca} /></div>
+                <label htmlFor="upload-doc" style={{ backgroundColor: '#20c997', color: 'white', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '5px', boxShadow: '0 2px 5px rgba(0,0,0,0.2)' }}>
+                  {loading ? 'A processar IA...' : '✨ Auto-Preencher com IA (Gemini)'}
+                </label>
               </div>
+            </div>
+            
+            <form onSubmit={salvarContratoCompleto}>
+              <h3 style={{ color: '#555', marginTop: 0 }}>1. Dados Gerais</h3>
+              <div className="form-grid">
+                <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formData.numeroContrato} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
+                <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formData.numeroProcesso} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
+                <div className="form-group"><label>Nº Pregão</label><input type="text" name="numeroPregao" value={formData.numeroPregao} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
+                <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formData.numeroAta} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
+                <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formData.fornecedor} onChange={lidarComMudanca} /></div>
+                <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formData.objetoResumido} onChange={lidarComMudanca} /></div>
+                <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formData.objetoCompleto} onChange={lidarComMudanca}></textarea></div>
+                <div className="form-group"><label>Data Início</label><input type="date" name="dataInicio" required value={formData.dataInicio} onChange={lidarComMudanca} /></div>
+                <div className="form-group"><label>Data Fim (Validade)</label><input type="date" name="dataFim" required value={formData.dataFim} onChange={lidarComMudanca} /></div>
+                <div className="form-group"><label>Fiscal do Contrato</label><input type="text" name="fiscalContrato" value={formData.fiscalContrato} onChange={lidarComMudanca} /></div>
+                <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formData.observacao} onChange={lidarComMudanca} /></div>
+                <div className="form-group full-width"><label style={{ color: '#004a99', fontSize: '15px' }}>Valor Global do Contrato (R$)</label><input type="text" name="valorTotal" required value={formData.valorTotal} onChange={lidarComMudanca} style={{ border: '2px solid #004a99', fontWeight: 'bold' }} /></div>
+              </div>
+
+              <h3 style={{ borderBottom: '1px solid #ddd', paddingBottom: '5px', marginTop: '30px' }}>2. Catálogo de Itens do Contrato (Opcional)</h3>
+              <p style={{ fontSize: '12px', color: '#666' }}>Estes itens formarão o catálogo. Eles <strong>não consumirão o saldo inicial</strong>.</p>
+              <div className="secao-itens-modal">
+                <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr 2fr 1fr 1fr 1fr', gap: '5px' }}>
+                  <div className="form-group"><input type="text" name="numeroLote" placeholder="Lote" value={formItem.numeroLote} onChange={lidarComMudancaItem} /></div>
+                  <div className="form-group"><input type="text" name="numeroItem" placeholder="Nº Item" value={formItem.numeroItem} onChange={lidarComMudancaItem} /></div>
+                  <div className="form-group"><input type="text" name="discriminacao" placeholder="Descrição" value={formItem.discriminacao} onChange={lidarComMudancaItem} /></div>
+                  <div className="form-group"><input type="text" name="quantidade" placeholder="Qtd" value={formItem.quantidade} onChange={lidarComMudancaItem} /></div>
+                  <div className="form-group"><input type="text" name="valorUnitario" placeholder="R$ Unit" value={formItem.valorUnitario} onChange={lidarComMudancaItem} /></div>
+                  <button type="button" onClick={adicionarItemPrevia} style={{ backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>+ Add</button>
+                </div>
+                <div style={{ margin: '15px 0', textAlign: 'center' }}><strong>OU</strong></div>
+                <input type="file" accept=".xlsx" ref={fileInputRef} onChange={importarPlanilhaPrevia} style={{ display: 'none' }} id="upload-previa" />
+                <label htmlFor="upload-previa" style={{ display: 'block', textAlign: 'center', backgroundColor: '#28a745', color: 'white', padding: '10px', borderRadius: '4px', cursor: 'pointer' }}>📄 Importar Catálogo do Excel</label>
+              </div>
+
+              {itensPrevia.length > 0 && (
+                <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '20px' }}>
+                  <table className="tabela-previa">
+                    <thead><tr><th>Lote</th><th>Item</th><th>Descrição</th><th>Qtd</th><th>Unitário</th><th>Total</th><th>Ação</th></tr></thead>
+                    <tbody>
+                      {itensPrevia.map((item, index) => (
+                        <tr key={index}>
+                          <td>{item.numeroLote}</td><td>{item.numeroItem}</td><td>{item.discriminacao}</td><td>{item.quantidade}</td>
+                          <td>{item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                          <td>{item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                          <td><button type="button" onClick={() => removerItemPrevia(index)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>❌</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
               <div className="modal-acoes">
-                <button type="button" onClick={() => setIsModalOpen(false)}>Cancelar</button>
-                <button type="submit" disabled={loading}>Salvar</button>
+                <button type="button" className="btn-cancelar" onClick={() => { setIsModalOpen(false); setItensPrevia([]); }}>Cancelar</button>
+                <button type="submit" className="btn-salvar" disabled={loading}>{loading ? 'A Guardar...' : 'Salvar Contrato'}</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL EDITAR */}
       {isModalEditOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h2>Editar Contrato</h2>
+            <h2>Editar Dados do Contrato</h2>
             <form onSubmit={salvarEdicaoContrato}>
               <div className="form-grid">
-                <div className="form-group"><label>Nº Contrato</label><input type="text" name="numeroContrato" value={formEdit.numeroContrato} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Valor Global</label><input type="text" name="valorTotal" value={formEdit.valorTotal} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
+                <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
+                <div className="form-group"><label>Nº Pregão</label><input type="text" name="numeroPregao" value={formEdit.numeroPregao} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
+                <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formEdit.numeroAta} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
+                <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formEdit.fornecedor} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formEdit.objetoResumido} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formEdit.objetoCompleto} onChange={lidarComMudancaEdit}></textarea></div>
+                <div className="form-group"><label>Data Início</label><input type="date" name="dataInicio" required value={formEdit.dataInicio} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group"><label>Data Fim (Validade)</label><input type="date" name="dataFim" required value={formEdit.dataFim} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group"><label>Fiscal do Contrato</label><input type="text" name="fiscalContrato" value={formEdit.fiscalContrato} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formEdit.observacao} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group full-width"><label>Valor Global do Contrato (R$)</label><input type="text" name="valorTotal" required value={formEdit.valorTotal} onChange={lidarComMudancaEdit} style={{ border: '2px solid #ffc107', fontWeight: 'bold' }} /></div>
               </div>
-              <div className="modal-acoes">
-                <button type="button" onClick={() => setIsModalEditOpen(false)}>Cancelar</button>
-                <button type="submit">Salvar</button>
-              </div>
+              <div className="modal-acoes"><button type="button" className="btn-cancelar" onClick={() => setIsModalEditOpen(false)}>Cancelar</button><button type="submit" className="btn-salvar" disabled={loading} style={{ backgroundColor: '#ffc107', color: '#333' }}>{loading ? 'A Guardar...' : 'Salvar Alterações'}</button></div>
             </form>
           </div>
         </div>
@@ -406,4 +457,3 @@ export default function Painel() {
     </div>
   );
 }
-//end
