@@ -4,27 +4,31 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
 export const extrairDadosContratoComIA = async (textoDoContrato: string) => {
-  if (!API_KEY) throw new Error("Chave da API não encontrada.");
+  if (!API_KEY) throw new Error("Chave da API do Gemini (VITE_GEMINI_API_KEY) não encontrada no .env.");
 
   try {
     const genAI = new GoogleGenerativeAI(API_KEY);
     
-    // Atualizado para o modelo gemini-2.0-flash que está disponível no seu projeto
-    // Ativamos o modo JSON nativo (responseMimeType)
+    // CORREÇÃO: Utilizando a versão estável e recomendada gemini-1.5-flash
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.0-flash',
+      model: 'gemini-1.5-flash',
       generationConfig: {
+        temperature: 0.1, 
         responseMimeType: "application/json",
       }
     });
 
     const prompt = `
-      Você é um auditor especialista em licitações. Analise o texto do contrato e extraia os dados para JSON.
+      Você é um auditor especialista em licitações e contratos públicos.
+      Sua tarefa é analisar o texto bruto extraído de um contrato (PDF/DOCX) e extrair os dados EXATAMENTE no formato JSON solicitado.
       
-      IMPORTANTE PARA "modalidade":
-      Classifique obrigatoriamente como: "Pregão Eletrônico", "Dispensa", "Concorrência Eletrônica", "Inexigibilidade", "Edital", "Credenciamento" ou "Chamamento".
+      REGRAS CRÍTICAS:
+      1. Se não encontrar uma informação, retorne uma string vazia "" ou 0 para números. Não invente dados.
+      2. As datas ("dataInicio", "dataFim") devem vir OBRIGATORIAMENTE no formato "YYYY-MM-DD".
+      3. "valorTotal", "quantidade", "valorUnitario" e "valorTotalItem" DEVEM ser números decimais (Ex: 1500.50) e não strings. Não use separador de milhar.
+      4. "modalidade": Classifique OBRIGATORIAMENTE como um destes: "Pregão Eletrônico", "Pregão Presencial", "Concorrência Eletrônica", "Dispensa", "Inexigibilidade", "Credenciamento" ou "Chamamento".
 
-      Estrutura JSON:
+      ESTRUTURA JSON ESPERADA:
       {
         "numeroContrato": "string",
         "numeroProcesso": "string",
@@ -33,14 +37,14 @@ export const extrairDadosContratoComIA = async (textoDoContrato: string) => {
         "numeroAta": "string",
         "fornecedor": "string",
         "objetoCompleto": "string",
-        "objetoResumido": "string",
+        "objetoResumido": "string (Máximo de 15 palavras)",
         "dataInicio": "YYYY-MM-DD",
         "dataFim": "YYYY-MM-DD",
         "fiscalContrato": "string",
         "valorTotal": number,
         "itens": [
           {
-            "numeroLote": "string",
+            "numeroLote": "string (Se não houver, use 'Único')",
             "numeroItem": "string",
             "discriminacao": "string",
             "unidade": "string",
@@ -51,15 +55,21 @@ export const extrairDadosContratoComIA = async (textoDoContrato: string) => {
         ]
       }
 
-      Texto do contrato: ${textoDoContrato}
+      TEXTO DO CONTRATO PARA ANÁLISE:
+      ${textoDoContrato}
     `;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    return JSON.parse(response.text());
+    let text = response.text();
+    
+    // Tratamento para limpar possíveis blocos de formatação markdown
+    text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+    return JSON.parse(text);
 
   } catch (error: any) {
     console.error("Erro no serviço Gemini:", error);
-    throw new Error("Falha ao analisar documento. Verifique a conexão com a API.");
+    throw new Error("Falha ao analisar documento com IA. Verifique se o texto do arquivo é legível e se a API está online.");
   }
 };

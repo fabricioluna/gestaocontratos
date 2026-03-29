@@ -47,13 +47,24 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
     }
   };
 
+  const tratarValorIA = (valor: any): string => {
+    if (valor === undefined || valor === null) return '';
+    if (typeof valor === 'number') return valor.toFixed(2).replace('.', ',');
+    const numLimpo = Number(String(valor).replace(/[^0-9.-]+/g, ""));
+    return isNaN(numLimpo) ? '' : numLimpo.toFixed(2).replace('.', ',');
+  };
+
   const importarContratoArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    
     setLoading(true);
+    
     try {
       const arrayBuffer = await file.arrayBuffer();
       let textoCompleto = '';
+      
+      // LEITURA DE PDF
       if (file.name.toLowerCase().endsWith('.pdf')) {
         const typedArray = new Uint8Array(arrayBuffer);
         const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
@@ -63,33 +74,57 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
           const strings = content.items.map((item: any) => item.str);
           textoCompleto += strings.join(" ") + "\n";
         }
-      } else if (file.name.toLowerCase().endsWith('.docx')) {
+      } 
+      // LEITURA DE WORD (DOCX)
+      else if (file.name.toLowerCase().endsWith('.docx')) {
         const result = await mammoth.extractRawText({ arrayBuffer });
         textoCompleto = result.value;
       }
+
       const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
+      
+      if (textoLimpo.trim().length < 50) {
+         throw new Error("Não foi possível extrair texto legível deste documento.");
+      }
+
       const dadosIA = await extrairDadosContratoComIA(textoLimpo);
+      
       setFormData(prev => ({
         ...prev,
         numeroContrato: dadosIA.numeroContrato || prev.numeroContrato,
         numeroProcesso: dadosIA.numeroProcesso || prev.numeroProcesso,
-        numeroModalidade: dadosIA.numeroPregao || prev.numeroModalidade,
+        modalidade: dadosIA.modalidade || prev.modalidade, 
+        numeroModalidade: dadosIA.numeroPregao || dadosIA.numeroModalidade || prev.numeroModalidade,
         numeroAta: dadosIA.numeroAta || prev.numeroAta,
         fornecedor: dadosIA.fornecedor || prev.fornecedor,
         objetoCompleto: dadosIA.objetoCompleto || prev.objetoCompleto,
         objetoResumido: dadosIA.objetoResumido || prev.objetoResumido,
-        valorTotal: dadosIA.valorTotal ? dadosIA.valorTotal.toFixed(2).replace('.', ',') : prev.valorTotal,
+        valorTotal: dadosIA.valorTotal ? tratarValorIA(dadosIA.valorTotal) : prev.valorTotal,
         fiscalContrato: dadosIA.fiscalContrato || prev.fiscalContrato,
         dataInicio: dadosIA.dataInicio || prev.dataInicio,
         dataFim: dadosIA.dataFim || prev.dataFim
       }));
-      if (dadosIA.itens && dadosIA.itens.length > 0) {
-        setItensPrevia(dadosIA.itens);
-        alert(`Gemini AI analisou com sucesso! ${dadosIA.itens.length} itens do catálogo importados.`);
+
+      if (dadosIA.itens && Array.isArray(dadosIA.itens) && dadosIA.itens.length > 0) {
+        const itensTratados = dadosIA.itens.map((i: any, index: number) => ({
+           numeroLote: String(i.numeroLote || 'Único'),
+           numeroItem: String(i.numeroItem || (index + 1)),
+           discriminacao: String(i.discriminacao || ''),
+           unidade: String(i.unidade || 'UND'),
+           quantidade: Number(i.quantidade || 0),
+           valorUnitario: Number(i.valorUnitario || 0),
+           valorTotalItem: Number(i.valorTotalItem || (Number(i.quantidade || 0) * Number(i.valorUnitario || 0)))
+        })).filter((i: any) => i.discriminacao && i.quantidade > 0);
+
+        setItensPrevia(itensTratados);
+        alert(`Contrato processado com sucesso! ${itensTratados.length} itens encontrados.`);
+      } else {
+        alert("Contrato processado. Os dados gerais foram preenchidos, mas não foram encontrados itens no texto.");
       }
-    } catch (error) {
+
+    } catch (error: any) {
       console.error(error);
-      alert("Erro ao processar o documento com a IA.");
+      alert(error.message || "Erro ao processar o documento.");
     } finally {
       setLoading(false);
       if (docInputRef.current) docInputRef.current.value = '';
@@ -192,7 +227,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #ddd', paddingBottom: '10px', marginBottom: '15px' }}>
           <h2 style={{ margin: 0 }}>Cadastrar Novo Contrato</h2>
           <label htmlFor="upload-doc" style={{ backgroundColor: '#20c997', color: 'white', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}>
-            {loading ? 'Processando...' : '✨ Gemini IA Auto-Preencher'}
+            {loading ? 'Processando...' : '📄 Carregar Contrato'}
             <input type="file" accept=".docx, .pdf" ref={docInputRef} onChange={importarContratoArquivo} style={{ display: 'none' }} id="upload-doc" />
           </label>
         </div>
