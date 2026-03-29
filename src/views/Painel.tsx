@@ -52,6 +52,19 @@ export default function Painel() {
     'fms': 'Fundo Municipal de Saúde (FMS)'
   };
 
+  // --- NOVA FUNCIONALIDADE: FECHAR COM ESC ---
+  useEffect(() => {
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsModalOpen(false);
+        setIsModalEditOpen(false);
+        setItensPrevia([]);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
+
   useEffect(() => {
     if (!orgaoLogado) { navigate('/'); return; }
     const q = query(collection(db, 'contratos'), where('orgaoId', '==', orgaoLogado));
@@ -112,15 +125,12 @@ export default function Painel() {
 
   const gerarRelatorioPDF = () => {
     const docPdf = new jsPDF('landscape'); 
-    
     const gerarTabela = () => {
       docPdf.setFontSize(16); docPdf.setTextColor(0, 74, 153);
       docPdf.text(orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Relatório de Contratos', 45, 20);
-      
       docPdf.setFontSize(11); docPdf.setTextColor(100, 100, 100);
       const textoFiltro = termoBusca ? ` (Filtro aplicado: "${termoBusca}")` : '';
       docPdf.text(`Listagem Geral de Contratos${textoFiltro} - Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 28);
-      
       const tableData = contratosFiltrados.map(c => [
         c.dataInicio ? c.dataInicio.substring(0, 4) : '-',
         c.numeroContrato || '-',
@@ -131,7 +141,6 @@ export default function Painel() {
         (c.valorTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
         (c.saldoContrato || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
       ]);
-
       autoTable(docPdf, {
         startY: 40,
         head: [['Ano', 'Nº Contrato', 'Objeto', 'Fornecedor', 'Fiscal', 'Validade', 'Valor Global', 'Saldo Atual']],
@@ -147,31 +156,22 @@ export default function Painel() {
           7: { halign: 'right', cellWidth: 30 }   
         }
       });
-
       const pdfBlob = docPdf.output('blob');
       window.open(URL.createObjectURL(pdfBlob), '_blank');
     };
-
     const img = new Image();
     img.src = logo;
-    img.onload = () => {
-      docPdf.addImage(img, 'PNG', 14, 10, 25, 25);
-      gerarTabela();
-    };
-    img.onerror = () => {
-      gerarTabela(); 
-    };
+    img.onload = () => { docPdf.addImage(img, 'PNG', 14, 10, 25, 25); gerarTabela(); };
+    img.onerror = () => { gerarTabela(); };
   };
 
   const importarContratoArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setLoading(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
       let textoCompleto = '';
-
       if (file.name.toLowerCase().endsWith('.pdf')) {
         const typedArray = new Uint8Array(arrayBuffer);
         const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
@@ -185,15 +185,13 @@ export default function Painel() {
         const result = await mammoth.extractRawText({ arrayBuffer });
         textoCompleto = result.value;
       }
-
       const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
       const dadosIA = await extrairDadosContratoComIA(textoLimpo);
-
       setFormData(prev => ({
         ...prev,
         numeroContrato: dadosIA.numeroContrato || prev.numeroContrato,
         numeroProcesso: dadosIA.numeroProcesso || prev.numeroProcesso,
-        numeroModalidade: dadosIA.numeroPregao || prev.numeroModalidade, // Aproveita extração de pregão antiga
+        numeroModalidade: dadosIA.numeroPregao || prev.numeroModalidade,
         numeroAta: dadosIA.numeroAta || prev.numeroAta,
         fornecedor: dadosIA.fornecedor || prev.fornecedor,
         objetoCompleto: dadosIA.objetoCompleto || prev.objetoCompleto,
@@ -203,14 +201,12 @@ export default function Painel() {
         dataInicio: dadosIA.dataInicio || prev.dataInicio,
         dataFim: dadosIA.dataFim || prev.dataFim
       }));
-
       if (dadosIA.itens && dadosIA.itens.length > 0) {
         setItensPrevia(dadosIA.itens);
         alert(`Gemini AI analisou com sucesso! ${dadosIA.itens.length} itens do catálogo foram perfeitamente importados.`);
       } else {
         alert("O Gemini extraiu os dados do contrato, mas não encontrou uma tabela de itens clara.");
       }
-
     } catch (error) {
       console.error(error);
       alert("Erro ao processar o documento com a Inteligência Artificial. Verifique o console.");
@@ -255,7 +251,6 @@ export default function Painel() {
         const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
         let somaImportacao = 0;
         const novosItens: any[] = [];
-
         data.forEach((row: any) => {
           const linha: any = {};
           for (const key in row) linha[key.trim().toUpperCase()] = row[key];
@@ -266,13 +261,11 @@ export default function Painel() {
           const quantidade = extrairNumeroPlanilha(linha['QUANTIDADE'] || linha['QTD.'] || linha['QTD']) || 0;
           const valorUnitario = extrairNumeroPlanilha(linha['VALOR UNITÁRIO'] || linha['VALOR UNITARIO'] || linha['VALOR UND.'] || linha['VALOR UND'] || linha['VL. UNIT.'] || linha['VL. UNIT'] || linha['VL UNIT.']) || 0;
           const valorTotalItem = quantidade * valorUnitario;
-
           if (discriminacao && quantidade > 0) {
             novosItens.push({ numeroLote, numeroItem, discriminacao, unidade, quantidade, valorUnitario, valorTotalItem });
             somaImportacao += valorTotalItem;
           }
         });
-
         if (novosItens.length > 0) {
           setItensPrevia([...itensPrevia, ...novosItens]);
           const novoTotal = parseMoeda(formData.valorTotal) + somaImportacao;
@@ -290,7 +283,6 @@ export default function Painel() {
     try {
       const valorGlobalNum = parseMoeda(formData.valorTotal);
       const dataAtual = new Date().toLocaleString('pt-BR');
-
       const contratoRef = await addDoc(collection(db, 'contratos'), {
         ...formData,
         orgaoId: orgaoLogado,
@@ -298,7 +290,6 @@ export default function Painel() {
         saldoContrato: valorGlobalNum,
         dataUltimaAtualizacao: dataAtual
       });
-
       if (itensPrevia.length > 0) {
         const batch = writeBatch(db);
         itensPrevia.forEach(item => {
@@ -307,7 +298,6 @@ export default function Painel() {
         });
         await batch.commit();
       }
-
       alert('Contrato e catálogo salvos com sucesso!');
       setIsModalOpen(false);
       setFormData({ numeroContrato: '', numeroProcesso: '', modalidade: '', numeroModalidade: '', numeroAta: '', fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
@@ -321,7 +311,7 @@ export default function Painel() {
       ...c, 
       valorTotal: c.valorTotal.toFixed(2).replace('.', ','),
       modalidade: c.modalidade || '',
-      numeroModalidade: c.numeroModalidade || c.numeroPregao || '' // Mantém compatibilidade
+      numeroModalidade: c.numeroModalidade || c.numeroPregao || ''
     });
     setIsModalEditOpen(true);
   };
@@ -374,11 +364,7 @@ export default function Painel() {
             {orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Carregando...'}
           </h2>
         </div>
-        <button 
-          className="btn-sair" 
-          onClick={() => { sessionStorage.clear(); navigate('/'); }}
-          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-        >
+        <button className="btn-sair" onClick={() => { sessionStorage.clear(); navigate('/'); }} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           Sair
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -389,128 +375,20 @@ export default function Painel() {
       </header>
 
       <main className="conteudo">
-        
-        {/* ÁREA DE AÇÕES SUPERIOR (UI HARMONIZADA RESTAURADA) */}
-        <div className="acoes-topo" style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          gap: '24px', 
-          marginBottom: '24px',
-          backgroundColor: '#ffffff',
-          padding: '16px 24px',
-          borderRadius: '10px',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
-          border: '1px solid #eaeaea'
-        }}>
-          
-          <h2 style={{ 
-            margin: 0, 
-            color: '#1e293b', 
-            fontSize: '1.25rem', 
-            fontWeight: '600',
-            whiteSpace: 'nowrap' 
-          }}>
-            Contratos Cadastrados
-          </h2>
-          
+        <div className="acoes-topo" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '24px', marginBottom: '24px', backgroundColor: '#ffffff', padding: '16px 24px', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)', border: '1px solid #eaeaea' }}>
+          <h2 style={{ margin: 0, color: '#1e293b', fontSize: '1.25rem', fontWeight: '600', whiteSpace: 'nowrap' }}>Contratos Cadastrados</h2>
           <div style={{ position: 'relative', flex: 1, maxWidth: '600px' }}>
-            <svg style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <input 
-              type="text" 
-              placeholder="Buscar por Nº do Contrato, Fornecedor, Objeto ou Fiscal..." 
-              value={termoBusca} 
-              onChange={(e) => setTermoBusca(e.target.value)}
-              style={{ 
-                width: '100%', 
-                padding: '10px 14px 10px 40px', 
-                borderRadius: '8px', 
-                border: '1px solid #cbd5e1', 
-                backgroundColor: '#f8fafc',
-                color: '#334155',
-                fontSize: '14px', 
-                outline: 'none', 
-                transition: 'all 0.2s ease',
-                boxSizing: 'border-box'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#3b82f6';
-                e.target.style.backgroundColor = '#ffffff';
-                e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#cbd5e1';
-                e.target.style.backgroundColor = '#f8fafc';
-                e.target.style.boxShadow = 'none';
-              }}
-            />
+            <svg style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" placeholder="Buscar por Nº do Contrato, Fornecedor, Objeto ou Fiscal..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} style={{ width: '100%', padding: '10px 14px 10px 40px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#334155', fontSize: '14px', outline: 'none', transition: 'all 0.2s ease', boxSizing: 'border-box' }} onFocus={(e) => { e.target.style.borderColor = '#3b82f6'; e.target.style.backgroundColor = '#ffffff'; e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)'; }} onBlur={(e) => { e.target.style.borderColor = '#cbd5e1'; e.target.style.backgroundColor = '#f8fafc'; e.target.style.boxShadow = 'none'; }} />
           </div>
-
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            
-            <button 
-              onClick={gerarRelatorioPDF}
-              style={{ 
-                backgroundColor: '#ffffff', 
-                color: '#475569', 
-                padding: '8px 16px', 
-                borderRadius: '6px', 
-                border: '1px solid #cbd5e1', 
-                cursor: 'pointer', 
-                fontWeight: '500', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px', 
-                fontSize: '13px',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                transition: 'all 0.2s ease',
-                whiteSpace: 'nowrap'
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }}
-              onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#ffffff'; e.currentTarget.style.color = '#475569'; }}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-                <polyline points="10 9 9 9 8 9"></polyline>
-              </svg>
-              Gerar Relatório
+            <button onClick={gerarRelatorioPDF} style={{ backgroundColor: '#ffffff', color: '#475569', padding: '8px 16px', borderRadius: '6px', border: '1px solid #cbd5e1', cursor: 'pointer', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }} onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }} onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#ffffff'; e.currentTarget.style.color = '#475569'; }}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> Gerar Relatório
             </button>
-
-            <button 
-              onClick={() => setIsModalOpen(true)}
-              style={{ 
-                backgroundColor: '#2563eb',
-                color: '#ffffff',
-                padding: '8px 16px', 
-                borderRadius: '6px', 
-                border: 'none', 
-                cursor: 'pointer',
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px', 
-                fontSize: '13px', 
-                fontWeight: '500', 
-                boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)',
-                transition: 'background-color 0.2s ease',
-                whiteSpace: 'nowrap'
-              }}
-              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
-              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              Novo Contrato
+            <button onClick={() => setIsModalOpen(true)} style={{ backgroundColor: '#2563eb', color: '#ffffff', padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '500', boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)', transition: 'background-color 0.2s ease', whiteSpace: 'nowrap' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Novo Contrato
             </button>
           </div>
-
         </div>
 
         <table className="tabela-contratos">
@@ -553,10 +431,10 @@ export default function Painel() {
         </table>
       </main>
 
-      {/* Modal Novo Contrato */}
+      {/* --- MODAL NOVO CONTRATO (COM OVERLAY CLICÁVEL) --- */}
       {isModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content">
+        <div className="modal-overlay" onClick={() => { setIsModalOpen(false); setItensPrevia([]); }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #ddd', paddingBottom: '10px', marginBottom: '15px' }}>
               <h2 style={{ margin: 0 }}>Cadastrar Novo Contrato</h2>
               <div>
@@ -573,7 +451,6 @@ export default function Painel() {
                 <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formData.numeroContrato} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
                 <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formData.numeroProcesso} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
                 
-                {/* Lógica de Modalidade Adicionada Novamente */}
                 <div className="form-group">
                   <label>Modalidade</label>
                   <select name="modalidade" value={formData.modalidade} onChange={lidarComMudanca} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
@@ -641,17 +518,16 @@ export default function Painel() {
         </div>
       )}
 
-      {/* Modal Editar Contrato */}
+      {/* --- MODAL EDITAR CONTRATO (COM OVERLAY CLICÁVEL) --- */}
       {isModalEditOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content">
+        <div className="modal-overlay" onClick={() => setIsModalEditOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h2>Editar Dados do Contrato</h2>
             <form onSubmit={salvarEdicaoContrato}>
               <div className="form-grid">
                 <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
                 <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
                 
-                {/* Lógica de Modalidade na Edição */}
                 <div className="form-group">
                   <label>Modalidade</label>
                   <select name="modalidade" value={formEdit.modalidade} onChange={lidarComMudancaEdit} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
