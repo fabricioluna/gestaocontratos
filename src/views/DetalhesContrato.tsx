@@ -141,7 +141,7 @@ export default function DetalhesContrato() {
   const tabelaDeSaldos = gerarTabelaSaldos();
 
   // ==========================================
-  // GERAÇÃO DE RELATÓRIO PDF (ABRE NO NAVEGADOR COM AS 3 TABELAS)
+  // GERAÇÃO DE RELATÓRIO PDF (DETALHADO COM 3 TABELAS)
   // ==========================================
   const gerarPDFDetalhado = () => {
     const doc = new jsPDF('landscape');
@@ -161,115 +161,61 @@ export default function DetalhesContrato() {
       doc.setFontSize(10);
       doc.setTextColor(50, 50, 50);
       doc.text(`Fornecedor: ${contrato.fornecedor}`, 14, 45);
-      doc.text(`Objeto: ${contrato.objetoResumido}`, 14, 52);
-      doc.text(`Validade: ${formatarDataBr(contrato.dataFim)}`, 14, 59);
+      doc.text(`Objeto: ${contrato.objetoResumido}`, 14, 51);
+      doc.text(`Modalidade / Nº: ${contrato.numeroPregao || '-'}`, 14, 57);
+      doc.text(`Nº da Ata: ${contrato.numeroAta || '-'}`, 14, 63);
+      doc.text(`Fiscal do Contrato: ${contrato.fiscalContrato || '-'}`, 14, 69);
+      doc.text(`Validade: ${formatarDataBr(contrato.dataFim)}`, 14, 75);
       
       doc.setFontSize(11);
       doc.setTextColor(0, 74, 153);
-      doc.text(`Valor Global: ${contrato.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} | Saldo Atual: ${contrato.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 14, 68);
+      doc.text(`Valor Global: ${contrato.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} | Saldo Atual: ${contrato.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 14, 84);
 
-      let finalY = 75;
+      let finalY = 92;
 
-      // 1. PLANILHA ORIGINAL DO CONTRATO
+      // 1. Planilha Original
       if (itensCatalogo.length > 0) {
-        doc.setFontSize(12);
-        doc.setTextColor(0, 74, 153); // Azul para a Planilha Original
-        doc.text('Planilha Original do Contrato', 14, finalY);
-        
-        autoTable(doc, {
-          startY: finalY + 5,
-          head: [['Lote', 'Item', 'Descrição', 'Und', 'Quantidade', 'Vl. Unitário', 'Vl. Total']],
-          body: itensCatalogo.map(item => [
-            item.numeroLote === 'Único' || !item.numeroLote ? '-' : item.numeroLote,
-            item.numeroItem,
-            item.discriminacao.substring(0, 50) + (item.discriminacao.length > 50 ? '...' : ''),
-            item.unidade,
-            item.quantidade,
-            item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-            item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-          ]),
-          theme: 'striped',
-          headStyles: { fillColor: [0, 74, 153], textColor: 255, fontStyle: 'bold' },
-          styles: { fontSize: 8, cellPadding: 2 },
-          alternateRowStyles: { fillColor: [240, 248, 255] }
+        doc.setFontSize(12); doc.setTextColor(0, 74, 153); doc.text('1. Planilha Original do Contrato', 14, finalY);
+        autoTable(doc, { startY: finalY + 5, head: [['Lote', 'Item', 'Descrição', 'Und', 'Qtd', 'Vl. Unitário', 'Vl. Total']],
+          body: itensCatalogo.map(item => [item.numeroLote || '-', item.numeroItem, item.discriminacao.substring(0, 50), item.unidade, item.quantidade, item.valorUnitario.toLocaleString('pt-BR'), item.valorTotalItem.toLocaleString('pt-BR')]),
+          theme: 'striped', headStyles: { fillColor: [0, 74, 153] }, styles: { fontSize: 8 }
         });
         finalY = (doc as any).lastAutoTable.finalY + 15;
       }
 
-      // 2. CONTROLE FÍSICO-FINANCEIRO
+      // 2. Controle Saldos
       if (tabelaDeSaldos.length > 0) {
-        // Quebra de página inteligente se estiver perto do fim da folha
         if (finalY > 180) { doc.addPage(); finalY = 20; }
-
-        doc.setFontSize(12);
-        doc.setTextColor(46, 125, 50); // Verde para os Saldos
-        doc.text('Controle Físico-Financeiro (Saldos por Item)', 14, finalY);
-        
-        autoTable(doc, {
-          startY: finalY + 5,
-          head: [['Lote/Item', 'Descrição', 'Und', 'Vl. Unit', 'Qtd Contratada', 'Vl. Contratado', 'Qtd Consumo', 'Vl. Consumido', 'Saldo Qtd', 'Saldo Valor']],
-          body: tabelaDeSaldos.map(linha => [
-            `${linha.lote !== 'Único' && linha.lote ? linha.lote + '/' : ''}${linha.item}`,
-            linha.descricao.substring(0, 40) + (linha.descricao.length > 40 ? '...' : ''),
-            linha.unidade,
-            linha.vlUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-            linha.qtdContratada,
-            linha.vlContratado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-            linha.qtdConsumida,
-            linha.vlConsumido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-            (linha.qtdContratada - linha.qtdConsumida).toString(),
-            (linha.vlContratado - linha.vlConsumido).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-          ]),
-          theme: 'striped',
-          headStyles: { fillColor: [46, 125, 50], textColor: 255, fontStyle: 'bold' },
-          styles: { fontSize: 8, cellPadding: 2 },
-          alternateRowStyles: { fillColor: [243, 251, 243] }
+        doc.setFontSize(12); doc.setTextColor(46, 125, 50); doc.text('2. Controle Físico-Financeiro (Saldos por Item)', 14, finalY);
+        autoTable(doc, { startY: finalY + 5, head: [['Item', 'Descrição', 'Und', 'Unitário', 'Contratado', 'Consumido', 'Saldo Qtd', 'Saldo Valor']],
+          body: tabelaDeSaldos.map(l => [`${l.lote}/${l.item}`, l.descricao.substring(0, 40), l.unidade, l.vlUnitario.toLocaleString('pt-BR'), l.qtdContratada, l.qtdConsumida, l.qtdContratada - l.qtdConsumida, (l.vlContratado - l.vlConsumido).toLocaleString('pt-BR')]),
+          theme: 'striped', headStyles: { fillColor: [46, 125, 50] }, styles: { fontSize: 8 }
         });
         finalY = (doc as any).lastAutoTable.finalY + 15;
       }
 
-      // 3. HISTÓRICO DE LANÇAMENTOS
+      // 3. Histórico
       if (itensConsumo.length > 0) {
-        // Quebra de página inteligente
         if (finalY > 180) { doc.addPage(); finalY = 20; }
-
-        doc.setFontSize(12);
-        doc.setTextColor(220, 53, 69); // Vermelho para o Consumo
-        doc.text('Histórico de Lançamentos (Auditoria de Empenhos)', 14, finalY);
-        
-        autoTable(doc, {
-          startY: finalY + 5,
-          head: [['Data', 'Lote/Item', 'Descrição', 'Quantidade', 'Vl. Unitário', 'Vl. Total']],
-          body: itensConsumo.map(item => [
-            item.dataAdicao || '-',
-            `${item.numeroLote !== 'Único' && item.numeroLote ? item.numeroLote + '/' : ''}${item.numeroItem}`,
-            item.discriminacao.substring(0, 40) + (item.discriminacao.length > 40 ? '...' : ''),
-            `${item.quantidade} ${item.unidade}`,
-            item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-            item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-          ]),
-          theme: 'striped',
-          headStyles: { fillColor: [220, 53, 69], textColor: 255, fontStyle: 'bold' },
-          styles: { fontSize: 8, cellPadding: 2 },
-          alternateRowStyles: { fillColor: [253, 246, 246] }
+        doc.setFontSize(12); doc.setTextColor(220, 53, 69); doc.text('3. Histórico de Lançamentos (Auditoria de Empenhos)', 14, finalY);
+        autoTable(doc, { startY: finalY + 5, head: [['Data', 'Item', 'Descrição', 'Quantidade', 'Vl. Unitário', 'Vl. Total']],
+          body: itensConsumo.map(i => [i.dataAdicao || '-', `${i.numeroLote}/${i.numeroItem}`, i.discriminacao.substring(0, 40), i.quantidade, i.valorUnitario.toLocaleString('pt-BR'), i.valorTotalItem.toLocaleString('pt-BR')]),
+          theme: 'striped', headStyles: { fillColor: [220, 53, 69] }, styles: { fontSize: 8 }
         });
       }
       
-      // Abre o PDF numa nova aba em vez de baixar direto
       const pdfBlob = doc.output('blob');
       const pdfUrl = URL.createObjectURL(pdfBlob);
       window.open(pdfUrl, '_blank');
     };
   };
 
-  const nomeOrgaoFormatado = contrato.orgaoId ? siglasOrgaos[contrato.orgaoId] : 'Carregando...';
-
   return (
     <div className="painel-container">
       <header className="header">
         <div className="header-logo">
           <img src={logo} alt="Logo PMP" className="logo-pequena" />
-          <h2 title={nomeOrgaoFormatado}>{nomeOrgaoFormatado}</h2>
+          <h2 title={siglasOrgaos[contrato.orgaoId]}>{siglasOrgaos[contrato.orgaoId]}</h2>
         </div>
         <button className="btn-sair" onClick={() => navigate('/painel')} title="Voltar">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -282,6 +228,7 @@ export default function DetalhesContrato() {
 
       <main className="detalhes-container">
         <div className="acoes-relatorio">
+          {/* BOTÃO GERAR RELATÓRIO */}
           <button onClick={gerarPDFDetalhado} style={{ backgroundColor: 'white', color: '#0f172a', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '14px', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: '8px' }}>
              <span style={{ fontSize: '16px' }}>📄</span> Gerar Relatório
           </button>
@@ -297,7 +244,8 @@ export default function DetalhesContrato() {
             <p><strong>Objeto:</strong> {contrato.objetoResumido}</p>
             <div className="dados-grid">
               <p><strong>Nº Processo:</strong> {contrato.numeroProcesso}</p>
-              <p><strong>Nº Pregão/Ata:</strong> {contrato.numeroPregao || '-'} / {contrato.numeroAta || '-'}</p>
+              <p><strong>Modalidade / Nº:</strong> {contrato.numeroPregao || '-'}</p>
+              <p><strong>Nº da Ata:</strong> {contrato.numeroAta || '-'}</p>
               <p><strong>Início:</strong> {formatarDataBr(contrato.dataInicio)}</p>
               <p><strong>Validade:</strong> {formatarDataBr(contrato.dataFim)}</p>
               <p><strong>Fiscal:</strong> {contrato.fiscalContrato || 'Não informado'}</p>
@@ -324,29 +272,17 @@ export default function DetalhesContrato() {
           </div>
         </div>
 
-        {itensCatalogo.length > 0 ? (
+        {itensCatalogo.length > 0 && (
           <div className="secao-itens" style={{ marginBottom: '30px', overflowX: 'auto' }}>
             <h3 style={{ color: '#004a99' }}>📋 Planilha Original do Contrato</h3>
             <table className="tabela-itens">
-              <thead>
-                <tr>
-                  <th>Lote</th>
-                  <th>Item</th>
-                  <th>Descrição</th>
-                  <th>Unidade</th>
-                  <th>Quantidade</th>
-                  <th>Valor Unitário</th>
-                  <th>Valor Total</th>
-                </tr>
-              </thead>
+              <thead><tr><th>Lote</th><th>Item</th><th>Descrição</th><th>Unidade</th><th>Quantidade</th><th>Valor Unitário</th><th>Valor Total</th></tr></thead>
               <tbody>
                 {itensCatalogo.map(item => (
                   <tr key={item.id}>
-                    <td style={{ textAlign: 'center' }}>{item.numeroLote === 'Único' || !item.numeroLote ? '-' : item.numeroLote}</td>
+                    <td style={{ textAlign: 'center' }}>{item.numeroLote || '-'}</td>
                     <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{item.numeroItem}</td>
-                    <td>{item.discriminacao}</td>
-                    <td style={{ textAlign: 'center' }}>{item.unidade}</td>
-                    <td style={{ textAlign: 'center' }}>{item.quantidade}</td>
+                    <td>{item.discriminacao}</td><td style={{ textAlign: 'center' }}>{item.unidade}</td><td style={{ textAlign: 'center' }}>{item.quantidade}</td>
                     <td>{item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                     <td style={{ color: '#555', fontWeight: 'bold' }}>{item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                   </tr>
@@ -354,27 +290,22 @@ export default function DetalhesContrato() {
               </tbody>
             </table>
           </div>
-        ) : (
-          <div className="secao-itens" style={{ marginBottom: '30px', textAlign: 'center', color: '#666' }}>
-            <h3 style={{ color: '#004a99' }}>📋 Planilha Original do Contrato</h3>
-            <p>Nenhum item original foi importado na criação deste contrato.</p>
-          </div>
         )}
 
         {tabelaDeSaldos.length > 0 && (
           <div className="secao-itens" style={{ marginBottom: '30px', overflowX: 'auto' }}>
             <h3 style={{ color: '#2e7d32' }}>📊 Controle Físico-Financeiro (Saldos por Item)</h3>
             <table className="tabela-saldos">
-              <thead><tr><th>Lote/Item</th><th>Descrição</th><th>Und</th><th>Vl. Unit.</th><th>Qtd Contratada</th><th>Vl. Contratado</th><th style={{ backgroundColor: '#fff3cd', color: '#856404' }}>Qtd Consumida</th><th style={{ backgroundColor: '#fff3cd', color: '#856404' }}>Vl Consumido</th><th className="th-saldo">Qtd Saldo</th><th className="th-saldo">Vl. Saldo</th></tr></thead>
+              <thead><tr><th>Lote/Item</th><th>Descrição</th><th>Und</th><th>Vl. Unit.</th><th>Qtd Contratada</th><th>Vl. Contratado</th><th style={{ backgroundColor: '#fff3cd', color: '#856404' }}>Qtd Consumida</th><th className="th-saldo">Qtd Saldo</th><th className="th-saldo">Vl. Saldo</th></tr></thead>
               <tbody>
                 {tabelaDeSaldos.map((linha, index) => {
                   const saldoQtd = linha.qtdContratada - linha.qtdConsumida;
                   const saldoValor = linha.vlContratado - linha.vlConsumido;
                   return (
                     <tr key={index}>
-                      <td style={{ fontWeight: 'bold' }}>{linha.lote !== 'Único' && linha.lote ? `${linha.lote} / ` : ''}{linha.item}</td>
+                      <td style={{ fontWeight: 'bold' }}>{linha.lote}/{linha.item}</td>
                       <td className="desc-esquerda">{linha.descricao}</td><td>{linha.unidade}</td><td>{linha.vlUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td>{linha.qtdContratada}</td><td>{linha.vlContratado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                      <td style={{ backgroundColor: '#fffdf5', fontWeight: 'bold', color: '#856404' }}>{linha.qtdConsumida}</td><td style={{ backgroundColor: '#fffdf5', fontWeight: 'bold', color: '#856404' }}>{linha.vlConsumido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                      <td style={{ backgroundColor: '#fffdf5', fontWeight: 'bold', color: '#856404' }}>{linha.qtdConsumida}</td>
                       <td style={{ backgroundColor: '#f3fbf3', fontWeight: 'bold', color: saldoQtd < 0 ? 'red' : '#2e7d32' }}>{saldoQtd}</td><td style={{ backgroundColor: '#f3fbf3', fontWeight: 'bold', color: saldoValor < 0 ? 'red' : '#2e7d32' }}>{saldoValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                     </tr>
                   )
@@ -392,7 +323,7 @@ export default function DetalhesContrato() {
               {itensConsumo.length === 0 ? ( <tr><td colSpan={6} style={{textAlign: 'center'}}>Nenhum empenho/consumo registrado ainda.</td></tr> ) : (
                 itensConsumo.map(item => (
                   <tr key={item.id}>
-                    <td style={{ fontWeight: 'bold' }}>{item.numeroLote !== 'Único' && item.numeroLote ? `${item.numeroLote} / ` : ''}{item.numeroItem}</td>
+                    <td style={{ fontWeight: 'bold' }}>{item.numeroLote}/{item.numeroItem}</td>
                     <td>{item.discriminacao}</td><td style={{ textAlign: 'center' }}>{item.quantidade} {item.unidade}</td><td>{item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td style={{ color: '#dc3545', fontWeight: 'bold' }}>{item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td style={{ color: '#666', fontSize: '12px' }}>{item.dataAdicao}</td>
                   </tr>
                 ))
@@ -402,6 +333,7 @@ export default function DetalhesContrato() {
         </div>
       </main>
 
+      {/* MODAL LANÇAMENTO */}
       {isModalLancamentoOpen && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '800px' }}>
@@ -426,6 +358,7 @@ export default function DetalhesContrato() {
         </div>
       )}
 
+      {/* MODAL EDITAR - CAMPOS SEPARADOS */}
       {isModalEditOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -434,7 +367,7 @@ export default function DetalhesContrato() {
               <div className="form-grid">
                 <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Nº Pregão</label><input type="text" name="numeroPregao" value={formEdit.numeroPregao} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group"><label>Modalidade (Pregão, Dispensa...)</label><input type="text" name="numeroPregao" value={formEdit.numeroPregao} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formEdit.numeroAta} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formEdit.fornecedor} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formEdit.objetoResumido} onChange={lidarComMudancaEdit} /></div>

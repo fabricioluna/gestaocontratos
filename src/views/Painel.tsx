@@ -25,24 +25,20 @@ export default function Painel() {
 
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [loading, setLoading] = useState(false);
-
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isModalEditOpen, setIsModalEditOpen] = useState(false);
-
   const [termoBusca, setTermoBusca] = useState('');
 
   const [formData, setFormData] = useState({
-    numeroContrato: '', numeroProcesso: '', numeroPregao: '', numeroAta: '',
+    numeroContrato: '', numeroProcesso: '', modalidade: '', numeroPregao: '', numeroAta: '',
     fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '',
     dataFim: '', valorTotal: '', fiscalContrato: '', observacao: ''
   });
 
   const [formEdit, setFormEdit] = useState<any>({});
   const [contratoEditId, setContratoEditId] = useState<string>('');
-
   const [itensPrevia, setItensPrevia] = useState<any[]>([]);
   const [formItem, setFormItem] = useState({ numeroLote: '', numeroItem: '', discriminacao: '', unidade: '', quantidade: '', valorUnitario: '' });
-
   const [ordenacao, setOrdenacao] = useState<{ campo: string, direcao: 'asc' | 'desc' }>({ campo: 'dataInicio', direcao: 'desc' });
 
   const nomesOrgaos: { [key: string]: string } = {
@@ -92,10 +88,10 @@ export default function Painel() {
     return <span style={{ marginLeft: '5px' }}>{ordenacao.direcao === 'asc' ? '▲' : '▼'}</span>;
   };
 
-  const lidarComMudanca = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const lidarComMudanca = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
   };
-  const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormEdit((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
   };
   const lidarComMudancaItem = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -112,12 +108,10 @@ export default function Painel() {
   const importarContratoArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setLoading(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
       let textoCompleto = '';
-
       if (file.name.toLowerCase().endsWith('.pdf')) {
         const typedArray = new Uint8Array(arrayBuffer);
         const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
@@ -131,15 +125,13 @@ export default function Painel() {
         const result = await mammoth.extractRawText({ arrayBuffer });
         textoCompleto = result.value;
       }
-
       const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
-
       const dadosIA = await extrairDadosContratoComIA(textoLimpo);
-
       setFormData(prev => ({
         ...prev,
         numeroContrato: dadosIA.numeroContrato || prev.numeroContrato,
         numeroProcesso: dadosIA.numeroProcesso || prev.numeroProcesso,
+        modalidade: dadosIA.modalidade || prev.modalidade,
         numeroPregao: dadosIA.numeroPregao || prev.numeroPregao,
         numeroAta: dadosIA.numeroAta || prev.numeroAta,
         fornecedor: dadosIA.fornecedor || prev.fornecedor,
@@ -150,17 +142,15 @@ export default function Painel() {
         dataInicio: dadosIA.dataInicio || prev.dataInicio,
         dataFim: dadosIA.dataFim || prev.dataFim
       }));
-
       if (dadosIA.itens && dadosIA.itens.length > 0) {
         setItensPrevia(dadosIA.itens);
         alert(`Gemini AI analisou com sucesso! ${dadosIA.itens.length} itens do catálogo foram perfeitamente importados.`);
       } else {
         alert("O Gemini extraiu os dados do contrato, mas não encontrou uma tabela de itens clara.");
       }
-
     } catch (error) {
       console.error(error);
-      alert("Erro ao processar o documento com a Inteligência Artificial. Verifique o console.");
+      alert("Erro ao processar o documento com a Inteligência Artificial.");
     } finally {
       setLoading(false);
       if (docInputRef.current) docInputRef.current.value = '';
@@ -202,7 +192,6 @@ export default function Painel() {
         const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
         let somaImportacao = 0;
         const novosItens: any[] = [];
-
         data.forEach((row: any) => {
           const linha: any = {};
           for (const key in row) linha[key.trim().toUpperCase()] = row[key];
@@ -213,13 +202,11 @@ export default function Painel() {
           const quantidade = extrairNumeroPlanilha(linha['QUANTIDADE'] || linha['QTD.'] || linha['QTD']) || 0;
           const valorUnitario = extrairNumeroPlanilha(linha['VALOR UNITÁRIO'] || linha['VALOR UNITARIO'] || linha['VALOR UND.'] || linha['VALOR UND'] || linha['VL. UNIT.'] || linha['VL. UNIT'] || linha['VL UNIT.']) || 0;
           const valorTotalItem = quantidade * valorUnitario;
-
           if (discriminacao && quantidade > 0) {
             novosItens.push({ numeroLote, numeroItem, discriminacao, unidade, quantidade, valorUnitario, valorTotalItem });
             somaImportacao += valorTotalItem;
           }
         });
-
         if (novosItens.length > 0) {
           setItensPrevia([...itensPrevia, ...novosItens]);
           const novoTotal = parseMoeda(formData.valorTotal) + somaImportacao;
@@ -237,7 +224,6 @@ export default function Painel() {
     try {
       const valorGlobalNum = parseMoeda(formData.valorTotal);
       const dataAtual = new Date().toLocaleString('pt-BR');
-
       const contratoRef = await addDoc(collection(db, 'contratos'), {
         ...formData,
         orgaoId: orgaoLogado,
@@ -245,7 +231,6 @@ export default function Painel() {
         saldoContrato: valorGlobalNum,
         dataUltimaAtualizacao: dataAtual
       });
-
       if (itensPrevia.length > 0) {
         const batch = writeBatch(db);
         itensPrevia.forEach(item => {
@@ -254,10 +239,9 @@ export default function Painel() {
         });
         await batch.commit();
       }
-
       alert('Contrato e catálogo salvos com sucesso!');
       setIsModalOpen(false);
-      setFormData({ numeroContrato: '', numeroProcesso: '', numeroPregao: '', numeroAta: '', fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
+      setFormData({ numeroContrato: '', numeroProcesso: '', modalidade: '', numeroPregao: '', numeroAta: '', fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
       setItensPrevia([]);
     } catch (error) { alert('Erro ao salvar.'); } finally { setLoading(false); }
   };
@@ -313,7 +297,6 @@ export default function Painel() {
     const hoje = new Date();
     const diferencaTempo = fim.getTime() - hoje.getTime();
     const diasFaltando = Math.ceil(diferencaTempo / (1000 * 3600 * 24));
-
     if (diasFaltando <= 30) return 'critico';
     if (diasFaltando <= 90) return 'alerta';
     return 'normal';
@@ -321,33 +304,28 @@ export default function Painel() {
 
   const nomeOrgaoFormatado = orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Carregando...';
 
-  // ==========================================
-  // GERAÇÃO DE RELATÓRIO PDF (ABRE NO NAVEGADOR)
-  // ==========================================
   const gerarPDFContratos = () => {
     const doc = new jsPDF('landscape');
     const img = new Image();
     img.src = logo;
-    
     img.onload = () => {
       doc.addImage(img, 'PNG', 14, 10, 25, 25);
       doc.setFontSize(16);
       doc.setTextColor(0, 74, 153);
       doc.text(nomeOrgaoFormatado, 45, 20);
-      
       doc.setFontSize(12);
       doc.setTextColor(100, 100, 100);
       doc.text('Relatório Geral de Contratos Ativos', 45, 28);
-      
       doc.setFontSize(10);
       doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 45, 34);
 
       autoTable(doc, {
         startY: 42,
-        head: [['Ano', 'Nº', 'Objeto', 'Fornecedor', 'Validade', 'Valor Total', 'Saldo Atual', 'Fiscal']],
+        head: [['Ano', 'Nº Contrato', 'Modalidade/Licitação', 'Objeto', 'Fornecedor', 'Validade', 'Valor Contrato', 'Saldo Atual', 'Fiscal']],
         body: contratosFiltrados.map(c => [
           c.dataInicio.substring(0, 4),
           c.numeroContrato,
+          `${c.modalidade || '-'} Nº ${c.numeroPregao || '-'}`,
           c.objetoResumido.length > 35 ? c.objetoResumido.substring(0, 32) + '...' : c.objetoResumido,
           c.fornecedor.length > 25 ? c.fornecedor.substring(0, 22) + '...' : c.fornecedor,
           formatarDataBr(c.dataFim),
@@ -361,7 +339,6 @@ export default function Painel() {
         alternateRowStyles: { fillColor: [245, 248, 250] }
       });
 
-      // Em vez de baixar direto, gera um Blob e abre num novo separador
       const pdfBlob = doc.output('blob');
       const pdfUrl = URL.createObjectURL(pdfBlob);
       window.open(pdfUrl, '_blank');
@@ -375,7 +352,6 @@ export default function Painel() {
           <img src={logo} alt="Logo PMP" className="logo-pequena" />
           <h2 title={nomeOrgaoFormatado}>{nomeOrgaoFormatado}</h2>
         </div>
-        
         <button className="btn-sair" onClick={() => { sessionStorage.clear(); navigate('/'); }} title="Sair do Sistema">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -389,19 +365,14 @@ export default function Painel() {
       <main className="conteudo">
         <div className="acoes-topo" style={{ flexWrap: 'wrap' }}>
           <h2>Contratos Cadastrados</h2>
-          
           <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
             <input 
               type="text" 
               placeholder="🔍 Buscar por Nº, Fornecedor ou Objeto..." 
               value={termoBusca}
               onChange={(e) => setTermoBusca(e.target.value)}
-              style={{
-                padding: '10px 15px', borderRadius: '4px', border: '1px solid #ccc', minWidth: '300px',
-                fontSize: '14px', outline: 'none'
-              }}
+              style={{ padding: '10px 15px', borderRadius: '4px', border: '1px solid #ccc', minWidth: '300px', fontSize: '14px', outline: 'none' }}
             />
-            {/* BOTÃO GERAR RELATÓRIO */}
             <button onClick={gerarPDFContratos} style={{ backgroundColor: 'white', color: '#0f172a', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s ease' }}>
                <span style={{ fontSize: '16px' }}>📄</span> Gerar Relatório
             </button>
@@ -430,16 +401,10 @@ export default function Painel() {
                   const statusPrazo = verificarStatusVencimento(c.dataFim);
                   const porcentagemSaldo = c.valorTotal > 0 ? (c.saldoContrato / c.valorTotal) * 100 : 0;
                   const saldoCritico = porcentagemSaldo <= 30;
-
                   let corFundoPrazo = 'transparent';
                   let corTextoPrazo = 'inherit';
-                  if (statusPrazo === 'critico') {
-                    corFundoPrazo = '#ffebee'; 
-                    corTextoPrazo = '#c62828'; 
-                  } else if (statusPrazo === 'alerta') {
-                    corFundoPrazo = '#fff8e1'; 
-                    corTextoPrazo = '#f9a825'; 
-                  }
+                  if (statusPrazo === 'critico') { corFundoPrazo = '#ffebee'; corTextoPrazo = '#c62828'; }
+                  else if (statusPrazo === 'alerta') { corFundoPrazo = '#fff8e1'; corTextoPrazo = '#f9a825'; }
 
                   return (
                     <tr key={c.id}>
@@ -447,20 +412,17 @@ export default function Painel() {
                       <td style={{ fontWeight: 'bold' }}>{c.numeroContrato}</td>
                       <td>{c.objetoResumido}</td>
                       <td>{c.fornecedor}</td>
-                      
                       <td style={{ fontWeight: 'bold', backgroundColor: corFundoPrazo, color: corTextoPrazo, textAlign: 'center' }}>
                         {formatarDataBr(c.dataFim)}
                         {statusPrazo === 'critico' && <span style={{ display: 'block', fontSize: '11px', marginTop: '4px' }}>🔴 Expira &lt; 30 dias</span>}
                         {statusPrazo === 'alerta' && <span style={{ display: 'block', fontSize: '11px', marginTop: '4px' }}>🟡 Expira &lt; 90 dias</span>}
                       </td>
-
                       <td style={{ fontWeight: 'bold', color: c.saldoContrato < 0 ? 'red' : 'green' }}>
                         {c.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                         {saldoCritico && c.saldoContrato > 0 && (
                            <span style={{ display: 'block', fontSize: '11px', color: '#d32f2f', marginTop: '4px' }}>⚠️ Saldo &lt; 30%</span>
                         )}
                       </td>
-
                       <td style={{ display: 'flex', gap: '5px' }}>
                         <button style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => navigate(`/contrato/${c.id}`)}>Ver Detalhes</button>
                         <button style={{ backgroundColor: '#ffc107', color: '#333', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => abrirEdicao(c)}>✏️ Editar</button>
@@ -483,17 +445,29 @@ export default function Painel() {
               <div>
                 <input type="file" accept=".docx, .pdf" ref={docInputRef} onChange={importarContratoArquivo} style={{ display: 'none' }} id="upload-doc" />
                 <label htmlFor="upload-doc" style={{ backgroundColor: '#20c997', color: 'white', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '5px', boxShadow: '0 2px 5px rgba(0,0,0,0.2)' }}>
-                  {loading ? 'A processar IA...' : '✨ Auto-Preencher com IA (Gemini)'}
+                  {loading ? 'A processar IA...' : '✨ Auto-Preencher com IA'}
                 </label>
               </div>
             </div>
-            
             <form onSubmit={salvarContratoCompleto}>
               <h3 style={{ color: '#555', marginTop: 0 }}>1. Dados Gerais</h3>
               <div className="form-grid">
                 <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formData.numeroContrato} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
                 <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formData.numeroProcesso} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
-                <div className="form-group"><label>Nº Pregão</label><input type="text" name="numeroPregao" value={formData.numeroPregao} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
+                <div className="form-group">
+                  <label>Modalidade</label>
+                  <select name="modalidade" required value={formData.modalidade} onChange={lidarComMudanca} style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                    <option value="">Selecione...</option>
+                    <option value="Pregão Eletrônico">Pregão Eletrônico</option>
+                    <option value="Dispensa">Dispensa</option>
+                    <option value="Concorrência Eletrônica">Concorrência Eletrônica</option>
+                    <option value="Inexigibilidade">Inexigibilidade</option>
+                    <option value="Edital">Edital</option>
+                    <option value="Credenciamento">Credenciamento</option>
+                    <option value="Chamamento">Chamamento</option>
+                  </select>
+                </div>
+                <div className="form-group"><label>Nº da Licitação / Modalidade</label><input type="text" name="numeroPregao" value={formData.numeroPregao} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
                 <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formData.numeroAta} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
                 <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formData.fornecedor} onChange={lidarComMudanca} /></div>
                 <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formData.objetoResumido} onChange={lidarComMudanca} /></div>
@@ -504,7 +478,6 @@ export default function Painel() {
                 <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formData.observacao} onChange={lidarComMudanca} /></div>
                 <div className="form-group full-width"><label style={{ color: '#004a99', fontSize: '15px' }}>Valor Global do Contrato (R$)</label><input type="text" name="valorTotal" required value={formData.valorTotal} onChange={lidarComMudanca} style={{ border: '2px solid #004a99', fontWeight: 'bold' }} /></div>
               </div>
-
               <h3 style={{ borderBottom: '1px solid #ddd', paddingBottom: '5px', marginTop: '30px' }}>2. Catálogo de Itens do Contrato (Opcional)</h3>
               <p style={{ fontSize: '12px', color: '#666' }}>Estes itens formarão o catálogo. Eles <strong>não consumirão o saldo inicial</strong>.</p>
               <div className="secao-itens-modal">
@@ -520,7 +493,6 @@ export default function Painel() {
                 <input type="file" accept=".xlsx" ref={fileInputRef} onChange={importarPlanilhaPrevia} style={{ display: 'none' }} id="upload-previa" />
                 <label htmlFor="upload-previa" style={{ display: 'block', textAlign: 'center', backgroundColor: '#28a745', color: 'white', padding: '10px', borderRadius: '4px', cursor: 'pointer' }}>📄 Importar Catálogo do Excel</label>
               </div>
-
               {itensPrevia.length > 0 && (
                 <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '20px' }}>
                   <table className="tabela-previa">
@@ -538,7 +510,6 @@ export default function Painel() {
                   </table>
                 </div>
               )}
-
               <div className="modal-acoes">
                 <button type="button" className="btn-cancelar" onClick={() => { setIsModalOpen(false); setItensPrevia([]); }}>Cancelar</button>
                 <button type="submit" className="btn-salvar" disabled={loading}>{loading ? 'A Guardar...' : 'Salvar Contrato'}</button>
@@ -556,7 +527,20 @@ export default function Painel() {
               <div className="form-grid">
                 <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Nº Pregão</label><input type="text" name="numeroPregao" value={formEdit.numeroPregao} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group">
+                  <label>Modalidade</label>
+                  <select name="modalidade" required value={formEdit.modalidade} onChange={lidarComMudancaEdit} style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                    <option value="">Selecione...</option>
+                    <option value="Pregão Eletrônico">Pregão Eletrônico</option>
+                    <option value="Dispensa">Dispensa</option>
+                    <option value="Concorrência Eletrônica">Concorrência Eletrônica</option>
+                    <option value="Inexigibilidade">Inexigibilidade</option>
+                    <option value="Edital">Edital</option>
+                    <option value="Credenciamento">Credenciamento</option>
+                    <option value="Chamamento">Chamamento</option>
+                  </select>
+                </div>
+                <div className="form-group"><label>Nº da Licitação</label><input type="text" name="numeroPregao" value={formEdit.numeroPregao} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formEdit.numeroAta} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formEdit.fornecedor} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formEdit.objetoResumido} onChange={lidarComMudancaEdit} /></div>

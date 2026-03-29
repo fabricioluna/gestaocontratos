@@ -5,6 +5,7 @@ export interface Contrato {
   orgaoId: string;
   numeroContrato: string;
   numeroProcesso: string;
+  modalidade: string; // ADICIONADO: Para suportar Pregão, Dispensa, etc.
   numeroPregao: string;
   numeroAta: string;
   fornecedor: string;
