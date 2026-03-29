@@ -141,7 +141,7 @@ export default function DetalhesContrato() {
   const tabelaDeSaldos = gerarTabelaSaldos();
 
   // ==========================================
-  // GERAÇÃO DE RELATÓRIO PDF (ABRE NO NAVEGADOR)
+  // GERAÇÃO DE RELATÓRIO PDF (ABRE NO NAVEGADOR COM AS 3 TABELAS)
   // ==========================================
   const gerarPDFDetalhado = () => {
     const doc = new jsPDF('landscape');
@@ -170,9 +170,39 @@ export default function DetalhesContrato() {
 
       let finalY = 75;
 
-      if (tabelaDeSaldos.length > 0) {
+      // 1. PLANILHA ORIGINAL DO CONTRATO
+      if (itensCatalogo.length > 0) {
         doc.setFontSize(12);
-        doc.setTextColor(46, 125, 50);
+        doc.setTextColor(0, 74, 153); // Azul para a Planilha Original
+        doc.text('Planilha Original do Contrato', 14, finalY);
+        
+        autoTable(doc, {
+          startY: finalY + 5,
+          head: [['Lote', 'Item', 'Descrição', 'Und', 'Quantidade', 'Vl. Unitário', 'Vl. Total']],
+          body: itensCatalogo.map(item => [
+            item.numeroLote === 'Único' || !item.numeroLote ? '-' : item.numeroLote,
+            item.numeroItem,
+            item.discriminacao.substring(0, 50) + (item.discriminacao.length > 50 ? '...' : ''),
+            item.unidade,
+            item.quantidade,
+            item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+            item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+          ]),
+          theme: 'striped',
+          headStyles: { fillColor: [0, 74, 153], textColor: 255, fontStyle: 'bold' },
+          styles: { fontSize: 8, cellPadding: 2 },
+          alternateRowStyles: { fillColor: [240, 248, 255] }
+        });
+        finalY = (doc as any).lastAutoTable.finalY + 15;
+      }
+
+      // 2. CONTROLE FÍSICO-FINANCEIRO
+      if (tabelaDeSaldos.length > 0) {
+        // Quebra de página inteligente se estiver perto do fim da folha
+        if (finalY > 180) { doc.addPage(); finalY = 20; }
+
+        doc.setFontSize(12);
+        doc.setTextColor(46, 125, 50); // Verde para os Saldos
         doc.text('Controle Físico-Financeiro (Saldos por Item)', 14, finalY);
         
         autoTable(doc, {
@@ -198,9 +228,13 @@ export default function DetalhesContrato() {
         finalY = (doc as any).lastAutoTable.finalY + 15;
       }
 
+      // 3. HISTÓRICO DE LANÇAMENTOS
       if (itensConsumo.length > 0) {
+        // Quebra de página inteligente
+        if (finalY > 180) { doc.addPage(); finalY = 20; }
+
         doc.setFontSize(12);
-        doc.setTextColor(220, 53, 69);
+        doc.setTextColor(220, 53, 69); // Vermelho para o Consumo
         doc.text('Histórico de Lançamentos (Auditoria de Empenhos)', 14, finalY);
         
         autoTable(doc, {
@@ -221,7 +255,7 @@ export default function DetalhesContrato() {
         });
       }
       
-      // Em vez de baixar direto, gera um Blob e abre num novo separador
+      // Abre o PDF numa nova aba em vez de baixar direto
       const pdfBlob = doc.output('blob');
       const pdfUrl = URL.createObjectURL(pdfBlob);
       window.open(pdfUrl, '_blank');
@@ -248,7 +282,6 @@ export default function DetalhesContrato() {
 
       <main className="detalhes-container">
         <div className="acoes-relatorio">
-          {/* BOTÃO GERAR RELATÓRIO NO CONTRATO */}
           <button onClick={gerarPDFDetalhado} style={{ backgroundColor: 'white', color: '#0f172a', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '14px', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: '8px' }}>
              <span style={{ fontSize: '16px' }}>📄</span> Gerar Relatório
           </button>
@@ -369,7 +402,6 @@ export default function DetalhesContrato() {
         </div>
       </main>
 
-      {/* MODAL DE EMPENHO E EDIÇÃO AQUI EMBAIXO */}
       {isModalLancamentoOpen && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '800px' }}>
