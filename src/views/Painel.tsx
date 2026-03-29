@@ -83,7 +83,8 @@ export default function Painel() {
       (c.numeroContrato || '').toLowerCase().includes(termo) ||
       (c.fornecedor || '').toLowerCase().includes(termo) ||
       (c.objetoResumido || '').toLowerCase().includes(termo) ||
-      (c.objetoCompleto || '').toLowerCase().includes(termo)
+      (c.objetoCompleto || '').toLowerCase().includes(termo) ||
+      (c.fiscalContrato || '').toLowerCase().includes(termo) // Adicionado para permitir busca pelo nome do fiscal
     );
   });
 
@@ -123,8 +124,9 @@ export default function Painel() {
       const tableData = contratosFiltrados.map(c => [
         c.dataInicio ? c.dataInicio.substring(0, 4) : '-',
         c.numeroContrato || '-',
-        (c.objetoResumido || '').substring(0, 50) + ((c.objetoResumido?.length || 0) > 50 ? '...' : ''),
-        (c.fornecedor || '').substring(0, 30) + ((c.fornecedor?.length || 0) > 30 ? '...' : ''),
+        (c.objetoResumido || '').substring(0, 45) + ((c.objetoResumido?.length || 0) > 45 ? '...' : ''),
+        (c.fornecedor || '').substring(0, 25) + ((c.fornecedor?.length || 0) > 25 ? '...' : ''),
+        (c.fiscalContrato || 'Não inf.').substring(0, 20) + ((c.fiscalContrato?.length || 0) > 20 ? '...' : ''), // Coluna do Fiscal adicionada
         formatarDataBr(c.dataFim),
         (c.valorTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
         (c.saldoContrato || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -132,17 +134,18 @@ export default function Painel() {
 
       autoTable(docPdf, {
         startY: 40,
-        head: [['Ano', 'Nº Contrato', 'Objeto', 'Fornecedor', 'Validade', 'Valor do Contrato', 'Saldo Atual']],
+        head: [['Ano', 'Nº Contrato', 'Objeto', 'Fornecedor', 'Fiscal', 'Validade', 'Valor Global', 'Saldo Atual']],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [0, 74, 153] },
         styles: { fontSize: 8, cellPadding: 3 },
         columnStyles: { 
-          0: { halign: 'center', cellWidth: 15 }, 
-          1: { halign: 'center', cellWidth: 25 }, 
-          4: { halign: 'center', cellWidth: 25 }, 
-          5: { halign: 'right', cellWidth: 35 }, 
-          6: { halign: 'right', cellWidth: 35 } 
+          0: { halign: 'center', cellWidth: 12 }, // Ano
+          1: { halign: 'center', cellWidth: 20 }, // Nº Contrato
+          // Objeto e Fornecedor e Fiscal ajustam-se automaticamente ao espaço restante
+          5: { halign: 'center', cellWidth: 20 }, // Validade
+          6: { halign: 'right', cellWidth: 30 },  // Valor Global
+          7: { halign: 'right', cellWidth: 30 }   // Saldo Atual
         }
       });
 
@@ -383,7 +386,7 @@ export default function Painel() {
 
       <main className="conteudo">
         
-        {/* NOVA ÁREA DE AÇÕES SUPERIOR (1 ÚNICA LINHA, UI HARMONIZADA) */}
+        {/* ÁREA DE AÇÕES SUPERIOR */}
         <div className="acoes-topo" style={{ 
           display: 'flex', 
           alignItems: 'center', 
@@ -397,7 +400,7 @@ export default function Painel() {
           border: '1px solid #eaeaea'
         }}>
           
-          {/* 1. Título */}
+          {/* Título */}
           <h2 style={{ 
             margin: 0, 
             color: '#1e293b', 
@@ -408,7 +411,7 @@ export default function Painel() {
             Contratos Cadastrados
           </h2>
           
-          {/* 2. Campo de Busca Dinâmico no Centro */}
+          {/* Campo de Busca */}
           <div style={{ position: 'relative', flex: 1, maxWidth: '600px' }}>
             <svg style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="8"></circle>
@@ -416,7 +419,7 @@ export default function Painel() {
             </svg>
             <input 
               type="text" 
-              placeholder="Buscar por Nº do Contrato, Fornecedor ou Objeto..." 
+              placeholder="Buscar por Nº do Contrato, Fornecedor, Objeto ou Fiscal..." 
               value={termoBusca} 
               onChange={(e) => setTermoBusca(e.target.value)}
               style={{ 
@@ -444,7 +447,7 @@ export default function Painel() {
             />
           </div>
 
-          {/* 3. Grupo de Botões Alinhados */}
+          {/* Grupo de Botões */}
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             
             <button 
