@@ -109,9 +109,22 @@ export default function Painel() {
     const diffEmMilissegundos = vencimento.getTime() - hoje.getTime();
     const diffEmDias = Math.ceil(diffEmMilissegundos / (1000 * 60 * 60 * 24));
 
-    if (diffEmDias <= 30) return { backgroundColor: '#ffd5d5', color: '#900' }; // Vermelho (< 1 mês)
-    if (diffEmDias <= 90) return { backgroundColor: '#fff9c4', color: '#856404' }; // Amarelo (< 3 meses)
+    if (diffEmDias <= 30) return { backgroundColor: '#ffd5d5', color: '#900' }; // Vermelho suave
+    if (diffEmDias <= 90) return { backgroundColor: '#fff9c4', color: '#856404' }; // Amarelo suave
     return {};
+  };
+
+  // --- IDENTIFICAÇÃO DO MOTIVO DO ALERTA (TOOLTIP) ---
+  const getRowTitle = (dataFim: string) => {
+    if (!dataFim) return "";
+    const hoje = new Date();
+    const vencimento = new Date(dataFim);
+    const diffEmDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (diffEmDias < 0) return "Contrato Vencido";
+    if (diffEmDias <= 30) return "Atenção: Vencimento em menos de 30 dias";
+    if (diffEmDias <= 90) return "Aviso: Vencimento em menos de 3 meses";
+    return "";
   };
 
   const renderSeta = (campo: string) => {
@@ -131,7 +144,6 @@ export default function Painel() {
   
   const formatarTresDigitos = (e: React.FocusEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    // Só formata se for apenas números. Se tiver "/" (ex: 001/2024), respeita o que o usuário digitou.
     if (value && /^\d+$/.test(value)) {
       setFormData((prev: any) => ({ ...prev, [name]: value.padStart(3, '0') }));
       if (isModalEditOpen) setFormEdit((prev: any) => ({ ...prev, [name]: value.padStart(3, '0') }));
@@ -389,12 +401,28 @@ export default function Painel() {
             <input type="text" placeholder="Buscar por Nº do Contrato, Fornecedor, Objeto ou Fiscal..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} style={{ width: '100%', padding: '10px 14px 10px 40px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#334155', fontSize: '14px', outline: 'none', transition: 'all 0.2s ease', boxSizing: 'border-box' }} onFocus={(e) => { e.target.style.borderColor = '#3b82f6'; e.target.style.backgroundColor = '#ffffff'; e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)'; }} onBlur={(e) => { e.target.style.borderColor = '#cbd5e1'; e.target.style.backgroundColor = '#f8fafc'; e.target.style.boxShadow = 'none'; }} />
           </div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <button onClick={gerarRelatorioPDF} style={{ backgroundColor: '#ffffff', color: '#475569', padding: '8px 16px', borderRadius: '6px', border: '1px solid #cbd5e1', cursor: 'pointer', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+            <button onClick={gerarRelatorioPDF} style={{ backgroundColor: '#ffffff', color: '#475569', padding: '8px 16px', borderRadius: '6px', border: '1px solid #cbd5e1', cursor: 'pointer', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }} onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }} onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#ffffff'; e.currentTarget.style.color = '#475569'; }}>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> Relatório
             </button>
             <button onClick={() => setIsModalOpen(true)} style={{ backgroundColor: '#2563eb', color: '#ffffff', padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '500', boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)', transition: 'background-color 0.2s ease', whiteSpace: 'nowrap' }}>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Novo Contrato
             </button>
+          </div>
+        </div>
+
+        {/* BARRA DE LEGENDA PARA AUXÍLIO DO UTILIZADOR */}
+        <div className="legenda-container" style={{ display: 'flex', gap: '20px', marginBottom: '15px', fontSize: '12px', color: '#666', padding: '0 5px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ width: '12px', height: '12px', backgroundColor: '#ffd5d5', border: '1px solid #ff000033', borderRadius: '2px' }}></div>
+            Vencimento em menos de 1 mês
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ width: '12px', height: '12px', backgroundColor: '#fff9c4', border: '1px solid #ffc10733', borderRadius: '2px' }}></div>
+            Vencimento em menos de 3 meses
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{ color: '#e65100', fontWeight: 'bold' }}>⚠️</span>
+            Saldo abaixo de 30%
           </div>
         </div>
 
@@ -421,7 +449,7 @@ export default function Painel() {
                 const alertaSaldo = percentualSaldo < 0.3;
 
                 return (
-                  <tr key={c.id} style={styleVencimento}>
+                  <tr key={c.id} style={styleVencimento} title={getRowTitle(c.dataFim)}>
                     <td>{c.dataInicio.substring(0, 4)}</td>
                     <td>{c.numeroContrato}</td>
                     <td>{c.objetoResumido}</td>
@@ -430,8 +458,10 @@ export default function Painel() {
                     <td style={{ 
                       fontWeight: 'bold', 
                       color: alertaSaldo ? '#e65100' : (c.saldoContrato < 0 ? 'red' : 'green') 
-                    }}>
-                      {alertaSaldo && <span title="Saldo menor que 30%">⚠️ </span>}
+                    }}
+                    title={alertaSaldo ? `Saldo crítico: restam apenas ${(percentualSaldo * 100).toFixed(1)}% do valor total` : ""}
+                    >
+                      {alertaSaldo && <span>⚠️ </span>}
                       {c.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </td>
                     <td>{c.dataUltimaAtualizacao || 'N/A'}</td>
@@ -527,7 +557,7 @@ export default function Painel() {
         </div>
       )}
 
-      {/* MODAL EDITAR CONTRATO */}
+      {/* --- MODAL EDITAR CONTRATO --- */}
       {isModalEditOpen && (
         <div className="modal-overlay" onClick={() => setIsModalEditOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -536,6 +566,7 @@ export default function Painel() {
               <div className="form-grid">
                 <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato || ''} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
                 <div className="form-group"><label>Nº/Ano Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso || ''} onChange={lidarComMudancaEdit} placeholder="000/0000" /></div>
+                
                 <div className="form-group">
                   <label>Modalidade</label>
                   <select name="modalidade" value={formEdit.modalidade || ''} onChange={lidarComMudancaEdit} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
