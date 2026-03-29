@@ -4,7 +4,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, collection, query, where, addDoc, updateDoc, writeBatch, deleteDoc, getDocs } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { db } from '../firebase';
-// 👇 AQUI ESTAVA O ERRO: Removi o ItemContrato que não estávamos a usar
 import type { Contrato } from '../types';
 import logo from '../assets/logopmp.png';
 import './DetalhesContrato.css';
@@ -291,9 +290,17 @@ export default function DetalhesContrato() {
       <header className="header">
         <div className="header-logo">
           <img src={logo} alt="Logo PMP" className="logo-pequena" />
-          <h2>Relatório de Contrato: {contrato.numeroContrato} / {contrato.dataInicio.substring(0, 4)} / {siglasOrgaos[contrato.orgaoId] || ''}</h2>
+          <h2 title={`Relatório de Contrato: ${contrato.numeroContrato} / ${contrato.dataInicio.substring(0, 4)} / ${siglasOrgaos[contrato.orgaoId] || ''}`}>
+            Relatório de Contrato: {contrato.numeroContrato} / {contrato.dataInicio.substring(0, 4)} / {siglasOrgaos[contrato.orgaoId] || ''}
+          </h2>
         </div>
-        <button className="btn-sair" onClick={() => navigate('/painel')}>Voltar ao Painel</button>
+        <button className="btn-sair" onClick={() => navigate('/painel')}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          Voltar
+        </button>
       </header>
 
       <main className="detalhes-container">

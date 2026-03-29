@@ -5,55 +5,78 @@
   min-height: 100vh;
 }
 
+/* =========================================
+   CABEÇALHO (HEADER) - MODERNO E ALINHADO
+========================================= */
 .header {
-  background-color: #004a99;
+  background: linear-gradient(135deg, #0a2540 0%, #144066 100%); 
   color: white;
-  padding: 10px 30px;
+  padding: 12px 24px;
   display: flex;
-  justify-content: space-between;
+  justify-content: space-between; 
   align-items: center;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  gap: 20px; 
 }
 
 .header-logo {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 16px;
+  flex: 1; 
+  min-width: 0; 
 }
 
 .logo-pequena {
-  height: 40px;
+  height: 40px; 
+  width: auto;
   background-color: white;
-  padding: 5px;
+  padding: 6px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  object-fit: contain;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  flex-shrink: 0; 
 }
 
 .header-logo h2 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 500;
-  letter-spacing: 0.5px;
+  font-size: 18px; 
+  font-weight: 600;
+  white-space: nowrap; 
+  overflow: hidden;
+  text-overflow: ellipsis; 
+  letter-spacing: -0.3px;
 }
 
 .btn-sair {
-  background-color: transparent;
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  padding: 6px 15px;
-  border-radius: 20px;
-  font-size: 13px;
+  background-color: rgba(255, 255, 255, 0.1); 
+  color: white; 
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  width: auto; 
+  padding: 0 16px; 
+  height: 42px; 
+  border-radius: 10px; 
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px; 
+  font-weight: 600;
+  font-size: 14px;
   cursor: pointer;
-  transition: all 0.3s ease;
-  font-weight: normal;
+  flex-shrink: 0; 
+  transition: all 0.2s ease;
+  margin-left: auto; 
 }
 
 .btn-sair:hover {
-  background-color: white;
-  color: #004a99;
-  border-color: white;
+  background-color: rgba(255, 255, 255, 0.2); 
+  color: white;
+  border-color: transparent;
+  transform: translateY(-2px); 
 }
+
+/* =========================================
+   CONTEÚDO PRINCIPAL
+========================================= */
 
 .detalhes-container {
   max-width: 1200px;
