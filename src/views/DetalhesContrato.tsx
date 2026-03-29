@@ -1,3 +1,4 @@
+// src/views/DetalhesContrato.tsx
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, collection, query, where, addDoc, updateDoc, writeBatch, deleteDoc, getDocs } from 'firebase/firestore';
@@ -71,7 +72,12 @@ export default function DetalhesContrato() {
       if (docSnap.exists()) {
         const dados = { id: docSnap.id, ...docSnap.data() } as Contrato;
         setContrato(dados);
-        setFormEdit({ ...dados, valorTotal: dados.valorTotal.toFixed(2).replace('.', ',') });
+        setFormEdit({ 
+          ...dados, 
+          valorTotal: dados.valorTotal.toFixed(2).replace('.', ','),
+          modalidade: dados.modalidade || '',
+          numeroModalidade: dados.numeroModalidade || dados.numeroPregao || '' // Mantém compatibilidade com dados antigos
+        });
       }
     });
 
@@ -95,7 +101,8 @@ export default function DetalhesContrato() {
     return () => { unsubContrato(); unsubItens(); };
   }, [id]);
 
-  const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  // Atualizado para aceitar HTMLSelectElement
+  const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormEdit((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
@@ -317,7 +324,8 @@ export default function DetalhesContrato() {
             <p><strong>Objeto:</strong> {contrato.objetoResumido}</p>
             <div className="dados-grid">
               <p><strong>Nº Processo:</strong> {contrato.numeroProcesso}</p>
-              <p><strong>Nº Pregão/Ata:</strong> {contrato.numeroPregao || '-'} / {contrato.numeroAta || '-'}</p>
+              <p><strong>Modalidade:</strong> {contrato.modalidade || '-'} Nº {contrato.numeroModalidade || contrato.numeroPregao || '-'}</p>
+              <p><strong>Nº da Ata:</strong> {contrato.numeroAta || '-'}</p>
               <p><strong>Início:</strong> {formatarDataBr(contrato.dataInicio)}</p>
               <p><strong>Validade:</strong> {formatarDataBr(contrato.dataFim)}</p>
               <p><strong>Fiscal:</strong> {contrato.fiscalContrato || 'Não informado'}</p>
@@ -496,18 +504,32 @@ export default function DetalhesContrato() {
             <h2>Editar Dados do Contrato</h2>
             <form onSubmit={salvarEdicaoContrato}>
               <div className="form-grid">
-                <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Nº Pregão</label><input type="text" name="numeroPregao" value={formEdit.numeroPregao} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formEdit.numeroAta} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formEdit.fornecedor} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formEdit.objetoResumido} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formEdit.objetoCompleto} onChange={lidarComMudancaEdit}></textarea></div>
-                <div className="form-group"><label>Data Início</label><input type="date" name="dataInicio" required value={formEdit.dataInicio} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Data Fim (Validade)</label><input type="date" name="dataFim" required value={formEdit.dataFim} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Fiscal do Contrato</label><input type="text" name="fiscalContrato" value={formEdit.fiscalContrato} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formEdit.observacao} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group full-width"><label>Valor Global do Contrato (R$)</label><input type="text" name="valorTotal" required value={formEdit.valorTotal} onChange={lidarComMudancaEdit} style={{ border: '2px solid #ffc107', fontWeight: 'bold' }} /></div>
+                <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso || ''} onChange={lidarComMudancaEdit} /></div>
+                
+                {/* Novos Inputs de Modalidade */}
+                <div className="form-group">
+                  <label>Modalidade</label>
+                  <select name="modalidade" value={formEdit.modalidade || ''} onChange={lidarComMudancaEdit} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px', boxSizing: 'border-box' }}>
+                    <option value="">Selecione...</option>
+                    <option value="Pregão">Pregão</option>
+                    <option value="Concorrência">Concorrência</option>
+                    <option value="Dispensa">Dispensa</option>
+                    <option value="Inexigibilidade">Inexigibilidade</option>
+                    <option value="Credenciamento">Credenciamento</option>
+                  </select>
+                </div>
+                <div className="form-group"><label>Nº da Modalidade</label><input type="text" name="numeroModalidade" value={formEdit.numeroModalidade || ''} onChange={lidarComMudancaEdit} /></div>
+                
+                <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formEdit.numeroAta || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formEdit.fornecedor || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formEdit.objetoResumido || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formEdit.objetoCompleto || ''} onChange={lidarComMudancaEdit}></textarea></div>
+                <div className="form-group"><label>Data Início</label><input type="date" name="dataInicio" required value={formEdit.dataInicio || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group"><label>Data Fim (Validade)</label><input type="date" name="dataFim" required value={formEdit.dataFim || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group"><label>Fiscal do Contrato</label><input type="text" name="fiscalContrato" value={formEdit.fiscalContrato || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formEdit.observacao || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group full-width"><label>Valor Global do Contrato (R$)</label><input type="text" name="valorTotal" required value={formEdit.valorTotal || ''} onChange={lidarComMudancaEdit} style={{ border: '2px solid #ffc107', fontWeight: 'bold', boxSizing: 'border-box' }} /></div>
               </div>
               <div className="modal-acoes"><button type="button" className="btn-cancelar" onClick={() => setIsModalEditOpen(false)}>Cancelar</button><button type="submit" className="btn-salvar" disabled={loading} style={{ backgroundColor: '#ffc107', color: '#333' }}>{loading ? 'A Guardar...' : 'Salvar Alterações'}</button></div>
             </form>
