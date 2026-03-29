@@ -50,7 +50,7 @@ export default function DetalhesContrato() {
     return () => { unsubContrato(); unsubItens(); };
   }, [id]);
 
-  const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { setFormEdit((prev: any) => ({ ...prev, [e.target.name]: e.target.value })); };
+  const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => { setFormEdit((prev: any) => ({ ...prev, [e.target.name]: e.target.value })); };
   const lidarComMudancaItem = (e: React.ChangeEvent<HTMLInputElement>) => { setFormItem((prev: any) => ({ ...prev, [e.target.name]: e.target.value })); };
 
   const salvarEdicaoContrato = async (e: React.FormEvent) => {
@@ -140,70 +140,52 @@ export default function DetalhesContrato() {
   };
   const tabelaDeSaldos = gerarTabelaSaldos();
 
-  // ==========================================
-  // GERAÇÃO DE RELATÓRIO PDF (DETALHADO COM 3 TABELAS)
-  // ==========================================
   const gerarPDFDetalhado = () => {
     const doc = new jsPDF('landscape');
     const img = new Image();
     img.src = logo;
-    
     img.onload = () => {
       doc.addImage(img, 'PNG', 14, 10, 25, 25);
-      doc.setFontSize(16);
-      doc.setTextColor(0, 74, 153);
+      doc.setFontSize(16); doc.setTextColor(0, 74, 153);
       doc.text(siglasOrgaos[contrato.orgaoId] || 'Prefeitura Municipal', 45, 20);
-      
-      doc.setFontSize(12);
-      doc.setTextColor(100, 100, 100);
+      doc.setFontSize(12); doc.setTextColor(100, 100, 100);
       doc.text(`Relatório Detalhado do Contrato: Nº ${contrato.numeroContrato} / ${contrato.dataInicio.substring(0, 4)}`, 45, 28);
-      
-      doc.setFontSize(10);
-      doc.setTextColor(50, 50, 50);
+      doc.setFontSize(10); doc.setTextColor(50, 50, 50);
       doc.text(`Fornecedor: ${contrato.fornecedor}`, 14, 45);
-      doc.text(`Objeto: ${contrato.objetoResumido}`, 14, 51);
-      doc.text(`Modalidade / Nº: ${contrato.numeroPregao || '-'}`, 14, 57);
-      doc.text(`Nº da Ata: ${contrato.numeroAta || '-'}`, 14, 63);
-      doc.text(`Fiscal do Contrato: ${contrato.fiscalContrato || '-'}`, 14, 69);
-      doc.text(`Validade: ${formatarDataBr(contrato.dataFim)}`, 14, 75);
-      
-      doc.setFontSize(11);
-      doc.setTextColor(0, 74, 153);
-      doc.text(`Valor Global: ${contrato.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} | Saldo Atual: ${contrato.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 14, 84);
+      doc.text(`Objeto: ${contrato.objetoResumido}`, 14, 52);
+      doc.text(`Modalidade / Nº: ${(contrato as any).modalidade || '-'} Nº ${contrato.numeroPregao || '-'}`, 14, 59);
+      doc.text(`Nº da Ata: ${contrato.numeroAta || '-'}`, 14, 66);
+      doc.text(`Fiscal: ${contrato.fiscalContrato || '-'}`, 14, 73);
+      doc.text(`Validade: ${formatarDataBr(contrato.dataFim)}`, 14, 80);
+      doc.setFontSize(11); doc.setTextColor(0, 74, 153);
+      doc.text(`Valor Global: ${contrato.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} | Saldo Atual: ${contrato.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 14, 89);
 
-      let finalY = 92;
-
-      // 1. Planilha Original
+      let finalY = 97;
       if (itensCatalogo.length > 0) {
         doc.setFontSize(12); doc.setTextColor(0, 74, 153); doc.text('1. Planilha Original do Contrato', 14, finalY);
         autoTable(doc, { startY: finalY + 5, head: [['Lote', 'Item', 'Descrição', 'Und', 'Qtd', 'Vl. Unitário', 'Vl. Total']],
-          body: itensCatalogo.map(item => [item.numeroLote || '-', item.numeroItem, item.discriminacao.substring(0, 50), item.unidade, item.quantidade, item.valorUnitario.toLocaleString('pt-BR'), item.valorTotalItem.toLocaleString('pt-BR')]),
-          theme: 'striped', headStyles: { fillColor: [0, 74, 153] }, styles: { fontSize: 8 }
+          body: itensCatalogo.map(item => [item.numeroLote === 'Único' || !item.numeroLote ? '-' : item.numeroLote, item.numeroItem, item.discriminacao.substring(0, 50) + (item.discriminacao.length > 50 ? '...' : ''), item.unidade, item.quantidade, item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })]),
+          theme: 'striped', headStyles: { fillColor: [0, 74, 153], textColor: 255, fontStyle: 'bold' }, styles: { fontSize: 8, cellPadding: 2 }, alternateRowStyles: { fillColor: [240, 248, 255] }
         });
         finalY = (doc as any).lastAutoTable.finalY + 15;
       }
-
-      // 2. Controle Saldos
       if (tabelaDeSaldos.length > 0) {
         if (finalY > 180) { doc.addPage(); finalY = 20; }
         doc.setFontSize(12); doc.setTextColor(46, 125, 50); doc.text('2. Controle Físico-Financeiro (Saldos por Item)', 14, finalY);
-        autoTable(doc, { startY: finalY + 5, head: [['Item', 'Descrição', 'Und', 'Unitário', 'Contratado', 'Consumido', 'Saldo Qtd', 'Saldo Valor']],
-          body: tabelaDeSaldos.map(l => [`${l.lote}/${l.item}`, l.descricao.substring(0, 40), l.unidade, l.vlUnitario.toLocaleString('pt-BR'), l.qtdContratada, l.qtdConsumida, l.qtdContratada - l.qtdConsumida, (l.vlContratado - l.vlConsumido).toLocaleString('pt-BR')]),
-          theme: 'striped', headStyles: { fillColor: [46, 125, 50] }, styles: { fontSize: 8 }
+        autoTable(doc, { startY: finalY + 5, head: [['Lote/Item', 'Descrição', 'Und', 'Vl. Unit', 'Qtd Contratada', 'Vl. Contratado', 'Qtd Consumo', 'Vl. Consumido', 'Saldo Qtd', 'Saldo Valor']],
+          body: tabelaDeSaldos.map(linha => [`${linha.lote !== 'Único' && linha.lote ? linha.lote + '/' : ''}${linha.item}`, linha.descricao.substring(0, 40) + (linha.descricao.length > 40 ? '...' : ''), linha.unidade, linha.vlUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), linha.qtdContratada, linha.vlContratado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), linha.qtdConsumida, linha.vlConsumido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), (linha.qtdContratada - linha.qtdConsumida).toString(), (linha.vlContratado - linha.vlConsumido).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })]),
+          theme: 'striped', headStyles: { fillColor: [46, 125, 50], textColor: 255, fontStyle: 'bold' }, styles: { fontSize: 8, cellPadding: 2 }, alternateRowStyles: { fillColor: [243, 251, 243] }
         });
         finalY = (doc as any).lastAutoTable.finalY + 15;
       }
-
-      // 3. Histórico
       if (itensConsumo.length > 0) {
         if (finalY > 180) { doc.addPage(); finalY = 20; }
         doc.setFontSize(12); doc.setTextColor(220, 53, 69); doc.text('3. Histórico de Lançamentos (Auditoria de Empenhos)', 14, finalY);
-        autoTable(doc, { startY: finalY + 5, head: [['Data', 'Item', 'Descrição', 'Quantidade', 'Vl. Unitário', 'Vl. Total']],
-          body: itensConsumo.map(i => [i.dataAdicao || '-', `${i.numeroLote}/${i.numeroItem}`, i.discriminacao.substring(0, 40), i.quantidade, i.valorUnitario.toLocaleString('pt-BR'), i.valorTotalItem.toLocaleString('pt-BR')]),
-          theme: 'striped', headStyles: { fillColor: [220, 53, 69] }, styles: { fontSize: 8 }
+        autoTable(doc, { startY: finalY + 5, head: [['Data', 'Lote/Item', 'Descrição', 'Quantidade', 'Vl. Unitário', 'Vl. Total']],
+          body: itensConsumo.map(item => [item.dataAdicao || '-', `${item.numeroLote !== 'Único' && item.numeroLote ? item.numeroLote + '/' : ''}${item.numeroItem}`, item.discriminacao.substring(0, 40) + (item.discriminacao.length > 40 ? '...' : ''), `${item.quantidade} ${item.unidade}`, item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })]),
+          theme: 'striped', headStyles: { fillColor: [220, 53, 69], textColor: 255, fontStyle: 'bold' }, styles: { fontSize: 8, cellPadding: 2 }, alternateRowStyles: { fillColor: [253, 246, 246] }
         });
       }
-      
       const pdfBlob = doc.output('blob');
       const pdfUrl = URL.createObjectURL(pdfBlob);
       window.open(pdfUrl, '_blank');
@@ -228,7 +210,6 @@ export default function DetalhesContrato() {
 
       <main className="detalhes-container">
         <div className="acoes-relatorio">
-          {/* BOTÃO GERAR RELATÓRIO */}
           <button onClick={gerarPDFDetalhado} style={{ backgroundColor: 'white', color: '#0f172a', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '14px', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: '8px' }}>
              <span style={{ fontSize: '16px' }}>📄</span> Gerar Relatório
           </button>
@@ -244,7 +225,7 @@ export default function DetalhesContrato() {
             <p><strong>Objeto:</strong> {contrato.objetoResumido}</p>
             <div className="dados-grid">
               <p><strong>Nº Processo:</strong> {contrato.numeroProcesso}</p>
-              <p><strong>Modalidade / Nº:</strong> {contrato.numeroPregao || '-'}</p>
+              <p><strong>Modalidade / Nº:</strong> {(contrato as any).modalidade || '-'} {contrato.numeroPregao || '-'}</p>
               <p><strong>Nº da Ata:</strong> {contrato.numeroAta || '-'}</p>
               <p><strong>Início:</strong> {formatarDataBr(contrato.dataInicio)}</p>
               <p><strong>Validade:</strong> {formatarDataBr(contrato.dataFim)}</p>
@@ -252,7 +233,6 @@ export default function DetalhesContrato() {
               <p><strong>Observação:</strong> {contrato.observacao || 'Nenhuma'}</p>
             </div>
           </div>
-
           <div className="card-financeiro">
             <div>
               <h3 style={{ color: '#28a745', marginTop: 0, textAlign: 'center' }}>Posição Financeira</h3>
@@ -272,24 +252,22 @@ export default function DetalhesContrato() {
           </div>
         </div>
 
-        {itensCatalogo.length > 0 && (
+        {itensCatalogo.length > 0 ? (
           <div className="secao-itens" style={{ marginBottom: '30px', overflowX: 'auto' }}>
             <h3 style={{ color: '#004a99' }}>📋 Planilha Original do Contrato</h3>
             <table className="tabela-itens">
-              <thead><tr><th>Lote</th><th>Item</th><th>Descrição</th><th>Unidade</th><th>Quantidade</th><th>Valor Unitário</th><th>Valor Total</th></tr></thead>
+              <thead>
+                <tr><th>Lote</th><th>Item</th><th>Descrição</th><th>Unidade</th><th>Quantidade</th><th>Valor Unitário</th><th>Valor Total</th></tr>
+              </thead>
               <tbody>
                 {itensCatalogo.map(item => (
-                  <tr key={item.id}>
-                    <td style={{ textAlign: 'center' }}>{item.numeroLote || '-'}</td>
-                    <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{item.numeroItem}</td>
-                    <td>{item.discriminacao}</td><td style={{ textAlign: 'center' }}>{item.unidade}</td><td style={{ textAlign: 'center' }}>{item.quantidade}</td>
-                    <td>{item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                    <td style={{ color: '#555', fontWeight: 'bold' }}>{item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                  </tr>
+                  <tr key={item.id}><td style={{ textAlign: 'center' }}>{item.numeroLote === 'Único' || !item.numeroLote ? '-' : item.numeroLote}</td><td style={{ textAlign: 'center', fontWeight: 'bold' }}>{item.numeroItem}</td><td>{item.discriminacao}</td><td style={{ textAlign: 'center' }}>{item.unidade}</td><td style={{ textAlign: 'center' }}>{item.quantidade}</td><td>{item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td style={{ color: '#555', fontWeight: 'bold' }}>{item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>
                 ))}
               </tbody>
             </table>
           </div>
+        ) : (
+          <div className="secao-itens" style={{ marginBottom: '30px', textAlign: 'center', color: '#666' }}><h3 style={{ color: '#004a99' }}>📋 Planilha Original do Contrato</h3><p>Nenhum item original foi importado na criação deste contrato.</p></div>
         )}
 
         {tabelaDeSaldos.length > 0 && (
@@ -302,12 +280,7 @@ export default function DetalhesContrato() {
                   const saldoQtd = linha.qtdContratada - linha.qtdConsumida;
                   const saldoValor = linha.vlContratado - linha.vlConsumido;
                   return (
-                    <tr key={index}>
-                      <td style={{ fontWeight: 'bold' }}>{linha.lote}/{linha.item}</td>
-                      <td className="desc-esquerda">{linha.descricao}</td><td>{linha.unidade}</td><td>{linha.vlUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td>{linha.qtdContratada}</td><td>{linha.vlContratado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                      <td style={{ backgroundColor: '#fffdf5', fontWeight: 'bold', color: '#856404' }}>{linha.qtdConsumida}</td>
-                      <td style={{ backgroundColor: '#f3fbf3', fontWeight: 'bold', color: saldoQtd < 0 ? 'red' : '#2e7d32' }}>{saldoQtd}</td><td style={{ backgroundColor: '#f3fbf3', fontWeight: 'bold', color: saldoValor < 0 ? 'red' : '#2e7d32' }}>{saldoValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                    </tr>
+                    <tr key={index}><td style={{ fontWeight: 'bold' }}>{linha.lote !== 'Único' && linha.lote ? `${linha.lote} / ` : ''}{linha.item}</td><td className="desc-esquerda">{linha.descricao}</td><td>{linha.unidade}</td><td>{linha.vlUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td>{linha.qtdContratada}</td><td>{linha.vlContratado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td style={{ backgroundColor: '#fffdf5', fontWeight: 'bold', color: '#856404' }}>{linha.qtdConsumida}</td><td style={{ backgroundColor: '#f3fbf3', fontWeight: 'bold', color: saldoQtd < 0 ? 'red' : '#2e7d32' }}>{saldoQtd}</td><td style={{ backgroundColor: '#f3fbf3', fontWeight: 'bold', color: saldoValor < 0 ? 'red' : '#2e7d32' }}>{saldoValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>
                   )
                 })}
               </tbody>
@@ -322,10 +295,7 @@ export default function DetalhesContrato() {
             <tbody>
               {itensConsumo.length === 0 ? ( <tr><td colSpan={6} style={{textAlign: 'center'}}>Nenhum empenho/consumo registrado ainda.</td></tr> ) : (
                 itensConsumo.map(item => (
-                  <tr key={item.id}>
-                    <td style={{ fontWeight: 'bold' }}>{item.numeroLote}/{item.numeroItem}</td>
-                    <td>{item.discriminacao}</td><td style={{ textAlign: 'center' }}>{item.quantidade} {item.unidade}</td><td>{item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td style={{ color: '#dc3545', fontWeight: 'bold' }}>{item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td style={{ color: '#666', fontSize: '12px' }}>{item.dataAdicao}</td>
-                  </tr>
+                  <tr key={item.id}><td style={{ fontWeight: 'bold' }}>{item.numeroLote !== 'Único' && item.numeroLote ? `${item.numeroLote} / ` : ''}{item.numeroItem}</td><td>{item.discriminacao}</td><td style={{ textAlign: 'center' }}>{item.quantidade} {item.unidade}</td><td>{item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td style={{ color: '#dc3545', fontWeight: 'bold' }}>{item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td style={{ color: '#666', fontSize: '12px' }}>{item.dataAdicao}</td></tr>
                 ))
               )}
             </tbody>
@@ -333,32 +303,17 @@ export default function DetalhesContrato() {
         </div>
       </main>
 
-      {/* MODAL LANÇAMENTO */}
       {isModalLancamentoOpen && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '800px' }}>
             <h2>Lançar Novo Consumo (Empenho)</h2>
-            <div style={{ margin: '20px 0', textAlign: 'center' }}>
-              <input type="file" accept=".xlsx, .xls, .csv" ref={fileInputRef} onChange={importarPlanilha} style={{ display: 'none' }} id="upload-excel-detalhes" />
-              <label htmlFor="upload-excel-detalhes" style={{ backgroundColor: '#28a745', color: 'white', padding: '15px 30px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', display: 'inline-block' }}>📄 Importar Planilha de Consumo</label>
-              <div style={{ margin: '15px 0', fontWeight: 'bold', color: '#666' }}>OU LANÇAMENTO MANUAL ABAIXO:</div>
-            </div>
-            <form onSubmit={adicionarItem}>
-              <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr 2fr 1fr 1fr 1fr', gap: '5px' }}>
-                <div className="form-group"><input type="text" name="numeroLote" placeholder="Lote" value={formItem.numeroLote} onChange={lidarComMudancaItem} /></div>
-                <div className="form-group"><input type="text" name="numeroItem" placeholder="Nº Item" value={formItem.numeroItem} onChange={lidarComMudancaItem} required /></div>
-                <div className="form-group"><input type="text" name="discriminacao" placeholder="Descrição/Objeto" value={formItem.discriminacao} onChange={lidarComMudancaItem} required /></div>
-                <div className="form-group"><input type="text" name="quantidade" placeholder="Qtd" value={formItem.quantidade} onChange={lidarComMudancaItem} required /></div>
-                <div className="form-group"><input type="text" name="valorUnitario" placeholder="R$ Unit" value={formItem.valorUnitario} onChange={lidarComMudancaItem} required /></div>
-                <button type="submit" style={{ backgroundColor: '#004a99', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }} disabled={loading}>+ Consumir</button>
-              </div>
-            </form>
+            <div style={{ margin: '20px 0', textAlign: 'center' }}><input type="file" accept=".xlsx, .xls, .csv" ref={fileInputRef} onChange={importarPlanilha} style={{ display: 'none' }} id="upload-excel-detalhes" /><label htmlFor="upload-excel-detalhes" style={{ backgroundColor: '#28a745', color: 'white', padding: '15px 30px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', display: 'inline-block' }}>📄 Importar Planilha de Consumo</label><div style={{ margin: '15px 0', fontWeight: 'bold', color: '#666' }}>OU LANÇAMENTO MANUAL ABAIXO:</div></div>
+            <form onSubmit={adicionarItem}><div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr 2fr 1fr 1fr 1fr', gap: '5px' }}><div className="form-group"><input type="text" name="numeroLote" placeholder="Lote" value={formItem.numeroLote} onChange={lidarComMudancaItem} /></div><div className="form-group"><input type="text" name="numeroItem" placeholder="Nº Item" value={formItem.numeroItem} onChange={lidarComMudancaItem} required /></div><div className="form-group"><input type="text" name="discriminacao" placeholder="Descrição/Objeto" value={formItem.discriminacao} onChange={lidarComMudancaItem} required /></div><div className="form-group"><input type="text" name="quantidade" placeholder="Qtd" value={formItem.quantidade} onChange={lidarComMudancaItem} required /></div><div className="form-group"><input type="text" name="valorUnitario" placeholder="R$ Unit" value={formItem.valorUnitario} onChange={lidarComMudancaItem} required /></div><button type="submit" style={{ backgroundColor: '#004a99', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }} disabled={loading}>+ Consumir</button></div></form>
             <div className="modal-acoes"><button className="btn-cancelar" onClick={() => setIsModalLancamentoOpen(false)}>Fechar</button></div>
           </div>
         </div>
       )}
 
-      {/* MODAL EDITAR - CAMPOS SEPARADOS */}
       {isModalEditOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -367,7 +322,20 @@ export default function DetalhesContrato() {
               <div className="form-grid">
                 <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Modalidade (Pregão, Dispensa...)</label><input type="text" name="numeroPregao" value={formEdit.numeroPregao} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group">
+                  <label>Modalidade</label>
+                  <select name="modalidade" required value={formEdit.modalidade} onChange={lidarComMudancaEdit} style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                    <option value="">Selecione...</option>
+                    <option value="Pregão Eletrônico">Pregão Eletrônico</option>
+                    <option value="Dispensa">Dispensa</option>
+                    <option value="Concorrência Eletrônica">Concorrência Eletrônica</option>
+                    <option value="Inexigibilidade">Inexigibilidade</option>
+                    <option value="Edital">Edital</option>
+                    <option value="Credenciamento">Credenciamento</option>
+                    <option value="Chamamento">Chamamento</option>
+                  </select>
+                </div>
+                <div className="form-group"><label>Nº da Licitação</label><input type="text" name="numeroPregao" value={formEdit.numeroPregao} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formEdit.numeroAta} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formEdit.fornecedor} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formEdit.objetoResumido} onChange={lidarComMudancaEdit} /></div>
@@ -378,7 +346,7 @@ export default function DetalhesContrato() {
                 <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formEdit.observacao} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group full-width"><label>Valor Global do Contrato (R$)</label><input type="text" name="valorTotal" required value={formEdit.valorTotal} onChange={lidarComMudancaEdit} style={{ border: '2px solid #ffc107', fontWeight: 'bold' }} /></div>
               </div>
-              <div className="modal-acoes"><button type="button" className="btn-cancelar" onClick={() => setIsModalEditOpen(false)}>Cancelar</button><button type="submit" className="btn-salvar" disabled={loading} style={{ backgroundColor: '#ffc107', color: '#333' }}>{loading ? 'A Guardar...' : 'Salvar Alterações'}</button></div>
+              <div className="modal-acoes"><button type="button" className="btn-cancelar" onClick={() => setIsModalEditOpen(false)}>Cancelar</button><button type="submit" className="btn-salvar" disabled={loading} style={{ backgroundColor: '#ffc107', color: '#333' }}>Salvar Alterações</button></div>
             </form>
           </div>
         </div>

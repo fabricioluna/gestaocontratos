@@ -310,11 +310,9 @@ export default function Painel() {
     img.src = logo;
     img.onload = () => {
       doc.addImage(img, 'PNG', 14, 10, 25, 25);
-      doc.setFontSize(16);
-      doc.setTextColor(0, 74, 153);
+      doc.setFontSize(16); doc.setTextColor(0, 74, 153);
       doc.text(nomeOrgaoFormatado, 45, 20);
-      doc.setFontSize(12);
-      doc.setTextColor(100, 100, 100);
+      doc.setFontSize(12); doc.setTextColor(100, 100, 100);
       doc.text('Relatório Geral de Contratos Ativos', 45, 28);
       doc.setFontSize(10);
       doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 45, 34);
@@ -325,7 +323,7 @@ export default function Painel() {
         body: contratosFiltrados.map(c => [
           c.dataInicio.substring(0, 4),
           c.numeroContrato,
-          `${c.modalidade || '-'} Nº ${c.numeroPregao || '-'}`,
+          `${(c as any).modalidade || '-'} Nº ${c.numeroPregao || '-'}`,
           c.objetoResumido.length > 35 ? c.objetoResumido.substring(0, 32) + '...' : c.objetoResumido,
           c.fornecedor.length > 25 ? c.fornecedor.substring(0, 22) + '...' : c.fornecedor,
           formatarDataBr(c.dataFim),
@@ -437,6 +435,7 @@ export default function Painel() {
         </div>
       </main>
 
+      {/* MODAL NOVO CONTRATO */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
