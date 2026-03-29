@@ -25,8 +25,10 @@ export default function Painel() {
 
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [loading, setLoading] = useState(false);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isModalEditOpen, setIsModalEditOpen] = useState(false);
+
   const [termoBusca, setTermoBusca] = useState('');
 
   const [formData, setFormData] = useState({
@@ -37,8 +39,10 @@ export default function Painel() {
 
   const [formEdit, setFormEdit] = useState<any>({});
   const [contratoEditId, setContratoEditId] = useState<string>('');
+
   const [itensPrevia, setItensPrevia] = useState<any[]>([]);
   const [formItem, setFormItem] = useState({ numeroLote: '', numeroItem: '', discriminacao: '', unidade: '', quantidade: '', valorUnitario: '' });
+
   const [ordenacao, setOrdenacao] = useState<{ campo: string, direcao: 'asc' | 'desc' }>({ campo: 'dataInicio', direcao: 'desc' });
 
   const nomesOrgaos: { [key: string]: string } = {
@@ -76,7 +80,11 @@ export default function Painel() {
   const contratosFiltrados = contratosOrdenados.filter((c) => {
     if (!termoBusca) return true;
     const termo = termoBusca.toLowerCase();
-    return ((c.numeroContrato || '').toLowerCase().includes(termo) || (c.fornecedor || '').toLowerCase().includes(termo) || (c.objetoResumido || '').toLowerCase().includes(termo));
+    return (
+      (c.numeroContrato || '').toLowerCase().includes(termo) ||
+      (c.fornecedor || '').toLowerCase().includes(termo) ||
+      (c.objetoResumido || '').toLowerCase().includes(termo)
+    );
   });
 
   const renderSeta = (campo: string) => {
@@ -84,9 +92,15 @@ export default function Painel() {
     return <span style={{ marginLeft: '5px' }}>{ordenacao.direcao === 'asc' ? '▲' : '▼'}</span>;
   };
 
-  const lidarComMudanca = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { setFormData((prev: any) => ({ ...prev, [e.target.name]: e.target.value })); };
-  const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { setFormEdit((prev: any) => ({ ...prev, [e.target.name]: e.target.value })); };
-  const lidarComMudancaItem = (e: React.ChangeEvent<HTMLInputElement>) => { setFormItem((prev: any) => ({ ...prev, [e.target.name]: e.target.value })); };
+  const lidarComMudanca = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setFormData((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+  const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setFormEdit((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+  const lidarComMudancaItem = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormItem((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
   const formatarTresDigitos = (e: React.FocusEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     if (value && /^\d+$/.test(value)) {
@@ -98,10 +112,12 @@ export default function Painel() {
   const importarContratoArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     setLoading(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
       let textoCompleto = '';
+
       if (file.name.toLowerCase().endsWith('.pdf')) {
         const typedArray = new Uint8Array(arrayBuffer);
         const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
@@ -115,7 +131,9 @@ export default function Painel() {
         const result = await mammoth.extractRawText({ arrayBuffer });
         textoCompleto = result.value;
       }
+
       const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
+
       const dadosIA = await extrairDadosContratoComIA(textoLimpo);
 
       setFormData(prev => ({
@@ -136,15 +154,30 @@ export default function Painel() {
       if (dadosIA.itens && dadosIA.itens.length > 0) {
         setItensPrevia(dadosIA.itens);
         alert(`Gemini AI analisou com sucesso! ${dadosIA.itens.length} itens do catálogo foram perfeitamente importados.`);
-      } else { alert("O Gemini extraiu os dados do contrato, mas não encontrou uma tabela de itens clara."); }
-    } catch (error) { alert("Erro ao processar o documento com a Inteligência Artificial."); } finally { setLoading(false); if (docInputRef.current) docInputRef.current.value = ''; }
+      } else {
+        alert("O Gemini extraiu os dados do contrato, mas não encontrou uma tabela de itens clara.");
+      }
+
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao processar o documento com a Inteligência Artificial. Verifique o console.");
+    } finally {
+      setLoading(false);
+      if (docInputRef.current) docInputRef.current.value = '';
+    }
   };
 
   const adicionarItemPrevia = () => {
     const qtd = parseMoeda(formItem.quantidade);
     const vUnit = parseMoeda(formItem.valorUnitario);
     if (!formItem.discriminacao || qtd <= 0 || vUnit <= 0) return alert("Preencha descrição, quantidade e valor corretamente.");
-    const novoItem = { numeroLote: formItem.numeroLote || 'Único', numeroItem: formItem.numeroItem || String(itensPrevia.length + 1), discriminacao: formItem.discriminacao, unidade: formItem.unidade || 'UND', quantidade: qtd, valorUnitario: vUnit, valorTotalItem: qtd * vUnit };
+    const novoItem = {
+      numeroLote: formItem.numeroLote || 'Único',
+      numeroItem: formItem.numeroItem || String(itensPrevia.length + 1),
+      discriminacao: formItem.discriminacao,
+      unidade: formItem.unidade || 'UND',
+      quantidade: qtd, valorUnitario: vUnit, valorTotalItem: qtd * vUnit
+    };
     setItensPrevia([...itensPrevia, novoItem]);
     const novoTotal = parseMoeda(formData.valorTotal) + novoItem.valorTotalItem;
     setFormData({ ...formData, valorTotal: novoTotal.toFixed(2).replace('.', ',') });
@@ -169,18 +202,24 @@ export default function Painel() {
         const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
         let somaImportacao = 0;
         const novosItens: any[] = [];
+
         data.forEach((row: any) => {
           const linha: any = {};
           for (const key in row) linha[key.trim().toUpperCase()] = row[key];
+          const numeroLote = String(linha['LOTE'] || 'Único'); 
+          const numeroItem = String(linha['ITEM'] || '');
           const discriminacao = String(linha['DESCRIÇÃO'] || linha['DESCRICAO'] || linha['DISCRIMINAÇÃO'] || '');
+          const unidade = String(linha['UNIDADE'] || linha['UND.'] || linha['UND'] || 'UND');
           const quantidade = extrairNumeroPlanilha(linha['QUANTIDADE'] || linha['QTD.'] || linha['QTD']) || 0;
           const valorUnitario = extrairNumeroPlanilha(linha['VALOR UNITÁRIO'] || linha['VALOR UNITARIO'] || linha['VALOR UND.'] || linha['VALOR UND'] || linha['VL. UNIT.'] || linha['VL. UNIT'] || linha['VL UNIT.']) || 0;
           const valorTotalItem = quantidade * valorUnitario;
+
           if (discriminacao && quantidade > 0) {
-            novosItens.push({ numeroLote: String(linha['LOTE'] || 'Único'), numeroItem: String(linha['ITEM'] || ''), discriminacao, unidade: String(linha['UNIDADE'] || linha['UND.'] || linha['UND'] || 'UND'), quantidade, valorUnitario, valorTotalItem });
+            novosItens.push({ numeroLote, numeroItem, discriminacao, unidade, quantidade, valorUnitario, valorTotalItem });
             somaImportacao += valorTotalItem;
           }
         });
+
         if (novosItens.length > 0) {
           setItensPrevia([...itensPrevia, ...novosItens]);
           const novoTotal = parseMoeda(formData.valorTotal) + somaImportacao;
@@ -198,12 +237,24 @@ export default function Painel() {
     try {
       const valorGlobalNum = parseMoeda(formData.valorTotal);
       const dataAtual = new Date().toLocaleString('pt-BR');
-      const contratoRef = await addDoc(collection(db, 'contratos'), { ...formData, orgaoId: orgaoLogado, valorTotal: valorGlobalNum, saldoContrato: valorGlobalNum, dataUltimaAtualizacao: dataAtual });
+
+      const contratoRef = await addDoc(collection(db, 'contratos'), {
+        ...formData,
+        orgaoId: orgaoLogado,
+        valorTotal: valorGlobalNum,
+        saldoContrato: valorGlobalNum,
+        dataUltimaAtualizacao: dataAtual
+      });
+
       if (itensPrevia.length > 0) {
         const batch = writeBatch(db);
-        itensPrevia.forEach(item => { const itemRef = doc(collection(db, 'itens')); batch.set(itemRef, { ...item, contratoId: contratoRef.id, dataAdicao: dataAtual, tipoRegistro: 'catalogo' }); });
+        itensPrevia.forEach(item => {
+          const itemRef = doc(collection(db, 'itens'));
+          batch.set(itemRef, { ...item, contratoId: contratoRef.id, dataAdicao: dataAtual, tipoRegistro: 'catalogo' });
+        });
         await batch.commit();
       }
+
       alert('Contrato e catálogo salvos com sucesso!');
       setIsModalOpen(false);
       setFormData({ numeroContrato: '', numeroProcesso: '', numeroPregao: '', numeroAta: '', fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
@@ -227,7 +278,9 @@ export default function Painel() {
       if(contratoOriginal) {
         const valorJaConsumido = contratoOriginal.valorTotal - contratoOriginal.saldoContrato;
         const novoSaldo = novoValorGlobal - valorJaConsumido;
-        await updateDoc(doc(db, 'contratos', contratoEditId), { ...formEdit, valorTotal: novoValorGlobal, saldoContrato: novoSaldo, dataUltimaAtualizacao: new Date().toLocaleString('pt-BR') });
+        await updateDoc(doc(db, 'contratos', contratoEditId), {
+          ...formEdit, valorTotal: novoValorGlobal, saldoContrato: novoSaldo, dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
+        });
       }
       alert('Contrato atualizado com sucesso!');
       setIsModalEditOpen(false);
@@ -247,7 +300,10 @@ export default function Painel() {
           await batch.commit();
         }
         alert('Contrato excluído com sucesso!');
-      } catch (error) { alert('Erro ao excluir contrato.'); } finally { setLoading(false); }
+      } catch (error) {
+        console.error(error);
+        alert('Erro ao excluir contrato.');
+      } finally { setLoading(false); }
     }
   };
 
@@ -257,6 +313,7 @@ export default function Painel() {
     const hoje = new Date();
     const diferencaTempo = fim.getTime() - hoje.getTime();
     const diasFaltando = Math.ceil(diferencaTempo / (1000 * 3600 * 24));
+
     if (diasFaltando <= 30) return 'critico';
     if (diasFaltando <= 90) return 'alerta';
     return 'normal';
@@ -265,10 +322,10 @@ export default function Painel() {
   const nomeOrgaoFormatado = orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Carregando...';
 
   // ==========================================
-  // NOVO: GERAÇÃO DE RELATÓRIO PDF (LISTA)
+  // GERAÇÃO DE RELATÓRIO PDF (ABRE NO NAVEGADOR)
   // ==========================================
   const gerarPDFContratos = () => {
-    const doc = new jsPDF('landscape'); // Relatório horizontal para caber tabelas
+    const doc = new jsPDF('landscape');
     const img = new Image();
     img.src = logo;
     
@@ -287,28 +344,32 @@ export default function Painel() {
 
       autoTable(doc, {
         startY: 42,
-        head: [['Ano', 'Nº Contrato', 'Objeto', 'Fornecedor', 'Validade', 'Saldo Atual']],
+        head: [['Ano', 'Nº', 'Objeto', 'Fornecedor', 'Validade', 'Valor Total', 'Saldo Atual', 'Fiscal']],
         body: contratosFiltrados.map(c => [
           c.dataInicio.substring(0, 4),
           c.numeroContrato,
-          c.objetoResumido,
-          c.fornecedor,
+          c.objetoResumido.length > 35 ? c.objetoResumido.substring(0, 32) + '...' : c.objetoResumido,
+          c.fornecedor.length > 25 ? c.fornecedor.substring(0, 22) + '...' : c.fornecedor,
           formatarDataBr(c.dataFim),
-          c.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+          c.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+          c.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+          c.fiscalContrato || '-'
         ]),
         theme: 'striped',
         headStyles: { fillColor: [0, 74, 153], textColor: 255, fontStyle: 'bold' },
-        styles: { fontSize: 9, cellPadding: 4 },
+        styles: { fontSize: 8, cellPadding: 3 }, 
         alternateRowStyles: { fillColor: [245, 248, 250] }
       });
 
-      doc.save(`Relatorio_Contratos_${new Date().getTime()}.pdf`);
+      // Em vez de baixar direto, gera um Blob e abre num novo separador
+      const pdfBlob = doc.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      window.open(pdfUrl, '_blank');
     };
   };
 
   return (
     <div className="painel-container">
-      {/* CABEÇALHO PERFEITO COM BOTÃO ESTILOSO */}
       <header className="header">
         <div className="header-logo">
           <img src={logo} alt="Logo PMP" className="logo-pequena" />
@@ -335,11 +396,14 @@ export default function Painel() {
               placeholder="🔍 Buscar por Nº, Fornecedor ou Objeto..." 
               value={termoBusca}
               onChange={(e) => setTermoBusca(e.target.value)}
-              className="input-busca"
+              style={{
+                padding: '10px 15px', borderRadius: '4px', border: '1px solid #ccc', minWidth: '300px',
+                fontSize: '14px', outline: 'none'
+              }}
             />
-            {/* NOVO BOTÃO DE RELATÓRIO PDF */}
-            <button className="btn-secundario" onClick={gerarPDFContratos}>
-              <span style={{ fontSize: '16px' }}>📄</span> Relatório PDF
+            {/* BOTÃO GERAR RELATÓRIO */}
+            <button onClick={gerarPDFContratos} style={{ backgroundColor: 'white', color: '#0f172a', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s ease' }}>
+               <span style={{ fontSize: '16px' }}>📄</span> Gerar Relatório
             </button>
             <button className="btn-novo" onClick={() => setIsModalOpen(true)}>+ Novo Contrato</button>
           </div>
@@ -369,8 +433,13 @@ export default function Painel() {
 
                   let corFundoPrazo = 'transparent';
                   let corTextoPrazo = 'inherit';
-                  if (statusPrazo === 'critico') { corFundoPrazo = '#ffebee'; corTextoPrazo = '#c62828'; } 
-                  else if (statusPrazo === 'alerta') { corFundoPrazo = '#fff8e1'; corTextoPrazo = '#f9a825'; }
+                  if (statusPrazo === 'critico') {
+                    corFundoPrazo = '#ffebee'; 
+                    corTextoPrazo = '#c62828'; 
+                  } else if (statusPrazo === 'alerta') {
+                    corFundoPrazo = '#fff8e1'; 
+                    corTextoPrazo = '#f9a825'; 
+                  }
 
                   return (
                     <tr key={c.id}>
@@ -378,19 +447,24 @@ export default function Painel() {
                       <td style={{ fontWeight: 'bold' }}>{c.numeroContrato}</td>
                       <td>{c.objetoResumido}</td>
                       <td>{c.fornecedor}</td>
+                      
                       <td style={{ fontWeight: 'bold', backgroundColor: corFundoPrazo, color: corTextoPrazo, textAlign: 'center' }}>
                         {formatarDataBr(c.dataFim)}
                         {statusPrazo === 'critico' && <span style={{ display: 'block', fontSize: '11px', marginTop: '4px' }}>🔴 Expira &lt; 30 dias</span>}
                         {statusPrazo === 'alerta' && <span style={{ display: 'block', fontSize: '11px', marginTop: '4px' }}>🟡 Expira &lt; 90 dias</span>}
                       </td>
+
                       <td style={{ fontWeight: 'bold', color: c.saldoContrato < 0 ? 'red' : 'green' }}>
                         {c.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                        {saldoCritico && c.saldoContrato > 0 && <span style={{ display: 'block', fontSize: '11px', color: '#d32f2f', marginTop: '4px' }}>⚠️ Saldo &lt; 30%</span>}
+                        {saldoCritico && c.saldoContrato > 0 && (
+                           <span style={{ display: 'block', fontSize: '11px', color: '#d32f2f', marginTop: '4px' }}>⚠️ Saldo &lt; 30%</span>
+                        )}
                       </td>
+
                       <td style={{ display: 'flex', gap: '5px' }}>
-                        <button className="btn-tabela btn-ver" onClick={() => navigate(`/contrato/${c.id}`)}>Ver Detalhes</button>
-                        <button className="btn-tabela btn-editar-tab" onClick={() => abrirEdicao(c)}>✏️ Editar</button>
-                        <button className="btn-tabela btn-excluir-tab" onClick={() => excluirContrato(c.id!)} disabled={loading}>🗑️ Excluir</button>
+                        <button style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => navigate(`/contrato/${c.id}`)}>Ver Detalhes</button>
+                        <button style={{ backgroundColor: '#ffc107', color: '#333', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => abrirEdicao(c)}>✏️ Editar</button>
+                        <button style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => excluirContrato(c.id!)} disabled={loading}>🗑️ Excluir</button>
                       </td>
                     </tr>
                   )
@@ -401,7 +475,6 @@ export default function Painel() {
         </div>
       </main>
 
-      {/* MODAL NOVO CONTRATO COM AUTO-PREENCHIMENTO MAGICO */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -410,7 +483,7 @@ export default function Painel() {
               <div>
                 <input type="file" accept=".docx, .pdf" ref={docInputRef} onChange={importarContratoArquivo} style={{ display: 'none' }} id="upload-doc" />
                 <label htmlFor="upload-doc" style={{ backgroundColor: '#20c997', color: 'white', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '5px', boxShadow: '0 2px 5px rgba(0,0,0,0.2)' }}>
-                  {loading ? 'A processar IA...' : '✨ Auto-Preencher com IA'}
+                  {loading ? 'A processar IA...' : '✨ Auto-Preencher com IA (Gemini)'}
                 </label>
               </div>
             </div>
@@ -433,6 +506,7 @@ export default function Painel() {
               </div>
 
               <h3 style={{ borderBottom: '1px solid #ddd', paddingBottom: '5px', marginTop: '30px' }}>2. Catálogo de Itens do Contrato (Opcional)</h3>
+              <p style={{ fontSize: '12px', color: '#666' }}>Estes itens formarão o catálogo. Eles <strong>não consumirão o saldo inicial</strong>.</p>
               <div className="secao-itens-modal">
                 <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr 2fr 1fr 1fr 1fr', gap: '5px' }}>
                   <div className="form-group"><input type="text" name="numeroLote" placeholder="Lote" value={formItem.numeroLote} onChange={lidarComMudancaItem} /></div>
@@ -464,6 +538,7 @@ export default function Painel() {
                   </table>
                 </div>
               )}
+
               <div className="modal-acoes">
                 <button type="button" className="btn-cancelar" onClick={() => { setIsModalOpen(false); setItensPrevia([]); }}>Cancelar</button>
                 <button type="submit" className="btn-salvar" disabled={loading}>{loading ? 'A Guardar...' : 'Salvar Contrato'}</button>
@@ -490,7 +565,7 @@ export default function Painel() {
                 <div className="form-group"><label>Data Fim (Validade)</label><input type="date" name="dataFim" required value={formEdit.dataFim} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group"><label>Fiscal do Contrato</label><input type="text" name="fiscalContrato" value={formEdit.fiscalContrato} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formEdit.observacao} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group full-width"><label>Valor Global (R$)</label><input type="text" name="valorTotal" required value={formEdit.valorTotal} onChange={lidarComMudancaEdit} style={{ border: '2px solid #ffc107', fontWeight: 'bold' }} /></div>
+                <div className="form-group full-width"><label>Valor Global do Contrato (R$)</label><input type="text" name="valorTotal" required value={formEdit.valorTotal} onChange={lidarComMudancaEdit} style={{ border: '2px solid #ffc107', fontWeight: 'bold' }} /></div>
               </div>
               <div className="modal-acoes"><button type="button" className="btn-cancelar" onClick={() => setIsModalEditOpen(false)}>Cancelar</button><button type="submit" className="btn-salvar" disabled={loading} style={{ backgroundColor: '#ffc107', color: '#333' }}>{loading ? 'A Guardar...' : 'Salvar Alterações'}</button></div>
             </form>
