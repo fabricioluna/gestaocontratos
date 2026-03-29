@@ -3,60 +3,63 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
-if (!API_KEY) {
-  console.error("ALERTA: Chave da API do Gemini não encontrada no arquivo .env");
-}
-
-const genAI = new GoogleGenerativeAI(API_KEY || '');
-const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-
 export const extrairDadosContratoComIA = async (textoDoContrato: string) => {
-  try {
-    const prompt = `
-      Você é um auditor especialista em contratos públicos e licitações.
-      Leia o texto do contrato abaixo e extraia as informações rigorosamente no formato JSON.
-      NÃO adicione crases (\`\`\`), markdown ou qualquer texto fora do JSON. Devolva APENAS o objeto JSON.
+  if (!API_KEY) throw new Error("Chave da API não encontrada.");
 
-      ESTRUTURA ESPERADA:
+  try {
+    const genAI = new GoogleGenerativeAI(API_KEY);
+    
+    // Atualizado para o modelo gemini-2.0-flash que está disponível no seu projeto
+    // Ativamos o modo JSON nativo (responseMimeType)
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-2.0-flash',
+      generationConfig: {
+        responseMimeType: "application/json",
+      }
+    });
+
+    const prompt = `
+      Você é um auditor especialista em licitações. Analise o texto do contrato e extraia os dados para JSON.
+      
+      IMPORTANTE PARA "modalidade":
+      Classifique obrigatoriamente como: "Pregão Eletrônico", "Dispensa", "Concorrência Eletrônica", "Inexigibilidade", "Edital", "Credenciamento" ou "Chamamento".
+
+      Estrutura JSON:
       {
-        "numeroContrato": "string apenas com números (ex: '015')",
-        "numeroProcesso": "string apenas com números",
-        "numeroPregao": "string apenas com números (deixe vazio se não houver)",
-        "numeroAta": "string apenas com números (deixe vazio se não houver)",
-        "fornecedor": "Nome da empresa (sem CNPJ, sede ou 'A PREFEITURA...')",
-        "objetoCompleto": "Frase completa do objeto do contrato, capitalizada corretamente, sem lixo jurídico. Retire textos repetitivos no início.",
-        "objetoResumido": "Versão curta do objeto",
-        "dataInicio": "Data de assinatura no formato YYYY-MM-DD",
-        "dataFim": "Data de vigência no formato YYYY-MM-DD",
-        "fiscalContrato": "Nome do fiscal do contrato (sem CPF)",
-        "valorTotal": numero float do valor global (ex: 406144.78),
+        "numeroContrato": "string",
+        "numeroProcesso": "string",
+        "modalidade": "string",
+        "numeroPregao": "string",
+        "numeroAta": "string",
+        "fornecedor": "string",
+        "objetoCompleto": "string",
+        "objetoResumido": "string",
+        "dataInicio": "YYYY-MM-DD",
+        "dataFim": "YYYY-MM-DD",
+        "fiscalContrato": "string",
+        "valorTotal": number,
         "itens": [
           {
-            "numeroLote": "string (ex: '1' ou 'Único')",
+            "numeroLote": "string",
             "numeroItem": "string",
-            "discriminacao": "descrição limpa do produto/serviço sem números e letras perdidas no final",
-            "unidade": "string da unidade (ex: UND, MÊS, SERVIÇO, DIÁRIA, LOCAÇÃO)",
-            "quantidade": numero float,
-            "valorUnitario": numero float,
-            "valorTotalItem": numero float
+            "discriminacao": "string",
+            "unidade": "string",
+            "quantidade": number,
+            "valorUnitario": number,
+            "valorTotalItem": number
           }
         ]
       }
 
-      TEXTO DO CONTRATO:
-      ${textoDoContrato}
+      Texto do contrato: ${textoDoContrato}
     `;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    let text = response.text();
-    
-    // Limpa a resposta para garantir que o JSON é válido
-    text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-    
-    return JSON.parse(text);
-  } catch (error) {
-    console.error("Erro na Inteligência Artificial:", error);
-    throw new Error("Falha ao analisar documento com IA.");
+    return JSON.parse(response.text());
+
+  } catch (error: any) {
+    console.error("Erro no serviço Gemini:", error);
+    throw new Error("Falha ao analisar documento. Verifique a conexão com a API.");
   }
 };
