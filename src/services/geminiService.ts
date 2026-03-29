@@ -3,45 +3,52 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
-if (!API_KEY) {
-  console.error("ALERTA: Chave da API do Gemini não encontrada no arquivo .env");
-}
-
 export const extrairDadosContratoComIA = async (textoDoContrato: string) => {
+  if (!API_KEY) {
+    throw new Error("ALERTA: Chave da API do Gemini não encontrada no arquivo .env");
+  }
+
   try {
-    const genAI = new GoogleGenerativeAI(API_KEY || '');
-    // Alterado para gemini-1.5-flash que é o modelo estável e disponível
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const genAI = new GoogleGenerativeAI(API_KEY);
+    
+    // Configuração Profissional: 
+    // 1. Usamos o modelo 1.5-flash (estável)
+    // 2. Forçamos o responseMimeType para JSON, eliminando erros de crases/markdown
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-1.5-flash',
+      generationConfig: {
+        responseMimeType: "application/json",
+      }
+    });
 
     const prompt = `
-      Você é um auditor especialista em contratos públicos e licitações.
-      Leia o texto do contrato abaixo e extraia as informações rigorosamente no formato JSON.
-      NÃO adicione crases (\`\`\`), markdown ou qualquer texto fora do JSON. Devolva APENAS o objeto JSON puro.
+      Você é um auditor especialista em contratos públicos e licitações brasileiras.
+      Analise o texto do contrato administrativo fornecido e extraia as informações estritamente no formato JSON.
 
-      IMPORTANTE PARA O CAMPO "modalidade":
-      Analise o texto e classifique a modalidade EXATAMENTE como um destes termos: 
+      REGRAS PARA O CAMPO "modalidade":
+      Você deve identificar no texto qual foi o formato de contratação e classificar EXATAMENTE como um destes termos: 
       "Pregão Eletrônico", "Dispensa", "Concorrência Eletrônica", "Inexigibilidade", "Edital", "Credenciamento" ou "Chamamento".
 
-      ESTRUTURA ESPERADA:
+      ESTRUTURA JSON ESPERADA:
       {
-        "numeroContrato": "string apenas com números (ex: '015')",
+        "numeroContrato": "string apenas com números",
         "numeroProcesso": "string apenas com números",
-        "modalidade": "string (classifique obrigatoriamente conforme as opções acima)",
+        "modalidade": "string (conforme as opções acima)",
         "numeroPregao": "string apenas com números (número da licitação/pregao)",
         "numeroAta": "string apenas com números (deixe vazio se não houver)",
-        "fornecedor": "Nome da empresa (sem CNPJ, sede ou 'A PREFEITURA...')",
-        "objetoCompleto": "Frase completa do objeto do contrato, capitalizada corretamente, sem lixo jurídico. Retire textos repetitivos no início.",
-        "objetoResumido": "Versão curta do objeto",
-        "dataInicio": "YYYY-MM-DD",
-        "dataFim": "YYYY-MM-DD",
-        "fiscalContrato": "Nome do fiscal do contrato (sem CPF)",
-        "valorTotal": numero float do valor global (ex: 406144.78),
+        "fornecedor": "Nome da empresa (sem CNPJ ou textos jurídicos)",
+        "objetoCompleto": "Frase completa do objeto do contrato",
+        "objetoResumido": "Versão curta do objeto (máximo 60 caracteres)",
+        "dataInicio": "Data de assinatura YYYY-MM-DD",
+        "dataFim": "Data de vigência YYYY-MM-DD",
+        "fiscalContrato": "Nome do fiscal (sem CPF)",
+        "valorTotal": numero float,
         "itens": [
           {
-            "numeroLote": "string (ex: '1' ou 'Único')",
+            "numeroLote": "string",
             "numeroItem": "string",
             "discriminacao": "descrição limpa do produto/serviço",
-            "unidade": "string da unidade (ex: UND, MÊS, SERVIÇO, DIÁRIA, LOCAÇÃO)",
+            "unidade": "string (ex: UND, MÊS, SERVIÇO)",
             "quantidade": numero float,
             "valorUnitario": numero float,
             "valorTotalItem": numero float
@@ -55,14 +62,19 @@ export const extrairDadosContratoComIA = async (textoDoContrato: string) => {
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    let text = response.text();
+    const text = response.text();
     
-    // Limpeza de resposta para garantir que o JSON é válido
-    text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-    
+    // Como configuramos o model para JSON, o parse é direto e seguro
     return JSON.parse(text);
-  } catch (error) {
-    console.error("Erro na Inteligência Artificial:", error);
+
+  } catch (error: any) {
+    console.error("Erro detalhado na IA:", error);
+    
+    // Tratamento específico para o erro 404 que você está enfrentando
+    if (error.message?.includes('404')) {
+      throw new Error("Erro 404: O modelo não foi encontrado. Por favor, verifique se a 'Generative Language API' está ativada no Google Cloud Console para o projeto da sua chave.");
+    }
+    
     throw new Error("Falha ao analisar documento com IA.");
   }
 };
