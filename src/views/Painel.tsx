@@ -52,7 +52,7 @@ export default function Painel() {
     'fms': 'Fundo Municipal de Saúde (FMS)'
   };
 
-  // --- NOVA FUNCIONALIDADE: FECHAR COM ESC ---
+  // --- MELHORIA UX: FECHAR COM ESC ---
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -101,6 +101,19 @@ export default function Painel() {
     );
   });
 
+  // --- LÓGICA DE CORES POR VENCIMENTO ---
+  const getRowStyle = (dataFim: string) => {
+    if (!dataFim) return {};
+    const hoje = new Date();
+    const vencimento = new Date(dataFim);
+    const diffEmMilissegundos = vencimento.getTime() - hoje.getTime();
+    const diffEmDias = Math.ceil(diffEmMilissegundos / (1000 * 60 * 60 * 24));
+
+    if (diffEmDias <= 30) return { backgroundColor: '#ffd5d5', color: '#900' }; // Vermelho (< 1 mês)
+    if (diffEmDias <= 90) return { backgroundColor: '#fff9c4', color: '#856404' }; // Amarelo (< 3 meses)
+    return {};
+  };
+
   const renderSeta = (campo: string) => {
     if (ordenacao.campo !== campo) return <span style={{ color: '#ccc', marginLeft: '5px' }}>↕</span>;
     return <span style={{ marginLeft: '5px' }}>{ordenacao.direcao === 'asc' ? '▲' : '▼'}</span>;
@@ -115,8 +128,10 @@ export default function Painel() {
   const lidarComMudancaItem = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormItem((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
   };
+  
   const formatarTresDigitos = (e: React.FocusEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
+    // Só formata se for apenas números. Se tiver "/" (ex: 001/2024), respeita o que o usuário digitou.
     if (value && /^\d+$/.test(value)) {
       setFormData((prev: any) => ({ ...prev, [name]: value.padStart(3, '0') }));
       if (isModalEditOpen) setFormEdit((prev: any) => ({ ...prev, [name]: value.padStart(3, '0') }));
@@ -203,13 +218,11 @@ export default function Painel() {
       }));
       if (dadosIA.itens && dadosIA.itens.length > 0) {
         setItensPrevia(dadosIA.itens);
-        alert(`Gemini AI analisou com sucesso! ${dadosIA.itens.length} itens do catálogo foram perfeitamente importados.`);
-      } else {
-        alert("O Gemini extraiu os dados do contrato, mas não encontrou uma tabela de itens clara.");
+        alert(`Gemini AI analisou com sucesso! ${dadosIA.itens.length} itens do catálogo importados.`);
       }
     } catch (error) {
       console.error(error);
-      alert("Erro ao processar o documento com a Inteligência Artificial. Verifique o console.");
+      alert("Erro ao processar o documento com a IA.");
     } finally {
       setLoading(false);
       if (docInputRef.current) docInputRef.current.value = '';
@@ -256,10 +269,10 @@ export default function Painel() {
           for (const key in row) linha[key.trim().toUpperCase()] = row[key];
           const numeroLote = String(linha['LOTE'] || 'Único'); 
           const numeroItem = String(linha['ITEM'] || '');
-          const discriminacao = String(linha['DESCRIÇÃO'] || linha['DESCRICAO'] || linha['DISCRIMINAÇÃO'] || '');
-          const unidade = String(linha['UNIDADE'] || linha['UND.'] || linha['UND'] || 'UND');
-          const quantidade = extrairNumeroPlanilha(linha['QUANTIDADE'] || linha['QTD.'] || linha['QTD']) || 0;
-          const valorUnitario = extrairNumeroPlanilha(linha['VALOR UNITÁRIO'] || linha['VALOR UNITARIO'] || linha['VALOR UND.'] || linha['VALOR UND'] || linha['VL. UNIT.'] || linha['VL. UNIT'] || linha['VL UNIT.']) || 0;
+          const discriminacao = String(linha['DESCRIÇÃO'] || linha['DESCRICAO'] || '');
+          const unidade = String(linha['UNIDADE'] || 'UND');
+          const quantidade = extrairNumeroPlanilha(linha['QUANTIDADE'] || 0);
+          const valorUnitario = extrairNumeroPlanilha(linha['VALOR UNITÁRIO'] || 0);
           const valorTotalItem = quantidade * valorUnitario;
           if (discriminacao && quantidade > 0) {
             novosItens.push({ numeroLote, numeroItem, discriminacao, unidade, quantidade, valorUnitario, valorTotalItem });
@@ -271,7 +284,7 @@ export default function Painel() {
           const novoTotal = parseMoeda(formData.valorTotal) + somaImportacao;
           setFormData({ ...formData, valorTotal: novoTotal.toFixed(2).replace('.', ',') });
           alert(`${novosItens.length} itens carregados no catálogo!`);
-        } else { alert('Nenhum item válido encontrado.'); }
+        }
       } catch (error) { alert("Erro ao ler planilha."); } finally { if (fileInputRef.current) fileInputRef.current.value = ''; }
     };
     reader.readAsBinaryString(file);
@@ -336,7 +349,7 @@ export default function Painel() {
   };
 
   const excluirContrato = async (contratoId: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este contrato e todos os itens vinculados a ele? Esta ação não pode ser desfeita.')) {
+    if (window.confirm('Tem certeza que deseja excluir este contrato e todos os itens vinculados?')) {
       setLoading(true);
       try {
         await deleteDoc(doc(db, 'contratos', contratoId));
@@ -360,17 +373,11 @@ export default function Painel() {
       <header className="header">
         <div className="header-logo">
           <img src={logo} alt="Logo PMP" className="logo-pequena" />
-          <h2 title={orgaoLogado ? nomesOrgaos[orgaoLogado] : ''}>
-            {orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Carregando...'}
-          </h2>
+          <h2 title={orgaoLogado ? nomesOrgaos[orgaoLogado] : ''}>{orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Carregando...'}</h2>
         </div>
         <button className="btn-sair" onClick={() => { sessionStorage.clear(); navigate('/'); }} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           Sair
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-            <polyline points="16 17 21 12 16 7"></polyline>
-            <line x1="21" y1="12" x2="9" y2="12"></line>
-          </svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
         </button>
       </header>
 
@@ -382,10 +389,10 @@ export default function Painel() {
             <input type="text" placeholder="Buscar por Nº do Contrato, Fornecedor, Objeto ou Fiscal..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} style={{ width: '100%', padding: '10px 14px 10px 40px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#334155', fontSize: '14px', outline: 'none', transition: 'all 0.2s ease', boxSizing: 'border-box' }} onFocus={(e) => { e.target.style.borderColor = '#3b82f6'; e.target.style.backgroundColor = '#ffffff'; e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)'; }} onBlur={(e) => { e.target.style.borderColor = '#cbd5e1'; e.target.style.backgroundColor = '#f8fafc'; e.target.style.boxShadow = 'none'; }} />
           </div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <button onClick={gerarRelatorioPDF} style={{ backgroundColor: '#ffffff', color: '#475569', padding: '8px 16px', borderRadius: '6px', border: '1px solid #cbd5e1', cursor: 'pointer', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }} onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }} onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#ffffff'; e.currentTarget.style.color = '#475569'; }}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> Gerar Relatório
+            <button onClick={gerarRelatorioPDF} style={{ backgroundColor: '#ffffff', color: '#475569', padding: '8px 16px', borderRadius: '6px', border: '1px solid #cbd5e1', cursor: 'pointer', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> Relatório
             </button>
-            <button onClick={() => setIsModalOpen(true)} style={{ backgroundColor: '#2563eb', color: '#ffffff', padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '500', boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)', transition: 'background-color 0.2s ease', whiteSpace: 'nowrap' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}>
+            <button onClick={() => setIsModalOpen(true)} style={{ backgroundColor: '#2563eb', color: '#ffffff', padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '500', boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)', transition: 'background-color 0.2s ease', whiteSpace: 'nowrap' }}>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Novo Contrato
             </button>
           </div>
@@ -406,50 +413,58 @@ export default function Painel() {
           </thead>
           <tbody>
             {contratosFiltrados.length === 0 ? (
-              <tr><td colSpan={8} style={{ textAlign: 'center' }}>{termoBusca ? 'Nenhum contrato encontrado para essa busca.' : 'Nenhum contrato cadastrado.'}</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: 'center' }}>{termoBusca ? 'Nenhum contrato encontrado.' : 'Nenhum contrato cadastrado.'}</td></tr>
             ) : (
-              contratosFiltrados.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.dataInicio.substring(0, 4)}</td>
-                  <td>{c.numeroContrato}</td>
-                  <td>{c.objetoResumido}</td>
-                  <td>{c.fornecedor}</td>
-                  <td style={{ fontWeight: 'bold' }}>{formatarDataBr(c.dataFim)}</td>
-                  <td style={{ fontWeight: 'bold', color: c.saldoContrato < 0 ? 'red' : 'green' }}>
-                    {c.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                  </td>
-                  <td>{c.dataUltimaAtualizacao || 'N/A'}</td>
-                  <td style={{ display: 'flex', gap: '5px' }}>
-                    <button style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => navigate(`/contrato/${c.id}`)}>Ver Detalhes</button>
-                    <button style={{ backgroundColor: '#ffc107', color: '#333', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => abrirEdicao(c)}>✏️ Editar</button>
-                    <button style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => excluirContrato(c.id!)} disabled={loading}>🗑️ Excluir</button>
-                  </td>
-                </tr>
-              ))
+              contratosFiltrados.map((c) => {
+                const styleVencimento = getRowStyle(c.dataFim);
+                const percentualSaldo = (c.saldoContrato / c.valorTotal);
+                const alertaSaldo = percentualSaldo < 0.3;
+
+                return (
+                  <tr key={c.id} style={styleVencimento}>
+                    <td>{c.dataInicio.substring(0, 4)}</td>
+                    <td>{c.numeroContrato}</td>
+                    <td>{c.objetoResumido}</td>
+                    <td>{c.fornecedor}</td>
+                    <td style={{ fontWeight: 'bold' }}>{formatarDataBr(c.dataFim)}</td>
+                    <td style={{ 
+                      fontWeight: 'bold', 
+                      color: alertaSaldo ? '#e65100' : (c.saldoContrato < 0 ? 'red' : 'green') 
+                    }}>
+                      {alertaSaldo && <span title="Saldo menor que 30%">⚠️ </span>}
+                      {c.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </td>
+                    <td>{c.dataUltimaAtualizacao || 'N/A'}</td>
+                    <td style={{ display: 'flex', gap: '5px' }}>
+                      <button style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => navigate(`/contrato/${c.id}`)}>Detalhes</button>
+                      <button style={{ backgroundColor: '#ffc107', color: '#333', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => abrirEdicao(c)}>✏️ Editar</button>
+                      <button style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }} onClick={() => excluirContrato(c.id!)} disabled={loading}>🗑️ Excluir</button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </main>
 
-      {/* --- MODAL NOVO CONTRATO (COM OVERLAY CLICÁVEL) --- */}
+      {/* --- MODAL NOVO CONTRATO --- */}
       {isModalOpen && (
         <div className="modal-overlay" onClick={() => { setIsModalOpen(false); setItensPrevia([]); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #ddd', paddingBottom: '10px', marginBottom: '15px' }}>
               <h2 style={{ margin: 0 }}>Cadastrar Novo Contrato</h2>
-              <div>
+              <label htmlFor="upload-doc" style={{ backgroundColor: '#20c997', color: 'white', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}>
+                {loading ? 'Processando...' : '✨ Gemini IA Auto-Preencher'}
                 <input type="file" accept=".docx, .pdf" ref={docInputRef} onChange={importarContratoArquivo} style={{ display: 'none' }} id="upload-doc" />
-                <label htmlFor="upload-doc" style={{ backgroundColor: '#20c997', color: 'white', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '5px', boxShadow: '0 2px 5px rgba(0,0,0,0.2)' }}>
-                  {loading ? 'A processar IA...' : '✨ Auto-Preencher com IA (Gemini)'}
-                </label>
-              </div>
+              </label>
             </div>
             
             <form onSubmit={salvarContratoCompleto}>
               <h3 style={{ color: '#555', marginTop: 0 }}>1. Dados Gerais</h3>
               <div className="form-grid">
                 <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formData.numeroContrato} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
-                <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formData.numeroProcesso} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
+                <div className="form-group"><label>Nº/Ano Processo</label><input type="text" name="numeroProcesso" required value={formData.numeroProcesso} onChange={lidarComMudanca} placeholder="000/0000" /></div>
                 
                 <div className="form-group">
                   <label>Modalidade</label>
@@ -462,9 +477,8 @@ export default function Painel() {
                     <option value="Credenciamento">Credenciamento</option>
                   </select>
                 </div>
-                <div className="form-group"><label>Nº da Modalidade</label><input type="text" name="numeroModalidade" value={formData.numeroModalidade} onChange={lidarComMudanca} onBlur={formatarTresDigitos} placeholder="Ex: 001/2024" /></div>
-
-                <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formData.numeroAta} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
+                <div className="form-group"><label>Nº/Ano Modalidade</label><input type="text" name="numeroModalidade" value={formData.numeroModalidade} onChange={lidarComMudanca} placeholder="000/0000" /></div>
+                <div className="form-group"><label>Nº/Ano da Ata (Se houver)</label><input type="text" name="numeroAta" value={formData.numeroAta} onChange={lidarComMudanca} placeholder="000/0000" /></div>
                 <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formData.fornecedor} onChange={lidarComMudanca} /></div>
                 <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formData.objetoResumido} onChange={lidarComMudanca} /></div>
                 <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formData.objetoCompleto} onChange={lidarComMudanca}></textarea></div>
@@ -474,23 +488,19 @@ export default function Painel() {
                 <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formData.observacao} onChange={lidarComMudanca} /></div>
                 <div className="form-group full-width"><label style={{ color: '#004a99', fontSize: '15px' }}>Valor Global do Contrato (R$)</label><input type="text" name="valorTotal" required value={formData.valorTotal} onChange={lidarComMudanca} style={{ border: '2px solid #004a99', fontWeight: 'bold' }} /></div>
               </div>
-
               <h3 style={{ borderBottom: '1px solid #ddd', paddingBottom: '5px', marginTop: '30px' }}>2. Catálogo de Itens do Contrato (Opcional)</h3>
-              <p style={{ fontSize: '12px', color: '#666' }}>Estes itens formarão o catálogo. Eles <strong>não consumirão o saldo inicial</strong>.</p>
               <div className="secao-itens-modal">
                 <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr 2fr 1fr 1fr 1fr', gap: '5px' }}>
-                  <div className="form-group"><input type="text" name="numeroLote" placeholder="Lote" value={formItem.numeroLote} onChange={lidarComMudancaItem} /></div>
-                  <div className="form-group"><input type="text" name="numeroItem" placeholder="Nº Item" value={formItem.numeroItem} onChange={lidarComMudancaItem} /></div>
-                  <div className="form-group"><input type="text" name="discriminacao" placeholder="Descrição" value={formItem.discriminacao} onChange={lidarComMudancaItem} /></div>
-                  <div className="form-group"><input type="text" name="quantidade" placeholder="Qtd" value={formItem.quantidade} onChange={lidarComMudancaItem} /></div>
-                  <div className="form-group"><input type="text" name="valorUnitario" placeholder="R$ Unit" value={formItem.valorUnitario} onChange={lidarComMudancaItem} /></div>
+                  <input type="text" name="numeroLote" placeholder="Lote" value={formItem.numeroLote} onChange={lidarComMudancaItem} />
+                  <input type="text" name="numeroItem" placeholder="Nº Item" value={formItem.numeroItem} onChange={lidarComMudancaItem} />
+                  <input type="text" name="discriminacao" placeholder="Descrição" value={formItem.discriminacao} onChange={lidarComMudancaItem} />
+                  <input type="text" name="quantidade" placeholder="Qtd" value={formItem.quantidade} onChange={lidarComMudancaItem} />
+                  <input type="text" name="valorUnitario" placeholder="R$ Unit" value={formItem.valorUnitario} onChange={lidarComMudancaItem} />
                   <button type="button" onClick={adicionarItemPrevia} style={{ backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>+ Add</button>
                 </div>
                 <div style={{ margin: '15px 0', textAlign: 'center' }}><strong>OU</strong></div>
-                <input type="file" accept=".xlsx" ref={fileInputRef} onChange={importarPlanilhaPrevia} style={{ display: 'none' }} id="upload-previa" />
-                <label htmlFor="upload-previa" style={{ display: 'block', textAlign: 'center', backgroundColor: '#28a745', color: 'white', padding: '10px', borderRadius: '4px', cursor: 'pointer' }}>📄 Importar Catálogo do Excel</label>
+                <label htmlFor="upload-previa" style={{ display: 'block', textAlign: 'center', backgroundColor: '#28a745', color: 'white', padding: '10px', borderRadius: '4px', cursor: 'pointer' }}>📄 Importar Excel <input type="file" accept=".xlsx" ref={fileInputRef} onChange={importarPlanilhaPrevia} style={{ display: 'none' }} id="upload-previa" /></label>
               </div>
-
               {itensPrevia.length > 0 && (
                 <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '20px' }}>
                   <table className="tabela-previa">
@@ -508,29 +518,27 @@ export default function Painel() {
                   </table>
                 </div>
               )}
-
               <div className="modal-acoes">
                 <button type="button" className="btn-cancelar" onClick={() => { setIsModalOpen(false); setItensPrevia([]); }}>Cancelar</button>
-                <button type="submit" className="btn-salvar" disabled={loading}>{loading ? 'A Guardar...' : 'Salvar Contrato'}</button>
+                <button type="submit" className="btn-salvar" disabled={loading}>{loading ? 'Salvando...' : 'Salvar Contrato'}</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* --- MODAL EDITAR CONTRATO (COM OVERLAY CLICÁVEL) --- */}
+      {/* MODAL EDITAR CONTRATO */}
       {isModalEditOpen && (
         <div className="modal-overlay" onClick={() => setIsModalEditOpen(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h2>Editar Dados do Contrato</h2>
             <form onSubmit={salvarEdicaoContrato}>
               <div className="form-grid">
-                <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
-                <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
-                
+                <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato || ''} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
+                <div className="form-group"><label>Nº/Ano Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso || ''} onChange={lidarComMudancaEdit} placeholder="000/0000" /></div>
                 <div className="form-group">
                   <label>Modalidade</label>
-                  <select name="modalidade" value={formEdit.modalidade} onChange={lidarComMudancaEdit} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
+                  <select name="modalidade" value={formEdit.modalidade || ''} onChange={lidarComMudancaEdit} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
                     <option value="">Selecione...</option>
                     <option value="Pregão">Pregão</option>
                     <option value="Concorrência">Concorrência</option>
@@ -539,19 +547,18 @@ export default function Painel() {
                     <option value="Credenciamento">Credenciamento</option>
                   </select>
                 </div>
-                <div className="form-group"><label>Nº da Modalidade</label><input type="text" name="numeroModalidade" value={formEdit.numeroModalidade} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
-
-                <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formEdit.numeroAta} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
-                <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formEdit.fornecedor} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formEdit.objetoResumido} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formEdit.objetoCompleto} onChange={lidarComMudancaEdit}></textarea></div>
-                <div className="form-group"><label>Data Início</label><input type="date" name="dataInicio" required value={formEdit.dataInicio} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Data Fim (Validade)</label><input type="date" name="dataFim" required value={formEdit.dataFim} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Fiscal do Contrato</label><input type="text" name="fiscalContrato" value={formEdit.fiscalContrato} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formEdit.observacao} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group full-width"><label>Valor Global do Contrato (R$)</label><input type="text" name="valorTotal" required value={formEdit.valorTotal} onChange={lidarComMudancaEdit} style={{ border: '2px solid #ffc107', fontWeight: 'bold' }} /></div>
+                <div className="form-group"><label>Nº/Ano Modalidade</label><input type="text" name="numeroModalidade" value={formEdit.numeroModalidade || ''} onChange={lidarComMudancaEdit} placeholder="000/0000" /></div>
+                <div className="form-group"><label>Nº/Ano da Ata</label><input type="text" name="numeroAta" value={formEdit.numeroAta || ''} onChange={lidarComMudancaEdit} placeholder="000/0000" /></div>
+                <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formEdit.fornecedor || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formEdit.objetoResumido || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formEdit.objetoCompleto || ''} onChange={lidarComMudancaEdit}></textarea></div>
+                <div className="form-group"><label>Data Início</label><input type="date" name="dataInicio" required value={formEdit.dataInicio || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group"><label>Data Fim (Validade)</label><input type="date" name="dataFim" required value={formEdit.dataFim || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group"><label>Fiscal do Contrato</label><input type="text" name="fiscalContrato" value={formEdit.fiscalContrato || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formEdit.observacao || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group full-width"><label>Valor Global (R$)</label><input type="text" name="valorTotal" required value={formEdit.valorTotal || ''} onChange={lidarComMudancaEdit} style={{ border: '2px solid #ffc107', fontWeight: 'bold' }} /></div>
               </div>
-              <div className="modal-acoes"><button type="button" className="btn-cancelar" onClick={() => setIsModalEditOpen(false)}>Cancelar</button><button type="submit" className="btn-salvar" disabled={loading} style={{ backgroundColor: '#ffc107', color: '#333' }}>{loading ? 'A Guardar...' : 'Salvar Alterações'}</button></div>
+              <div className="modal-acoes"><button type="button" className="btn-cancelar" onClick={() => setIsModalEditOpen(false)}>Cancelar</button><button type="submit" className="btn-salvar" disabled={loading} style={{ backgroundColor: '#ffc107', color: '#333' }}>{loading ? 'Salvando...' : 'Salvar Alterações'}</button></div>
             </form>
           </div>
         </div>
