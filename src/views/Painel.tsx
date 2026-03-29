@@ -27,7 +27,9 @@ export default function Painel() {
   const [contratoParaEditar, setContratoParaEditar] = useState<Contrato | null>(null);
   
   const [termoBusca, setTermoBusca] = useState('');
-  const [ordenacao, setOrdenacao] = useState<{ campo: string, direcao: 'asc' | 'desc' }>({ campo: 'dataInicio', direcao: 'desc' });
+  
+  // Como removemos a coluna "Ano" (que ordenava por dataInicio), o padrão inicial passa a ser numeroContrato
+  const [ordenacao, setOrdenacao] = useState<{ campo: string, direcao: 'asc' | 'desc' }>({ campo: 'numeroContrato', direcao: 'desc' });
 
   const nomesOrgaos: { [key: string]: string } = {
     'prefeitura': 'Prefeitura Municipal de Pesqueira',
@@ -64,11 +66,47 @@ export default function Painel() {
     setOrdenacao(prev => ({ campo, direcao: prev.campo === campo && prev.direcao === 'asc' ? 'desc' : 'asc' }));
   };
 
+  // --- ORDENAÇÃO INTELIGENTE ---
   const contratosOrdenados = [...contratos].sort((a, b) => {
+    
+    // Regra Específica para a coluna "Nº Contrato" (Smart Sort)
+    if (ordenacao.campo === 'numeroContrato') {
+      const extrairAnoNumero = (c: Contrato) => {
+        const numStr = c.numeroContrato || '';
+        const partes = numStr.split('/');
+        
+        let numero = 0;
+        let ano = 0;
+        
+        if (partes.length > 0) {
+          numero = parseInt(partes[0].replace(/\D/g, ''), 10) || 0;
+        }
+        
+        if (partes.length > 1 && partes[1].replace(/\D/g, '').length >= 4) {
+          ano = parseInt(partes[1].replace(/\D/g, '').substring(0, 4), 10) || 0;
+        } else {
+          if (c.dataInicio) {
+            ano = parseInt(c.dataInicio.substring(0, 4), 10) || 0;
+          }
+        }
+        return { ano, numero };
+      };
+
+      const valA = extrairAnoNumero(a);
+      const valB = extrairAnoNumero(b);
+
+      if (valA.ano !== valB.ano) {
+        return ordenacao.direcao === 'asc' ? valA.ano - valB.ano : valB.ano - valA.ano;
+      }
+      return ordenacao.direcao === 'asc' ? valA.numero - valB.numero : valB.numero - valA.numero;
+    }
+
+    // Regra Padrão (Alfabética)
     let valorA: any = a[ordenacao.campo as keyof Contrato] || '';
     let valorB: any = b[ordenacao.campo as keyof Contrato] || '';
     if (typeof valorA === 'string') valorA = valorA.toLowerCase();
     if (typeof valorB === 'string') valorB = valorB.toLowerCase();
+    
     if (valorA < valorB) return ordenacao.direcao === 'asc' ? -1 : 1;
     if (valorA > valorB) return ordenacao.direcao === 'asc' ? 1 : -1;
     return 0;
@@ -121,8 +159,8 @@ export default function Painel() {
       docPdf.setFontSize(11); docPdf.setTextColor(100, 100, 100);
       const textoFiltro = termoBusca ? ` (Filtro aplicado: "${termoBusca}")` : '';
       docPdf.text(`Listagem Geral de Contratos${textoFiltro} - Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 28);
+      
       const tableData = contratosFiltrados.map(c => [
-        c.dataInicio ? c.dataInicio.substring(0, 4) : '-',
         c.numeroContrato || '-',
         (c.objetoResumido || '').substring(0, 45) + ((c.objetoResumido?.length || 0) > 45 ? '...' : ''),
         (c.fornecedor || '').substring(0, 25) + ((c.fornecedor?.length || 0) > 25 ? '...' : ''),
@@ -131,14 +169,20 @@ export default function Painel() {
         (c.valorTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
         (c.saldoContrato || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
       ]);
+
       autoTable(docPdf, {
         startY: 40,
-        head: [['Ano', 'Nº Contrato', 'Objeto', 'Fornecedor', 'Fiscal', 'Validade', 'Valor Global', 'Saldo Atual']],
+        head: [['Nº Contrato', 'Objeto', 'Fornecedor', 'Fiscal', 'Validade', 'Valor Global', 'Saldo Atual']],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [0, 74, 153] },
         styles: { fontSize: 8, cellPadding: 3 },
-        columnStyles: { 0: { halign: 'center', cellWidth: 12 }, 1: { halign: 'center', cellWidth: 20 }, 5: { halign: 'center', cellWidth: 20 }, 6: { halign: 'right', cellWidth: 30 }, 7: { halign: 'right', cellWidth: 30 } }
+        columnStyles: { 
+          0: { halign: 'center', cellWidth: 25 }, 
+          4: { halign: 'center', cellWidth: 22 }, 
+          5: { halign: 'right', cellWidth: 30 }, 
+          6: { halign: 'right', cellWidth: 30 } 
+        }
       });
       const pdfBlob = docPdf.output('blob');
       window.open(URL.createObjectURL(pdfBlob), '_blank');
@@ -206,7 +250,6 @@ export default function Painel() {
         <table className="tabela-contratos">
           <thead>
             <tr>
-              <th onClick={() => lidarComOrdenacao('dataInicio')} style={{ cursor: 'pointer' }}>Ano {renderSeta('dataInicio')}</th>
               <th onClick={() => lidarComOrdenacao('numeroContrato')} style={{ cursor: 'pointer' }}>Nº Contrato {renderSeta('numeroContrato')}</th>
               <th onClick={() => lidarComOrdenacao('objetoResumido')} style={{ cursor: 'pointer' }}>Objeto Resumido {renderSeta('objetoResumido')}</th>
               <th onClick={() => lidarComOrdenacao('fornecedor')} style={{ cursor: 'pointer' }}>Fornecedor {renderSeta('fornecedor')}</th>
@@ -218,7 +261,7 @@ export default function Painel() {
           </thead>
           <tbody>
             {contratosFiltrados.length === 0 ? (
-              <tr><td colSpan={8} style={{ textAlign: 'center' }}>{termoBusca ? 'Nenhum contrato encontrado.' : 'Nenhum contrato cadastrado.'}</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center' }}>{termoBusca ? 'Nenhum contrato encontrado.' : 'Nenhum contrato cadastrado.'}</td></tr>
             ) : (
               contratosFiltrados.map((c) => {
                 const styleVencimento = getRowStyle(c.dataFim);
@@ -227,8 +270,7 @@ export default function Painel() {
 
                 return (
                   <tr key={c.id} style={styleVencimento} title={getRowTitle(c.dataFim)}>
-                    <td>{c.dataInicio.substring(0, 4)}</td>
-                    <td>{c.numeroContrato}</td>
+                    <td style={{ fontWeight: 'bold' }}>{c.numeroContrato}</td>
                     <td>{c.objetoResumido}</td>
                     <td>{c.fornecedor}</td>
                     <td style={{ fontWeight: 'bold' }}>{formatarDataBr(c.dataFim)}</td>
