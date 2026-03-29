@@ -32,7 +32,7 @@ export default function Painel() {
   const [termoBusca, setTermoBusca] = useState('');
 
   const [formData, setFormData] = useState({
-    numeroContrato: '', numeroProcesso: '', numeroPregao: '', numeroAta: '',
+    numeroContrato: '', numeroProcesso: '', modalidade: '', numeroModalidade: '', numeroAta: '',
     fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '',
     dataFim: '', valorTotal: '', fiscalContrato: '', observacao: ''
   });
@@ -84,7 +84,7 @@ export default function Painel() {
       (c.fornecedor || '').toLowerCase().includes(termo) ||
       (c.objetoResumido || '').toLowerCase().includes(termo) ||
       (c.objetoCompleto || '').toLowerCase().includes(termo) ||
-      (c.fiscalContrato || '').toLowerCase().includes(termo) // Adicionado para permitir busca pelo nome do fiscal
+      (c.fiscalContrato || '').toLowerCase().includes(termo)
     );
   });
 
@@ -93,10 +93,10 @@ export default function Painel() {
     return <span style={{ marginLeft: '5px' }}>{ordenacao.direcao === 'asc' ? '▲' : '▼'}</span>;
   };
 
-  const lidarComMudanca = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const lidarComMudanca = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
   };
-  const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormEdit((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
   };
   const lidarComMudancaItem = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -126,7 +126,7 @@ export default function Painel() {
         c.numeroContrato || '-',
         (c.objetoResumido || '').substring(0, 45) + ((c.objetoResumido?.length || 0) > 45 ? '...' : ''),
         (c.fornecedor || '').substring(0, 25) + ((c.fornecedor?.length || 0) > 25 ? '...' : ''),
-        (c.fiscalContrato || 'Não inf.').substring(0, 20) + ((c.fiscalContrato?.length || 0) > 20 ? '...' : ''), // Coluna do Fiscal adicionada
+        (c.fiscalContrato || 'Não inf.').substring(0, 20) + ((c.fiscalContrato?.length || 0) > 20 ? '...' : ''),
         formatarDataBr(c.dataFim),
         (c.valorTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
         (c.saldoContrato || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -140,12 +140,11 @@ export default function Painel() {
         headStyles: { fillColor: [0, 74, 153] },
         styles: { fontSize: 8, cellPadding: 3 },
         columnStyles: { 
-          0: { halign: 'center', cellWidth: 12 }, // Ano
-          1: { halign: 'center', cellWidth: 20 }, // Nº Contrato
-          // Objeto e Fornecedor e Fiscal ajustam-se automaticamente ao espaço restante
-          5: { halign: 'center', cellWidth: 20 }, // Validade
-          6: { halign: 'right', cellWidth: 30 },  // Valor Global
-          7: { halign: 'right', cellWidth: 30 }   // Saldo Atual
+          0: { halign: 'center', cellWidth: 12 }, 
+          1: { halign: 'center', cellWidth: 20 }, 
+          5: { halign: 'center', cellWidth: 20 }, 
+          6: { halign: 'right', cellWidth: 30 },  
+          7: { halign: 'right', cellWidth: 30 }   
         }
       });
 
@@ -194,7 +193,7 @@ export default function Painel() {
         ...prev,
         numeroContrato: dadosIA.numeroContrato || prev.numeroContrato,
         numeroProcesso: dadosIA.numeroProcesso || prev.numeroProcesso,
-        numeroPregao: dadosIA.numeroPregao || prev.numeroPregao,
+        numeroModalidade: dadosIA.numeroPregao || prev.numeroModalidade, // Aproveita extração de pregão antiga
         numeroAta: dadosIA.numeroAta || prev.numeroAta,
         fornecedor: dadosIA.fornecedor || prev.fornecedor,
         objetoCompleto: dadosIA.objetoCompleto || prev.objetoCompleto,
@@ -311,14 +310,19 @@ export default function Painel() {
 
       alert('Contrato e catálogo salvos com sucesso!');
       setIsModalOpen(false);
-      setFormData({ numeroContrato: '', numeroProcesso: '', numeroPregao: '', numeroAta: '', fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
+      setFormData({ numeroContrato: '', numeroProcesso: '', modalidade: '', numeroModalidade: '', numeroAta: '', fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
       setItensPrevia([]);
     } catch (error) { alert('Erro ao salvar.'); } finally { setLoading(false); }
   };
 
   const abrirEdicao = (c: Contrato) => {
     setContratoEditId(c.id!);
-    setFormEdit({ ...c, valorTotal: c.valorTotal.toFixed(2).replace('.', ',') });
+    setFormEdit({ 
+      ...c, 
+      valorTotal: c.valorTotal.toFixed(2).replace('.', ','),
+      modalidade: c.modalidade || '',
+      numeroModalidade: c.numeroModalidade || c.numeroPregao || '' // Mantém compatibilidade
+    });
     setIsModalEditOpen(true);
   };
 
@@ -386,7 +390,7 @@ export default function Painel() {
 
       <main className="conteudo">
         
-        {/* ÁREA DE AÇÕES SUPERIOR */}
+        {/* ÁREA DE AÇÕES SUPERIOR (UI HARMONIZADA RESTAURADA) */}
         <div className="acoes-topo" style={{ 
           display: 'flex', 
           alignItems: 'center', 
@@ -400,7 +404,6 @@ export default function Painel() {
           border: '1px solid #eaeaea'
         }}>
           
-          {/* Título */}
           <h2 style={{ 
             margin: 0, 
             color: '#1e293b', 
@@ -411,7 +414,6 @@ export default function Painel() {
             Contratos Cadastrados
           </h2>
           
-          {/* Campo de Busca */}
           <div style={{ position: 'relative', flex: 1, maxWidth: '600px' }}>
             <svg style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="8"></circle>
@@ -447,7 +449,6 @@ export default function Painel() {
             />
           </div>
 
-          {/* Grupo de Botões */}
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             
             <button 
@@ -571,7 +572,21 @@ export default function Painel() {
               <div className="form-grid">
                 <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formData.numeroContrato} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
                 <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formData.numeroProcesso} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
-                <div className="form-group"><label>Nº Pregão</label><input type="text" name="numeroPregao" value={formData.numeroPregao} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
+                
+                {/* Lógica de Modalidade Adicionada Novamente */}
+                <div className="form-group">
+                  <label>Modalidade</label>
+                  <select name="modalidade" value={formData.modalidade} onChange={lidarComMudanca} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
+                    <option value="">Selecione...</option>
+                    <option value="Pregão">Pregão</option>
+                    <option value="Concorrência">Concorrência</option>
+                    <option value="Dispensa">Dispensa</option>
+                    <option value="Inexigibilidade">Inexigibilidade</option>
+                    <option value="Credenciamento">Credenciamento</option>
+                  </select>
+                </div>
+                <div className="form-group"><label>Nº da Modalidade</label><input type="text" name="numeroModalidade" value={formData.numeroModalidade} onChange={lidarComMudanca} onBlur={formatarTresDigitos} placeholder="Ex: 001/2024" /></div>
+
                 <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formData.numeroAta} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
                 <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formData.fornecedor} onChange={lidarComMudanca} /></div>
                 <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formData.objetoResumido} onChange={lidarComMudanca} /></div>
@@ -635,7 +650,21 @@ export default function Painel() {
               <div className="form-grid">
                 <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
                 <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
-                <div className="form-group"><label>Nº Pregão</label><input type="text" name="numeroPregao" value={formEdit.numeroPregao} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
+                
+                {/* Lógica de Modalidade na Edição */}
+                <div className="form-group">
+                  <label>Modalidade</label>
+                  <select name="modalidade" value={formEdit.modalidade} onChange={lidarComMudancaEdit} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
+                    <option value="">Selecione...</option>
+                    <option value="Pregão">Pregão</option>
+                    <option value="Concorrência">Concorrência</option>
+                    <option value="Dispensa">Dispensa</option>
+                    <option value="Inexigibilidade">Inexigibilidade</option>
+                    <option value="Credenciamento">Credenciamento</option>
+                  </select>
+                </div>
+                <div className="form-group"><label>Nº da Modalidade</label><input type="text" name="numeroModalidade" value={formEdit.numeroModalidade} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
+
                 <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formEdit.numeroAta} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitos} /></div>
                 <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formEdit.fornecedor} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formEdit.objetoResumido} onChange={lidarComMudancaEdit} /></div>

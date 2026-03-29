@@ -5,22 +5,26 @@ export interface Contrato {
   orgaoId: string;
   numeroContrato: string;
   numeroProcesso: string;
-  modalidade: string; // ADICIONADO: Para suportar Pregão, Dispensa, etc.
-  numeroPregao: string;
-  numeroAta: string;
+  
+  // Novos campos de Modalidade
+  modalidade?: string;
+  numeroModalidade?: string;
+  
+  numeroPregao?: string; // Mantido para compatibilidade com dados legados
+  numeroAta?: string;
   fornecedor: string;
-  objetoCompleto: string;
   objetoResumido: string;
+  objetoCompleto?: string;
   dataInicio: string;
   dataFim: string;
   valorTotal: number;
   saldoContrato: number;
-  fiscalContrato: string;
-  observacao: string;
-  dataUltimaAtualizacao?: string; // NOVO: Guarda a data/hora da última mexida
+  fiscalContrato?: string;
+  observacao?: string;
+  dataUltimaAtualizacao?: string;
 }
 
-export interface ItemContrato {
+export interface Item {
   id?: string;
   contratoId: string;
   numeroLote: string;
@@ -30,5 +34,6 @@ export interface ItemContrato {
   quantidade: number;
   valorUnitario: number;
   valorTotalItem: number;
-  dataAdicao?: string; // NOVO: O nosso "Log" de quando o saldo foi reduzido
+  tipoRegistro?: 'catalogo' | 'consumo';
+  dataAdicao?: string;
 }
