@@ -9,11 +9,11 @@ export const extrairDadosContratoComIA = async (textoDoContrato: string) => {
   try {
     const genAI = new GoogleGenerativeAI(API_KEY);
     
-    // CORREÇÃO: Utilizando a versão estável e recomendada gemini-1.5-flash
+    // CORREÇÃO DEFINITIVA: Usando o modelo exato listado pela sua nova API Key
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       generationConfig: {
-        temperature: 0.1, 
+        temperature: 0.1, // Temperatura baixa para não inventar dados
         responseMimeType: "application/json",
       }
     });
@@ -63,7 +63,7 @@ export const extrairDadosContratoComIA = async (textoDoContrato: string) => {
     const response = await result.response;
     let text = response.text();
     
-    // Tratamento para limpar possíveis blocos de formatação markdown
+    // Tratamento de segurança: limpar blocos markdown caso a IA os envie
     text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
 
     return JSON.parse(text);
