@@ -28,7 +28,6 @@ export default function Painel() {
   
   const [termoBusca, setTermoBusca] = useState('');
   
-  // Como removemos a coluna "Ano" (que ordenava por dataInicio), o padrão inicial passa a ser numeroContrato
   const [ordenacao, setOrdenacao] = useState<{ campo: string, direcao: 'asc' | 'desc' }>({ campo: 'numeroContrato', direcao: 'desc' });
 
   const nomesOrgaos: { [key: string]: string } = {
@@ -69,7 +68,6 @@ export default function Painel() {
   // --- ORDENAÇÃO INTELIGENTE ---
   const contratosOrdenados = [...contratos].sort((a, b) => {
     
-    // Regra Específica para a coluna "Nº Contrato" (Smart Sort)
     if (ordenacao.campo === 'numeroContrato') {
       const extrairAnoNumero = (c: Contrato) => {
         const numStr = c.numeroContrato || '';
@@ -101,7 +99,6 @@ export default function Painel() {
       return ordenacao.direcao === 'asc' ? valA.numero - valB.numero : valB.numero - valA.numero;
     }
 
-    // Regra Padrão (Alfabética)
     let valorA: any = a[ordenacao.campo as keyof Contrato] || '';
     let valorB: any = b[ordenacao.campo as keyof Contrato] || '';
     if (typeof valorA === 'string') valorA = valorA.toLowerCase();
@@ -162,7 +159,8 @@ export default function Painel() {
       
       const tableData = contratosFiltrados.map(c => [
         c.numeroContrato || '-',
-        (c.objetoResumido || '').substring(0, 45) + ((c.objetoResumido?.length || 0) > 45 ? '...' : ''),
+        // Exibindo o Objeto Completo inteiro (ou resumido se o completo estiver vazio)
+        c.objetoCompleto || c.objetoResumido || '-',
         (c.fornecedor || '').substring(0, 25) + ((c.fornecedor?.length || 0) > 25 ? '...' : ''),
         (c.fiscalContrato || 'Não inf.').substring(0, 20) + ((c.fiscalContrato?.length || 0) > 20 ? '...' : ''),
         formatarDataBr(c.dataFim),

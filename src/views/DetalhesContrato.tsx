@@ -41,6 +41,13 @@ const siglasOrgaos: { [key: string]: string } = {
   'fms': 'FMS'
 };
 
+const nomesOrgaos: { [key: string]: string } = {
+  'prefeitura': 'Prefeitura Municipal de Pesqueira',
+  'fmas': 'Fundo Municipal de Assistência Social (FMAS)',
+  'fme': 'Fundo Municipal de Educação (FME)',
+  'fms': 'Fundo Municipal de Saúde (FMS)'
+};
+
 export default function DetalhesContrato() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -202,12 +209,12 @@ export default function DetalhesContrato() {
       // CABEÇALHO
       docPdf.setFontSize(16);
       docPdf.setTextColor(0, 74, 153);
-      // Adicionada a sigla do órgão ao título do PDF
-      docPdf.text(`Relatório de Contrato: ${contrato.numeroContrato} / ${contrato.dataInicio.substring(0, 4)} / ${siglasOrgaos[contrato.orgaoId] || ''}`, 45, 20);
+      docPdf.text(`Relatório de Contrato: ${contrato.numeroContrato}`, 45, 20);
       
       docPdf.setFontSize(10);
       docPdf.setTextColor(100, 100, 100);
-      docPdf.text(`Órgão: ${siglasOrgaos[contrato.orgaoId] || ''} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 26);
+      // ALTERAÇÃO AQUI: Usando o nome do órgão por extenso
+      docPdf.text(`Órgão: ${nomesOrgaos[contrato.orgaoId] || ''} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 26);
 
       let currentY = 40;
 
@@ -222,7 +229,6 @@ export default function DetalhesContrato() {
       docPdf.text(`Fornecedor: ${contrato.fornecedor}`, 14, currentY); currentY += 5;
       docPdf.text(`Objeto: ${contrato.objetoResumido}`, 14, currentY); currentY += 5;
       
-      // LÓGICA DE FORMATAÇÃO DE TEXTO PARA PROCESSO E MODALIDADE
       let linhaProcesso = `Processo Nº: ${contrato.numeroProcesso || '-'}`;
       
       const modalidadeTexto = contrato.modalidade;
@@ -250,7 +256,7 @@ export default function DetalhesContrato() {
         docPdf.text(`Observações: ${contrato.observacao}`, 14, currentY); 
         currentY += 10;
       } else {
-        currentY += 5; // Apenas espaço extra se não houver observação
+        currentY += 5; 
       }
 
       // --- 2. POSIÇÃO FINANCEIRA ---
@@ -362,7 +368,6 @@ export default function DetalhesContrato() {
       window.open(URL.createObjectURL(pdfBlob), '_blank');
     };
 
-    // CARREGA A LOGO À ESQUERDA
     const img = new Image();
     img.src = logo;
     img.onload = () => {
@@ -370,7 +375,7 @@ export default function DetalhesContrato() {
       gerarConteudo();
     };
     img.onerror = () => {
-      gerarConteudo(); // Se a imagem falhar, gera sem logo
+      gerarConteudo(); 
     };
   };
 
@@ -379,8 +384,8 @@ export default function DetalhesContrato() {
       <header className="header">
         <div className="header-logo">
           <img src={logo} alt="Logo PMP" className="logo-pequena" />
-          <h2 title={`Relatório de Contrato: ${contrato.numeroContrato} / ${contrato.dataInicio.substring(0, 4)} / ${siglasOrgaos[contrato.orgaoId] || ''}`}>
-            Relatório de Contrato: {contrato.numeroContrato} / {contrato.dataInicio.substring(0, 4)} / {siglasOrgaos[contrato.orgaoId] || ''}
+          <h2 title={`Relatório de Contrato: ${contrato.numeroContrato}`}>
+            Relatório de Contrato: {contrato.numeroContrato}
           </h2>
         </div>
         <button className="btn-sair" onClick={() => navigate('/painel')}>
@@ -617,7 +622,6 @@ export default function DetalhesContrato() {
         </div>
       </main>
 
-      {/* COMPONENTES MODULARIZADOS */}
       <ModalLancarConsumo 
         isOpen={isModalLancamentoOpen} 
         onClose={() => setIsModalLancamentoOpen(false)} 
