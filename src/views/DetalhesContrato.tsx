@@ -1,7 +1,8 @@
 // src/views/DetalhesContrato.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, collection, query, where, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, addDoc, updateDoc, writeBatch, deleteDoc, getDocs } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
 import { db } from '../firebase';
 import type { Contrato } from '../types';
 import logo from '../assets/logopmp.png';
@@ -24,6 +25,20 @@ interface ItemExtendido {
   dataAdicao?: string;
   tipoRegistro?: 'catalogo' | 'consumo';
 }
+
+const parseMoeda = (valor: string | number) => {
+  if (!valor) return 0;
+  if (typeof valor === 'number') return valor;
+  return Number(valor.replace(/\./g, '').replace(',', '.'));
+};
+
+const extrairNumeroPlanilha = (valor: any) => {
+  if (typeof valor === 'number') return valor;
+  if (!valor) return 0;
+  const str = String(valor).trim();
+  if (str.includes(',')) return Number(str.replace(/\./g, '').replace(',', '.'));
+  return Number(str);
+};
 
 const formatarDataBr = (dataString: string) => {
   if (!dataString) return 'N/A';
@@ -126,9 +141,10 @@ export default function DetalhesContrato() {
   const vencimento = new Date(contrato.dataFim);
   const diffDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 3600 * 24));
   
-  const corValidade = diffDias <= 30 ? '#dc3545' : diffDias <= 90 ? '#856404' : 'inherit';
-  const fundoValidade = diffDias <= 30 ? '#ffebee' : diffDias <= 90 ? '#fff9c4' : 'transparent';
-  const labelValidade = diffDias < 0 ? "Contrato Vencido!" : diffDias <= 30 ? `Atenção: Vence em ${diffDias} dias` : diffDias <= 90 ? `Aviso: Restam ${diffDias} dias` : "";
+  const corValidade = diffDias <= 30 ? '#dc3545' : diffDias <= 90 ? '#856404' : '#334155';
+  const fundoValidade = diffDias <= 30 ? '#ffebee' : diffDias <= 90 ? '#fff9c4' : '#f8fafc';
+  const borderValidade = diffDias <= 30 ? '#ff000033' : diffDias <= 90 ? '#ffc10733' : '#e2e8f0';
+  const labelValidade = diffDias < 0 ? "Vencido" : diffDias <= 30 ? `Vence em ${diffDias} dias` : diffDias <= 90 ? `Restam ${diffDias} dias` : "Válido";
 
   const percentualSaldo = (contrato.saldoContrato / contrato.valorTotal);
   const alertaSaldoCritico = percentualSaldo < 0.3;
@@ -218,29 +234,72 @@ export default function DetalhesContrato() {
         </div>
 
         <div className="painel-relatorio">
+          
+          {/* --- NOVO DESIGN DO CARD DE DADOS GERAIS (DASHBOARD) --- */}
           <div className="card-relatorio">
-            <h3 style={{ color: '#004a99', marginTop: 0 }}>Dados Gerais</h3>
-            <p><strong>Fornecedor:</strong> {contrato.fornecedor}</p>
-            <p><strong>Objeto:</strong> {contrato.objetoResumido}</p>
-            <div className="dados-grid">
-              <p><strong>Nº Processo:</strong> {contrato.numeroProcesso}</p>
+            <h3 style={{ color: '#004a99', marginTop: 0, marginBottom: '20px', borderBottom: '2px solid #f1f5f9', paddingBottom: '10px' }}>
+              Dados Gerais do Contrato
+            </h3>
+            
+            {/* Destaque Principal */}
+            <h4 className="fornecedor-destaque">{contrato.fornecedor}</h4>
+            <p className="objeto-destaque">{contrato.objetoResumido}</p>
+
+            {/* Grid de Cards Menores */}
+            <div className="dashboard-cards">
               
-              {/* SEPARAÇÃO MODALIDADE E NÚMERO */}
-              <p><strong>Modalidade:</strong> {contrato.modalidade || '-'}</p>
-              <p><strong>Nº da Modalidade:</strong> {contrato.numeroModalidade || contrato.numeroPregao || '-'}</p>
-              
-              <p><strong>Nº da Ata:</strong> {contrato.numeroAta || '-'}</p>
-              <p><strong>Início:</strong> {formatarDataBr(contrato.dataInicio)}</p>
-              
-              {/* ALERTA DE VALIDADE */}
-              <p style={{ backgroundColor: fundoValidade, padding: '4px', borderRadius: '4px' }}>
-                <strong>Validade:</strong> <span style={{ color: corValidade, fontWeight: 'bold' }}>{formatarDataBr(contrato.dataFim)}</span>
-                {labelValidade && <span style={{ fontSize: '11px', display: 'block', color: corValidade }}>{labelValidade}</span>}
-              </p>
-              
-              <p><strong>Fiscal:</strong> {contrato.fiscalContrato || 'Não informado'}</p>
-              <p><strong>Observação:</strong> {contrato.observacao || 'Nenhuma'}</p>
+              {/* Identificação */}
+              <div className="info-card">
+                <span className="card-label">Nº/Ano Processo</span>
+                <span className="card-value">{contrato.numeroProcesso || '-'}</span>
+              </div>
+
+              <div className="info-card">
+                <span className="card-label">Modalidade</span>
+                <span className="card-value">{contrato.modalidade || '-'}</span>
+              </div>
+
+              <div className="info-card">
+                <span className="card-label">Nº/Ano Modalidade</span>
+                <span className="card-value">{contrato.numeroModalidade || contrato.numeroPregao || '-'}</span>
+              </div>
+
+              <div className="info-card">
+                <span className="card-label">Nº/Ano Ata</span>
+                <span className="card-value">{contrato.numeroAta || '-'}</span>
+              </div>
+
+              {/* Vigência e Datas */}
+              <div className="info-card">
+                <span className="card-label">Data Início</span>
+                <span className="card-value">{formatarDataBr(contrato.dataInicio)}</span>
+              </div>
+
+              <div className="info-card" style={{ backgroundColor: fundoValidade, borderColor: borderValidade }}>
+                <span className="card-label" style={{ color: diffDias <= 90 ? corValidade : '#94a3b8' }}>Validade</span>
+                <span className="card-value" style={{ color: corValidade }}>
+                  {formatarDataBr(contrato.dataFim)}
+                  <span style={{ display: 'block', fontSize: '11px', marginTop: '2px', fontWeight: 'bold' }}>
+                    {labelValidade}
+                  </span>
+                </span>
+              </div>
+
+              {/* Responsabilidade */}
+              <div className="info-card" style={{ gridColumn: 'span 2' }}>
+                <span className="card-label">Fiscal Responsável</span>
+                <span className="card-value">{contrato.fiscalContrato || 'Não informado'}</span>
+              </div>
             </div>
+
+            {/* Observação (Se existir) */}
+            {contrato.observacao && (
+              <div className="observacao-bloco">
+                <span className="card-label">Observações</span>
+                <span className="card-value small">{contrato.observacao}</span>
+              </div>
+            )}
+
           </div>
 
           <div className="card-financeiro">
@@ -387,7 +446,7 @@ export default function DetalhesContrato() {
         </div>
       </main>
 
-      {/* COMPONENTES MODULARIZADOS */}
+      {/* COMPONENTES MODULARES */}
       <ModalLancarConsumo 
         isOpen={isModalLancamentoOpen} 
         onClose={() => setIsModalLancamentoOpen(false)} 
