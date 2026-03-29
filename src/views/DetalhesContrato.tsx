@@ -76,7 +76,7 @@ export default function DetalhesContrato() {
           ...dados, 
           valorTotal: dados.valorTotal.toFixed(2).replace('.', ','),
           modalidade: dados.modalidade || '',
-          numeroModalidade: dados.numeroModalidade || dados.numeroPregao || '' // Mantém compatibilidade com dados antigos
+          numeroModalidade: dados.numeroModalidade || dados.numeroPregao || '' 
         });
       }
     });
@@ -101,7 +101,6 @@ export default function DetalhesContrato() {
     return () => { unsubContrato(); unsubItens(); };
   }, [id]);
 
-  // Atualizado para aceitar HTMLSelectElement
   const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormEdit((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
   };
@@ -129,18 +128,13 @@ export default function DetalhesContrato() {
       setLoading(true);
       try {
         await deleteDoc(doc(db, 'contratos', id));
-        
         const qItens = query(collection(db, 'itens'), where('contratoId', '==', id));
         const querySnapshot = await getDocs(qItens);
-        
         if (!querySnapshot.empty) {
           const batch = writeBatch(db);
-          querySnapshot.forEach((itemDoc) => {
-            batch.delete(itemDoc.ref);
-          });
+          querySnapshot.forEach((itemDoc) => { batch.delete(itemDoc.ref); });
           await batch.commit();
         }
-        
         alert("Contrato excluído com sucesso!");
         navigate('/painel');
       } catch (error) {
@@ -223,7 +217,7 @@ export default function DetalhesContrato() {
             saldoContrato: contrato.saldoContrato - valorTotalConsumidoLoop, dataUltimaAtualizacao: dataAtual
           });
           await batch.commit();
-          alert(`${itensValidos} itens processados! Saldo reduzido em ${valorTotalConsumidoLoop.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
+          alert(`${itensValidos} itens processados!`);
           setIsModalLancamentoOpen(false);
         } else { alert('Nenhum item válido encontrado.'); }
       } catch (error) { alert("Erro ao ler Excel."); } finally { setLoading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
@@ -233,31 +227,30 @@ export default function DetalhesContrato() {
 
   if (!contrato) return <div style={{textAlign: 'center', padding: '50px'}}>A carregar relatório...</div>;
 
+  // --- LÓGICA DE ALERTAS ---
+  const hoje = new Date();
+  const vencimento = new Date(contrato.dataFim);
+  const diffDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 3600 * 24));
+  const corValidade = diffDias <= 30 ? '#dc3545' : diffDias <= 90 ? '#856404' : 'inherit';
+  const fundoValidade = diffDias <= 30 ? '#ffebee' : diffDias <= 90 ? '#fff9c4' : 'transparent';
+  
+  const percentualSaldo = (contrato.saldoContrato / contrato.valorTotal);
+  const alertaSaldoCritico = percentualSaldo < 0.3;
+
   const itensCatalogo = itens.filter(i => i.tipoRegistro === 'catalogo' || !i.tipoRegistro);
   const itensConsumo = itens.filter(i => i.tipoRegistro === 'consumo');
-
-  const totalItens = itensConsumo.length;
-  const totalUnidades = itensConsumo.reduce((acc, curr) => acc + curr.quantidade, 0);
   const totalConsumido = itensConsumo.reduce((acc, curr) => acc + curr.valorTotalItem, 0);
 
   const gerarTabelaSaldos = () => {
     const mapaSaldos = new Map();
-
     itensCatalogo.forEach(cat => {
       const chave = `${cat.numeroLote}|${cat.numeroItem}`;
       mapaSaldos.set(chave, {
-        lote: cat.numeroLote,
-        item: cat.numeroItem,
-        descricao: cat.discriminacao,
-        unidade: cat.unidade,
-        qtdContratada: cat.quantidade,
-        vlUnitario: cat.valorUnitario,
-        vlContratado: cat.valorTotalItem,
-        qtdConsumida: 0,
-        vlConsumido: 0
+        lote: cat.numeroLote, item: cat.numeroItem, descricao: cat.discriminacao,
+        unidade: cat.unidade, qtdContratada: cat.quantidade, vlUnitario: cat.valorUnitario,
+        vlContratado: cat.valorTotalItem, qtdConsumida: 0, vlConsumido: 0
       });
     });
-
     itensConsumo.forEach(cons => {
       const chave = `${cons.numeroLote}|${cons.numeroItem}`;
       if (mapaSaldos.has(chave)) {
@@ -266,26 +259,14 @@ export default function DetalhesContrato() {
         existente.vlConsumido += cons.valorTotalItem;
       } else {
         mapaSaldos.set(chave, {
-          lote: cons.numeroLote,
-          item: cons.numeroItem,
-          descricao: cons.discriminacao,
-          unidade: cons.unidade,
-          qtdContratada: 0,
-          vlUnitario: cons.valorUnitario,
-          vlContratado: 0,
-          qtdConsumida: cons.quantidade,
-          vlConsumido: cons.valorTotalItem
+          lote: cons.numeroLote, item: cons.numeroItem, descricao: cons.discriminacao,
+          unidade: cons.unidade, qtdContratada: 0, vlUnitario: cons.valorUnitario,
+          vlContratado: 0, qtdConsumida: cons.quantidade, vlConsumido: cons.valorTotalItem
         });
       }
     });
-
     const arraySaldos = Array.from(mapaSaldos.values());
-    arraySaldos.sort((a, b) => {
-      const cmpLote = (a.lote || '').localeCompare(b.lote || '', undefined, { numeric: true });
-      if (cmpLote !== 0) return cmpLote;
-      return (a.item || '').localeCompare(b.item || '', undefined, { numeric: true });
-    });
-
+    arraySaldos.sort((a, b) => (a.lote || '').localeCompare(b.lote || '', undefined, { numeric: true }) || (a.item || '').localeCompare(b.item || '', undefined, { numeric: true }));
     return arraySaldos;
   };
 
@@ -323,11 +304,21 @@ export default function DetalhesContrato() {
             <p><strong>Fornecedor:</strong> {contrato.fornecedor}</p>
             <p><strong>Objeto:</strong> {contrato.objetoResumido}</p>
             <div className="dados-grid">
-              <p><strong>Nº Processo:</strong> {contrato.numeroProcesso}</p>
-              <p><strong>Modalidade:</strong> {contrato.modalidade || '-'} Nº {contrato.numeroModalidade || contrato.numeroPregao || '-'}</p>
-              <p><strong>Nº da Ata:</strong> {contrato.numeroAta || '-'}</p>
+              <p><strong>Nº/Ano Processo:</strong> {contrato.numeroProcesso}</p>
+              
+              {/* SEPARAÇÃO MODALIDADE E NÚMERO */}
+              <p><strong>Modalidade:</strong> {contrato.modalidade || '-'}</p>
+              <p><strong>Nº/Ano Modalidade:</strong> {contrato.numeroModalidade || contrato.numeroPregao || '-'}</p>
+              
+              <p><strong>Nº/Ano da Ata:</strong> {contrato.numeroAta || '-'}</p>
               <p><strong>Início:</strong> {formatarDataBr(contrato.dataInicio)}</p>
-              <p><strong>Validade:</strong> {formatarDataBr(contrato.dataFim)}</p>
+              
+              {/* AVISO NA CÉLULA DA VALIDADE */}
+              <p style={{ backgroundColor: fundoValidade, padding: '4px', borderRadius: '4px' }}>
+                <strong>Validade:</strong> <span style={{ color: corValidade, fontWeight: 'bold' }}>{formatarDataBr(contrato.dataFim)}</span>
+                {diffDias <= 90 && <span style={{ fontSize: '10px', display: 'block', color: corValidade }}>({diffDias < 0 ? "Vencido" : `Faltam ${diffDias} dias`})</span>}
+              </p>
+              
               <p><strong>Fiscal:</strong> {contrato.fiscalContrato || 'Não informado'}</p>
               <p><strong>Observação:</strong> {contrato.observacao || 'Nenhuma'}</p>
             </div>
@@ -345,32 +336,27 @@ export default function DetalhesContrato() {
                 </div>
                 <div style={{ borderTop: '1px solid #ddd', margin: '10px 0' }}></div>
                 <div style={{ fontSize: '12px', color: '#666' }}>Saldo Atual Disponível</div>
-                <div className={`valor-saldo ${contrato.saldoContrato >= 0 ? 'saldo-positivo' : 'saldo-negativo'}`}>
+                
+                {/* AVISO NA CÉLULA DO SALDO */}
+                <div className={`valor-saldo ${contrato.saldoContrato >= 0 ? 'saldo-positivo' : 'saldo-negativo'}`} style={alertaSaldoCritico ? { color: '#e65100', border: '2px solid #e65100', padding: '10px', backgroundColor: '#fff3e0' } : {}}>
+                  {alertaSaldoCritico && <div style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px' }}>⚠️ SALDO ABAIXO DE 30%</div>}
                   {contrato.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </div>
+                
                 <div style={{ fontSize: '11px', color: '#999', marginTop: '5px' }}>Atualizado em: {contrato.dataUltimaAtualizacao || 'N/A'}</div>
               </div>
-            </div>
-            <div className="metricas-itens">
-              <div><strong>{totalItens}</strong> Nº de Lançamentos</div>
-              <div><strong>{totalUnidades.toLocaleString('pt-BR')}</strong> Unidades Consumidas</div>
             </div>
           </div>
         </div>
 
+        {/* --- PRIMEIRA TABELA: PLANILHA ORIGINAL --- */}
         {itensCatalogo.length > 0 ? (
           <div className="secao-itens" style={{ marginBottom: '30px' }}>
             <h3 style={{ color: '#004a99' }}>📋 Planilha Original do Contrato</h3>
             <table className="tabela-itens">
               <thead>
                 <tr>
-                  <th>Lote</th>
-                  <th>Item</th>
-                  <th>Descrição</th>
-                  <th>Unidade</th>
-                  <th>Quantidade</th>
-                  <th>Valor Unitário</th>
-                  <th>Valor Total</th>
+                  <th>Lote</th><th>Item</th><th>Descrição</th><th>Unidade</th><th>Quantidade</th><th>Valor Unitário</th><th>Valor Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -395,22 +381,17 @@ export default function DetalhesContrato() {
           </div>
         )}
 
+        {/* --- SEGUNDA TABELA: CONTROLE SALDOS --- */}
         {tabelaDeSaldos.length > 0 && (
           <div className="secao-itens" style={{ marginBottom: '30px', overflowX: 'auto' }}>
             <h3 style={{ color: '#2e7d32' }}>📊 Controle Físico-Financeiro (Saldos por Item)</h3>
             <table className="tabela-saldos">
               <thead>
                 <tr>
-                  <th>Lote/Item</th>
-                  <th>Descrição</th>
-                  <th>Und</th>
-                  <th>Vl. Unit.</th>
-                  <th>Qtd Contratada</th>
-                  <th>Vl. Contratado</th>
+                  <th>Lote/Item</th><th>Descrição</th><th>Und</th><th>Vl. Unit.</th><th>Qtd Contratada</th><th>Vl. Contratado</th>
                   <th style={{ backgroundColor: '#fff3cd', color: '#856404' }}>Qtd Consumida</th>
                   <th style={{ backgroundColor: '#fff3cd', color: '#856404' }}>Vl Consumido</th>
-                  <th className="th-saldo">Qtd Saldo</th>
-                  <th className="th-saldo">Vl. Saldo</th>
+                  <th className="th-saldo">Qtd Saldo</th><th className="th-saldo">Vl. Saldo</th>
                 </tr>
               </thead>
               <tbody>
@@ -423,13 +404,10 @@ export default function DetalhesContrato() {
                       <td className="desc-esquerda">{linha.descricao}</td>
                       <td>{linha.unidade}</td>
                       <td>{linha.vlUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                      
                       <td>{linha.qtdContratada}</td>
                       <td>{linha.vlContratado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                      
                       <td style={{ backgroundColor: '#fffdf5', fontWeight: 'bold', color: '#856404' }}>{linha.qtdConsumida}</td>
                       <td style={{ backgroundColor: '#fffdf5', fontWeight: 'bold', color: '#856404' }}>{linha.vlConsumido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                      
                       <td style={{ backgroundColor: '#f3fbf3', fontWeight: 'bold', color: saldoQtd < 0 ? 'red' : '#2e7d32' }}>{saldoQtd}</td>
                       <td style={{ backgroundColor: '#f3fbf3', fontWeight: 'bold', color: saldoValor < 0 ? 'red' : '#2e7d32' }}>{saldoValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                     </tr>
@@ -440,22 +418,18 @@ export default function DetalhesContrato() {
           </div>
         )}
 
+        {/* --- TERCEIRA TABELA: HISTÓRICO --- */}
         <div className="secao-itens">
           <h3 style={{ color: '#dc3545' }}>📝 Histórico de Lançamentos (Auditoria de Empenhos)</h3>
           <table className="tabela-itens">
             <thead>
               <tr>
-                <th>Lote/Item</th>
-                <th>Descrição</th>
-                <th>Qtd Consumida</th>
-                <th>Vl. Unit.</th>
-                <th>Valor Consumido</th>
-                <th>Data do Log</th>
+                <th>Lote/Item</th><th>Descrição</th><th>Qtd Consumida</th><th>Vl. Unit.</th><th>Valor Consumido</th><th>Data do Log</th>
               </tr>
             </thead>
             <tbody>
               {itensConsumo.length === 0 ? (
-                <tr><td colSpan={6} style={{textAlign: 'center'}}>Nenhum empenho/consumo registrado ainda.</td></tr>
+                <tr><td colSpan={6} style={{textAlign: 'center'}}>Nenhum empenho registrado ainda.</td></tr>
               ) : (
                 itensConsumo.map(item => (
                   <tr key={item.id}>
@@ -480,16 +454,14 @@ export default function DetalhesContrato() {
             <div style={{ margin: '20px 0', textAlign: 'center' }}>
               <input type="file" accept=".xlsx, .xls, .csv" ref={fileInputRef} onChange={importarPlanilha} style={{ display: 'none' }} id="upload-excel-detalhes" />
               <label htmlFor="upload-excel-detalhes" style={{ backgroundColor: '#28a745', color: 'white', padding: '15px 30px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', display: 'inline-block' }}>📄 Importar Planilha de Consumo</label>
-              <div style={{ margin: '15px 0', fontWeight: 'bold', color: '#666' }}>OU LANÇAMENTO MANUAL ABAIXO:</div>
             </div>
-            
             <form onSubmit={adicionarItem}>
               <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr 2fr 1fr 1fr 1fr', gap: '5px' }}>
-                <div className="form-group"><input type="text" name="numeroLote" placeholder="Lote" value={formItem.numeroLote} onChange={lidarComMudancaItem} /></div>
-                <div className="form-group"><input type="text" name="numeroItem" placeholder="Nº Item" value={formItem.numeroItem} onChange={lidarComMudancaItem} required /></div>
-                <div className="form-group"><input type="text" name="discriminacao" placeholder="Descrição/Objeto" value={formItem.discriminacao} onChange={lidarComMudancaItem} required /></div>
-                <div className="form-group"><input type="text" name="quantidade" placeholder="Qtd" value={formItem.quantidade} onChange={lidarComMudancaItem} required /></div>
-                <div className="form-group"><input type="text" name="valorUnitario" placeholder="R$ Unit" value={formItem.valorUnitario} onChange={lidarComMudancaItem} required /></div>
+                <input type="text" name="numeroLote" placeholder="Lote" value={formItem.numeroLote} onChange={lidarComMudancaItem} />
+                <input type="text" name="numeroItem" placeholder="Nº Item" value={formItem.numeroItem} onChange={lidarComMudancaItem} required />
+                <input type="text" name="discriminacao" placeholder="Descrição/Objeto" value={formItem.discriminacao} onChange={lidarComMudancaItem} required />
+                <input type="text" name="quantidade" placeholder="Qtd" value={formItem.quantidade} onChange={lidarComMudancaItem} required />
+                <input type="text" name="valorUnitario" placeholder="R$ Unit" value={formItem.valorUnitario} onChange={lidarComMudancaItem} required />
                 <button type="submit" style={{ backgroundColor: '#004a99', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }} disabled={loading}>+ Consumir</button>
               </div>
             </form>
@@ -505,9 +477,7 @@ export default function DetalhesContrato() {
             <form onSubmit={salvarEdicaoContrato}>
               <div className="form-grid">
                 <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato || ''} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Nº do Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso || ''} onChange={lidarComMudancaEdit} /></div>
-                
-                {/* Novos Inputs de Modalidade */}
+                <div className="form-group"><label>Nº/Ano Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso || ''} onChange={lidarComMudancaEdit} placeholder="000/2024" /></div>
                 <div className="form-group">
                   <label>Modalidade</label>
                   <select name="modalidade" value={formEdit.modalidade || ''} onChange={lidarComMudancaEdit} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px', boxSizing: 'border-box' }}>
@@ -519,19 +489,15 @@ export default function DetalhesContrato() {
                     <option value="Credenciamento">Credenciamento</option>
                   </select>
                 </div>
-                <div className="form-group"><label>Nº da Modalidade</label><input type="text" name="numeroModalidade" value={formEdit.numeroModalidade || ''} onChange={lidarComMudancaEdit} /></div>
-                
-                <div className="form-group"><label>Nº da Ata</label><input type="text" name="numeroAta" value={formEdit.numeroAta || ''} onChange={lidarComMudancaEdit} /></div>
+                <div className="form-group"><label>Nº/Ano Modalidade</label><input type="text" name="numeroModalidade" value={formEdit.numeroModalidade || ''} onChange={lidarComMudancaEdit} placeholder="000/2024" /></div>
+                <div className="form-group"><label>Nº/Ano da Ata</label><input type="text" name="numeroAta" value={formEdit.numeroAta || ''} onChange={lidarComMudancaEdit} placeholder="000/2024" /></div>
                 <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formEdit.fornecedor || ''} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formEdit.objetoResumido || ''} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formEdit.objetoCompleto || ''} onChange={lidarComMudancaEdit}></textarea></div>
                 <div className="form-group"><label>Data Início</label><input type="date" name="dataInicio" required value={formEdit.dataInicio || ''} onChange={lidarComMudancaEdit} /></div>
                 <div className="form-group"><label>Data Fim (Validade)</label><input type="date" name="dataFim" required value={formEdit.dataFim || ''} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Fiscal do Contrato</label><input type="text" name="fiscalContrato" value={formEdit.fiscalContrato || ''} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formEdit.observacao || ''} onChange={lidarComMudancaEdit} /></div>
-                <div className="form-group full-width"><label>Valor Global do Contrato (R$)</label><input type="text" name="valorTotal" required value={formEdit.valorTotal || ''} onChange={lidarComMudancaEdit} style={{ border: '2px solid #ffc107', fontWeight: 'bold', boxSizing: 'border-box' }} /></div>
+                <div className="form-group full-width"><label>Valor Global (R$)</label><input type="text" name="valorTotal" required value={formEdit.valorTotal || ''} onChange={lidarComMudancaEdit} style={{ border: '2px solid #ffc107', fontWeight: 'bold', boxSizing: 'border-box' }} /></div>
               </div>
-              <div className="modal-acoes"><button type="button" className="btn-cancelar" onClick={() => setIsModalEditOpen(false)}>Cancelar</button><button type="submit" className="btn-salvar" disabled={loading} style={{ backgroundColor: '#ffc107', color: '#333' }}>{loading ? 'A Guardar...' : 'Salvar Alterações'}</button></div>
+              <div className="modal-acoes"><button type="button" className="btn-cancelar" onClick={() => setIsModalEditOpen(false)}>Cancelar</button><button type="submit" className="btn-salvar" disabled={loading} style={{ backgroundColor: '#ffc107', color: '#333' }}>Salvar Alterações</button></div>
             </form>
           </div>
         </div>
