@@ -2,11 +2,13 @@
 import React, { useState, useRef } from 'react';
 import { collection, addDoc, writeBatch, doc } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
-import * as mammoth from 'mammoth';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as mammoth from 'mammoth'; 
+import * as pdfjsLib from 'pdfjs-dist'; 
 import { db } from '../../firebase';
 import { parseMoeda, extrairNumeroPlanilha } from '../../utils/formatters';
 import { extrairDadosContratoComIA } from '../../services/geminiService';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
 
 interface ModalNovoContratoProps {
   isOpen: boolean;
@@ -178,11 +180,9 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       }
       alert('Contrato e catálogo salvos com sucesso!');
       
-      // Limpa formulário e fecha
       setFormData({ numeroContrato: '', numeroProcesso: '', modalidade: '', numeroModalidade: '', numeroAta: '', fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
       setItensPrevia([]);
       onClose();
-
     } catch (error) { alert('Erro ao salvar.'); } finally { setLoading(false); }
   };
 
@@ -202,7 +202,6 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
           <div className="form-grid">
             <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formData.numeroContrato} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
             <div className="form-group"><label>Nº/Ano Processo</label><input type="text" name="numeroProcesso" required value={formData.numeroProcesso} onChange={lidarComMudanca} placeholder="000/0000" /></div>
-            
             <div className="form-group">
               <label>Modalidade</label>
               <select name="modalidade" value={formData.modalidade} onChange={lidarComMudanca} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>

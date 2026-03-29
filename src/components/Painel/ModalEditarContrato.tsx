@@ -15,11 +15,10 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
   const [formEdit, setFormEdit] = useState<any>({});
   const [loading, setLoading] = useState(false);
 
-  // Quando o modal abre, preenchemos o formulário com os dados do contrato selecionado
   useEffect(() => {
     if (isOpen && contratoOriginal) {
-      setFormEdit({
-        ...contratoOriginal,
+      setFormEdit({ 
+        ...contratoOriginal, 
         valorTotal: contratoOriginal.valorTotal.toFixed(2).replace('.', ','),
         modalidade: contratoOriginal.modalidade || '',
         numeroModalidade: contratoOriginal.numeroModalidade || contratoOriginal.numeroPregao || ''
@@ -47,14 +46,13 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
       const novoValorGlobal = parseMoeda(formEdit.valorTotal);
       const valorJaConsumido = contratoOriginal.valorTotal - contratoOriginal.saldoContrato;
       const novoSaldo = novoValorGlobal - valorJaConsumido;
-      
+
       await updateDoc(doc(db, 'contratos', contratoOriginal.id!), {
         ...formEdit, 
         valorTotal: novoValorGlobal, 
         saldoContrato: novoSaldo, 
         dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
       });
-      
       alert('Contrato atualizado com sucesso!');
       onClose();
     } catch (error) { 
@@ -72,7 +70,6 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
           <div className="form-grid">
             <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato || ''} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitosEdit} /></div>
             <div className="form-group"><label>Nº/Ano Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso || ''} onChange={lidarComMudancaEdit} placeholder="000/0000" /></div>
-            
             <div className="form-group">
               <label>Modalidade</label>
               <select name="modalidade" value={formEdit.modalidade || ''} onChange={lidarComMudancaEdit} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
@@ -97,9 +94,7 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
           </div>
           <div className="modal-acoes">
             <button type="button" className="btn-cancelar" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn-salvar" disabled={loading} style={{ backgroundColor: '#ffc107', color: '#333' }}>
-              {loading ? 'Salvando...' : 'Salvar Alterações'}
-            </button>
+            <button type="submit" className="btn-salvar" disabled={loading} style={{ backgroundColor: '#ffc107', color: '#333' }}>{loading ? 'A Guardar...' : 'Salvar Alterações'}</button>
           </div>
         </form>
       </div>
