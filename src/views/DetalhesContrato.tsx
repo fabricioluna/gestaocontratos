@@ -1,8 +1,9 @@
 // src/views/DetalhesContrato.tsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, collection, query, where, addDoc, updateDoc, writeBatch, deleteDoc, getDocs } from 'firebase/firestore';
-import * as XLSX from 'xlsx';
+import { doc, onSnapshot, collection, query, where, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { db } from '../firebase';
 import type { Contrato } from '../types';
 import logo from '../assets/logopmp.png';
@@ -25,20 +26,6 @@ interface ItemExtendido {
   dataAdicao?: string;
   tipoRegistro?: 'catalogo' | 'consumo';
 }
-
-const parseMoeda = (valor: string | number) => {
-  if (!valor) return 0;
-  if (typeof valor === 'number') return valor;
-  return Number(valor.replace(/\./g, '').replace(',', '.'));
-};
-
-const extrairNumeroPlanilha = (valor: any) => {
-  if (typeof valor === 'number') return valor;
-  if (!valor) return 0;
-  const str = String(valor).trim();
-  if (str.includes(',')) return Number(str.replace(/\./g, '').replace(',', '.'));
-  return Number(str);
-};
 
 const formatarDataBr = (dataString: string) => {
   if (!dataString) return 'N/A';
@@ -207,6 +194,186 @@ export default function DetalhesContrato() {
 
   const tabelaDeSaldos = gerarTabelaSaldos();
 
+  // --- GERAÇÃO DE RELATÓRIO PDF COMPLETO ---
+  const gerarRelatorioPDF = () => {
+    const docPdf = new jsPDF('landscape'); 
+    
+    const gerarConteudo = () => {
+      // CABEÇALHO
+      docPdf.setFontSize(16);
+      docPdf.setTextColor(0, 74, 153);
+      // Adicionada a sigla do órgão ao título do PDF
+      docPdf.text(`Relatório de Contrato: ${contrato.numeroContrato} / ${contrato.dataInicio.substring(0, 4)} / ${siglasOrgaos[contrato.orgaoId] || ''}`, 45, 20);
+      
+      docPdf.setFontSize(10);
+      docPdf.setTextColor(100, 100, 100);
+      docPdf.text(`Órgão: ${siglasOrgaos[contrato.orgaoId] || ''} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 26);
+
+      let currentY = 40;
+
+      // --- 1. DADOS GERAIS ---
+      docPdf.setFontSize(12);
+      docPdf.setTextColor(0, 74, 153);
+      docPdf.text('Dados Gerais do Contrato', 14, currentY);
+      currentY += 6;
+
+      docPdf.setFontSize(10);
+      docPdf.setTextColor(50, 50, 50);
+      docPdf.text(`Fornecedor: ${contrato.fornecedor}`, 14, currentY); currentY += 5;
+      docPdf.text(`Objeto: ${contrato.objetoResumido}`, 14, currentY); currentY += 5;
+      
+      // LÓGICA DE FORMATAÇÃO DE TEXTO PARA PROCESSO E MODALIDADE
+      let linhaProcesso = `Processo Nº: ${contrato.numeroProcesso || '-'}`;
+      
+      const modalidadeTexto = contrato.modalidade;
+      const numModalidade = contrato.numeroModalidade || contrato.numeroPregao;
+      
+      if (modalidadeTexto && numModalidade) {
+        linhaProcesso += `  |  ${modalidadeTexto} Nº: ${numModalidade}`;
+      } else if (modalidadeTexto) {
+        linhaProcesso += `  |  Modalidade: ${modalidadeTexto}`;
+      } else if (numModalidade) {
+        linhaProcesso += `  |  Modalidade Nº: ${numModalidade}`;
+      }
+
+      if (contrato.numeroAta && contrato.numeroAta.trim() !== '') {
+        linhaProcesso += `  |  Ata Nº: ${contrato.numeroAta}`;
+      }
+
+      docPdf.text(linhaProcesso, 14, currentY); currentY += 5;
+      
+      docPdf.text(`Data Início: ${formatarDataBr(contrato.dataInicio)}  |  Validade: ${formatarDataBr(contrato.dataFim)}`, 14, currentY); currentY += 5;
+      docPdf.text(`Fiscal Responsável: ${contrato.fiscalContrato || 'Não informado'}`, 14, currentY); currentY += 5;
+      
+      // OBSERVAÇÃO SÓ APARECE SE PREENCHIDA
+      if (contrato.observacao && contrato.observacao.trim() !== '') {
+        docPdf.text(`Observações: ${contrato.observacao}`, 14, currentY); 
+        currentY += 10;
+      } else {
+        currentY += 5; // Apenas espaço extra se não houver observação
+      }
+
+      // --- 2. POSIÇÃO FINANCEIRA ---
+      docPdf.setFontSize(12);
+      docPdf.setTextColor(40, 167, 69); // Verde
+      docPdf.text('Posição Financeira', 14, currentY);
+      currentY += 6;
+
+      docPdf.setFontSize(10);
+      docPdf.setTextColor(50, 50, 50);
+      docPdf.text(`Global Autorizado: ${contrato.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}  |  Valor Consumido: ${totalConsumido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}  |  Saldo Atual Disponível: ${contrato.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 14, currentY); 
+      currentY += 12;
+
+      // --- 3. TABELA: PLANILHA ORIGINAL ---
+      if (itensCatalogo.length > 0) {
+        docPdf.setFontSize(12);
+        docPdf.setTextColor(0, 74, 153);
+        docPdf.text('Planilha Original do Contrato', 14, currentY);
+        currentY += 4;
+
+        const catData = itensCatalogo.map(item => [
+          item.numeroLote === 'Único' || !item.numeroLote ? '-' : item.numeroLote,
+          item.numeroItem,
+          item.discriminacao,
+          item.unidade,
+          item.quantidade.toString(),
+          item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+          item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+        ]);
+
+        autoTable(docPdf, {
+          startY: currentY,
+          head: [['Lote', 'Item', 'Descrição', 'Unidade', 'Qtd', 'Vl. Unitário', 'Vl. Total']],
+          body: catData,
+          theme: 'striped',
+          headStyles: { fillColor: [0, 74, 153] },
+          styles: { fontSize: 8, cellPadding: 2 }
+        });
+        currentY = (docPdf as any).lastAutoTable.finalY + 12;
+      }
+
+      // --- 4. TABELA: CONTROLE FÍSICO-FINANCEIRO (SALDOS) ---
+      if (tabelaDeSaldos.length > 0) {
+        if (currentY > 150) { docPdf.addPage(); currentY = 20; }
+
+        docPdf.setFontSize(12);
+        docPdf.setTextColor(46, 125, 50); // Verde
+        docPdf.text('Controle Físico-Financeiro (Saldos por Item)', 14, currentY);
+        currentY += 4;
+
+        const saldosData = tabelaDeSaldos.map(linha => {
+          const saldoQtd = linha.qtdContratada - linha.qtdConsumida;
+          const saldoValor = linha.vlContratado - linha.vlConsumido;
+          return [
+            (linha.lote !== 'Único' && linha.lote ? `${linha.lote} / ` : '') + linha.item,
+            linha.descricao,
+            linha.unidade,
+            linha.vlUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+            linha.qtdContratada.toString(),
+            linha.vlContratado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+            linha.qtdConsumida.toString(),
+            linha.vlConsumido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+            saldoQtd.toString(),
+            saldoValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+          ];
+        });
+
+        autoTable(docPdf, {
+          startY: currentY,
+          head: [['Lote/Item', 'Descrição', 'Und', 'Vl. Unit.', 'Qtd. Cont.', 'Vl. Cont.', 'Qtd. Cons.', 'Vl. Cons.', 'Sld. Qtd', 'Sld. Valor']],
+          body: saldosData,
+          theme: 'grid',
+          headStyles: { fillColor: [46, 125, 50] },
+          styles: { fontSize: 7, cellPadding: 2 }
+        });
+        currentY = (docPdf as any).lastAutoTable.finalY + 12;
+      }
+
+      // --- 5. TABELA: HISTÓRICO DE LANÇAMENTOS ---
+      if (itensConsumo.length > 0) {
+        if (currentY > 150) { docPdf.addPage(); currentY = 20; }
+
+        docPdf.setFontSize(12);
+        docPdf.setTextColor(220, 53, 69); // Vermelho
+        docPdf.text('Histórico de Lançamentos (Auditoria de Empenhos)', 14, currentY);
+        currentY += 4;
+
+        const consumoData = itensConsumo.map(item => [
+          (item.numeroLote !== 'Único' && item.numeroLote ? `${item.numeroLote} / ` : '') + item.numeroItem,
+          item.discriminacao,
+          `${item.quantidade} ${item.unidade}`,
+          item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+          item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+          item.dataAdicao || '-'
+        ]);
+
+        autoTable(docPdf, {
+          startY: currentY,
+          head: [['Lote/Item', 'Descrição', 'Qtd Consumida', 'Vl. Unit.', 'Valor Consumido', 'Data do Log']],
+          body: consumoData,
+          theme: 'striped',
+          headStyles: { fillColor: [220, 53, 69] },
+          styles: { fontSize: 8, cellPadding: 3 }
+        });
+      }
+
+      // Salva e abre o PDF
+      const pdfBlob = docPdf.output('blob');
+      window.open(URL.createObjectURL(pdfBlob), '_blank');
+    };
+
+    // CARREGA A LOGO À ESQUERDA
+    const img = new Image();
+    img.src = logo;
+    img.onload = () => {
+      docPdf.addImage(img, 'PNG', 14, 10, 25, 25);
+      gerarConteudo();
+    };
+    img.onerror = () => {
+      gerarConteudo(); // Se a imagem falhar, gera sem logo
+    };
+  };
+
   return (
     <div className="painel-container">
       <header className="header">
@@ -228,6 +395,7 @@ export default function DetalhesContrato() {
       <main className="detalhes-container">
         
         <div className="acoes-relatorio">
+          <button className="btn-acao" style={{ backgroundColor: '#17a2b8', color: 'white' }} onClick={gerarRelatorioPDF}>📄 Gerar Relatório</button>
           <button className="btn-acao" style={{ backgroundColor: '#dc3545', color: 'white' }} onClick={excluirContrato} disabled={loading}>🗑️ Excluir Contrato</button>
           <button className="btn-acao btn-editar" onClick={() => setIsModalEditOpen(true)}>✏️ Editar Contrato</button>
           <button className="btn-acao btn-lancar" onClick={() => setIsModalLancamentoOpen(true)}>+ Lançar Consumo (Empenho)</button>
@@ -250,7 +418,7 @@ export default function DetalhesContrato() {
               
               {/* Identificação */}
               <div className="info-card">
-                <span className="card-label">Nº/Ano Processo</span>
+                <span className="card-label">Processo Nº</span>
                 <span className="card-value">{contrato.numeroProcesso || '-'}</span>
               </div>
 
@@ -260,14 +428,17 @@ export default function DetalhesContrato() {
               </div>
 
               <div className="info-card">
-                <span className="card-label">Nº/Ano Modalidade</span>
+                <span className="card-label">{contrato.modalidade ? `${contrato.modalidade} Nº` : 'Nº Modalidade'}</span>
                 <span className="card-value">{contrato.numeroModalidade || contrato.numeroPregao || '-'}</span>
               </div>
 
-              <div className="info-card">
-                <span className="card-label">Nº/Ano Ata</span>
-                <span className="card-value">{contrato.numeroAta || '-'}</span>
-              </div>
+              {/* A ATA SÓ APARECE NO DASHBOARD SE ESTIVER PREENCHIDA */}
+              {contrato.numeroAta && contrato.numeroAta.trim() !== '' && (
+                <div className="info-card">
+                  <span className="card-label">Ata Nº</span>
+                  <span className="card-value">{contrato.numeroAta}</span>
+                </div>
+              )}
 
               {/* Vigência e Datas */}
               <div className="info-card">
@@ -292,8 +463,8 @@ export default function DetalhesContrato() {
               </div>
             </div>
 
-            {/* Observação (Se existir) */}
-            {contrato.observacao && (
+            {/* AS OBSERVAÇÕES SÓ APARECEM SE PREENCHIDAS */}
+            {contrato.observacao && contrato.observacao.trim() !== '' && (
               <div className="observacao-bloco">
                 <span className="card-label">Observações</span>
                 <span className="card-value small">{contrato.observacao}</span>
@@ -446,7 +617,7 @@ export default function DetalhesContrato() {
         </div>
       </main>
 
-      {/* COMPONENTES MODULARES */}
+      {/* COMPONENTES MODULARIZADOS */}
       <ModalLancarConsumo 
         isOpen={isModalLancamentoOpen} 
         onClose={() => setIsModalLancamentoOpen(false)} 
