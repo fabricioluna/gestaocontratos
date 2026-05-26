@@ -173,15 +173,20 @@ export default function Painel() {
       const textoFiltro = termoBusca ? ` (Filtro applied: "${termoBusca}")` : '';
       docPdf.text(`Listagem Geral de Contratos${textoFiltro} - Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 28);
       
-      const tableData = contratosFiltrados.map(c => [
-        c.numeroContrato || '-',
-        c.objetoCompleto || c.objetoResumido || '-',
-        (c.fornecedor || '').substring(0, 25) + ((c.fornecedor?.length || 0) > 25 ? '...' : ''),
-        (c.fiscalContrato || 'Não inf.').substring(0, 20) + ((c.fiscalContrato?.length || 0) > 20 ? '...' : ''),
-        formatarDataBr(c.dataFim),
-        (c.valorTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-        (c.saldoContrato || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-      ]);
+      const tableData = contratosFiltrados.map(c => {
+        const vTotal = Number(c.valorTotal) || 0;
+        const sContrato = c.saldoContrato !== undefined ? Number(c.saldoContrato) : vTotal;
+
+        return [
+          c.numeroContrato || '-',
+          c.objetoCompleto || c.objetoResumido || '-',
+          (c.fornecedor || '').substring(0, 25) + ((c.fornecedor?.length || 0) > 25 ? '...' : ''),
+          (c.fiscalContrato || 'Não inf.').substring(0, 20) + ((c.fiscalContrato?.length || 0) > 20 ? '...' : ''),
+          formatarDataBr(c.dataFim),
+          vTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+          sContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+        ];
+      });
 
       autoTable(docPdf, {
         startY: 40,
@@ -278,7 +283,12 @@ export default function Painel() {
             ) : (
               contratosFiltrados.map((c) => {
                 const styleVencimento = getRowStyle(c.dataFim);
-                const percentualSaldo = (c.saldoContrato / c.valorTotal);
+                
+                // PASSO 2: Conversão segura para número (evita NaN e crashes de renderização)
+                const valorTotalNum = Number(c.valorTotal) || 0;
+                const saldoContratoNum = c.saldoContrato !== undefined ? Number(c.saldoContrato) : valorTotalNum;
+                
+                const percentualSaldo = valorTotalNum > 0 ? (saldoContratoNum / valorTotalNum) : 1;
                 const alertaSaldo = percentualSaldo < 0.3;
 
                 return (
@@ -287,9 +297,9 @@ export default function Painel() {
                     <td>{c.objetoResumido}</td>
                     <td>{c.fornecedor}</td>
                     <td style={{ fontWeight: 'bold' }}>{formatarDataBr(c.dataFim)}</td>
-                    <td style={{ fontWeight: 'bold', color: alertaSaldo ? '#e65100' : (c.saldoContrato < 0 ? 'red' : 'green') }} title={alertaSaldo ? `Saldo crítico: restam apenas ${(percentualSaldo * 100).toFixed(1)}% do valor total` : ""}>
+                    <td style={{ fontWeight: 'bold', color: alertaSaldo ? '#e65100' : (saldoContratoNum < 0 ? 'red' : 'green') }} title={alertaSaldo ? `Saldo crítico: restam apenas ${(percentualSaldo * 100).toFixed(1)}% do valor total` : ""}>
                       {alertaSaldo && <span>⚠️ </span>}
-                      {c.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      {saldoContratoNum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </td>
                     <td>{c.dataUltimaAtualizacao || 'N/A'}</td>
                     <td style={{ display: 'flex', gap: '5px' }}>
