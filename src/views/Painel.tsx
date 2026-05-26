@@ -49,29 +49,29 @@ export default function Painel() {
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
-  // CARREGAR DADOS COM FILTRO FLEXÍVEL E RESILIENTE (PASSO 1)
+  // CARREGAR DADOS COM MONITORAMENTO DE LOG NO CONSOLE
   useEffect(() => {
     if (!orgaoLogado) { navigate('/'); return; }
     
-    // Buscamos a coleção completa para evitar que inconsistências de chaves ocultem registros
     const q = query(collection(db, 'contratos'));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const lista: Contrato[] = [];
       
+      console.log(`[Firebase Debug] Documentos encontrados na coleção 'contratos': ${snapshot.size}`);
+      
       snapshot.forEach((docSnap) => {
         const dados = docSnap.data();
-        
-        // Mapeamento inteligente para aceitar chaves antigas 'orgao' ou o novo 'orgaoId'
         const identificadorOrgao = dados.orgaoId || dados.orgao || '';
         
-        // Se conter o termo esperado (ex: "prefeitura"), inclui na listagem do painel
         if (identificadorOrgao.toLowerCase().includes(orgaoLogado.toLowerCase())) {
           lista.push({ id: docSnap.id, ...dados } as Contrato);
         }
       });
       
       setContratos(lista);
+    }, (error) => {
+      console.error("[Firebase Debug] Erro ao ler a coleção 'contratos':", error);
     });
     
     return () => unsubscribe();
@@ -284,7 +284,6 @@ export default function Painel() {
               contratosFiltrados.map((c) => {
                 const styleVencimento = getRowStyle(c.dataFim);
                 
-                // PASSO 2: Conversão segura para número (evita NaN e crashes de renderização)
                 const valorTotalNum = Number(c.valorTotal) || 0;
                 const saldoContratoNum = c.saldoContrato !== undefined ? Number(c.saldoContrato) : valorTotalNum;
                 
