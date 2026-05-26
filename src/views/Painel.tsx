@@ -49,15 +49,31 @@ export default function Painel() {
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
-  // CARREGAR DADOS
+  // CARREGAR DADOS COM FILTRO FLEXÍVEL E RESILIENTE (PASSO 1)
   useEffect(() => {
     if (!orgaoLogado) { navigate('/'); return; }
-    const q = query(collection(db, 'contratos'), where('orgaoId', '==', orgaoLogado));
+    
+    // Buscamos a coleção completa para evitar que inconsistências de chaves ocultem registros
+    const q = query(collection(db, 'contratos'));
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const lista: Contrato[] = [];
-      snapshot.forEach((doc) => lista.push({ id: doc.id, ...doc.data() } as Contrato));
+      
+      snapshot.forEach((docSnap) => {
+        const dados = docSnap.data();
+        
+        // Mapeamento inteligente para aceitar chaves antigas 'orgao' ou o novo 'orgaoId'
+        const identificadorOrgao = dados.orgaoId || dados.orgao || '';
+        
+        // Se conter o termo esperado (ex: "prefeitura"), inclui na listagem do painel
+        if (identificadorOrgao.toLowerCase().includes(orgaoLogado.toLowerCase())) {
+          lista.push({ id: docSnap.id, ...dados } as Contrato);
+        }
+      });
+      
       setContratos(lista);
     });
+    
     return () => unsubscribe();
   }, [orgaoLogado, navigate]);
 
@@ -154,12 +170,11 @@ export default function Painel() {
       docPdf.setFontSize(16); docPdf.setTextColor(0, 74, 153);
       docPdf.text(orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Relatório de Contratos', 45, 20);
       docPdf.setFontSize(11); docPdf.setTextColor(100, 100, 100);
-      const textoFiltro = termoBusca ? ` (Filtro aplicado: "${termoBusca}")` : '';
+      const textoFiltro = termoBusca ? ` (Filtro applied: "${termoBusca}")` : '';
       docPdf.text(`Listagem Geral de Contratos${textoFiltro} - Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 28);
       
       const tableData = contratosFiltrados.map(c => [
         c.numeroContrato || '-',
-        // Exibindo o Objeto Completo inteiro (ou resumido se o completo estiver vazio)
         c.objetoCompleto || c.objetoResumido || '-',
         (c.fornecedor || '').substring(0, 25) + ((c.fornecedor?.length || 0) > 25 ? '...' : ''),
         (c.fiscalContrato || 'Não inf.').substring(0, 20) + ((c.fiscalContrato?.length || 0) > 20 ? '...' : ''),
