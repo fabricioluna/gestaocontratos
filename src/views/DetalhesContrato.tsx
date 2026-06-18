@@ -12,7 +12,7 @@ import './DetalhesContrato.css';
 // IMPORTAÇÃO DOS COMPONENTES MODULARES
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
 import ModalLancarConsumo from '../components/DetalhesContrato/ModalLancarConsumo';
-import { extrairDadosContratoComIA } from '../services/geminiService';
+import { extrairDadosContratoComIA, extrairDadosAditivoComIA } from '../services/geminiService'; // Importação atualizada
 
 interface ItemExtendido {
   id?: string;
@@ -146,7 +146,7 @@ export default function DetalhesContrato() {
     }
   };
 
-  // --- LÓGICA DE INTEGRAÇÃO COM GEMINI (IA) ---
+  // --- LÓGICA DE INTEGRAÇÃO COM GEMINI (IA) PARA O ADITIVO ---
   const lidarProcessamentoIA = async () => {
     if (!arquivoPdfAditivo) {
       alert("Por favor, selecione o arquivo do Termo Aditivo primeiro.");
@@ -157,34 +157,48 @@ export default function DetalhesContrato() {
     try {
       const leitor = new FileReader();
       
+      // Correção vital: Ler como DataURL (Base64) garante que arquivos binários como PDF não quebrem a leitura.
       leitor.onload = async (evento) => {
         try {
-          const textoBruto = evento.target?.result as string;
-          const dadosExtraidos = await extrairDadosContratoComIA(textoBruto);
+          const resultado = evento.target?.result as string;
+          // O readAsDataURL retorna "data:application/pdf;base64,JVBE..." - Extraímos só o código.
+          const base64Data = resultado.split(',')[1];
+          const mimeType = arquivoPdfAditivo.type || 'application/pdf';
+          
+          const dadosExtraidos = await extrairDadosAditivoComIA(base64Data, mimeType);
 
-          if (dadosExtraidos && dadosExtraidos.itens && dadosExtraidos.itens.length > 0) {
-            setItensDoAditivo(dadosExtraidos.itens);
-            
-            const soma = dadosExtraidos.itens.reduce((acc: number, item: any) => acc + (Number(item.valorTotalItem) || 0), 0);
-            setAditivoValor(soma);
-            
-            if (dadosExtraidos.dataFim) {
-              setAditivoNovaData(dadosExtraidos.dataFim);
-              setAditivoTipo('ambos');
+          if (dadosExtraidos) {
+            // Autopreenchimento Inteligente dos inputs da tela
+            if (dadosExtraidos.descricao) setAditivoDescricao(dadosExtraidos.descricao);
+            if (dadosExtraidos.tipo) setAditivoTipo(dadosExtraidos.tipo);
+            if (dadosExtraidos.novaDataFim) setAditivoNovaData(dadosExtraidos.novaDataFim);
+            if (dadosExtraidos.valorAditivado) setAditivoValor(dadosExtraidos.valorAditivado);
+
+            if (dadosExtraidos.itens && dadosExtraidos.itens.length > 0) {
+              setItensDoAditivo(dadosExtraidos.itens);
+              
+              // Se a IA falhou em pegar o valor global, calculamos pela soma dos itens
+              const soma = dadosExtraidos.itens.reduce((acc: number, item: any) => acc + (Number(item.valorTotalItem) || 0), 0);
+              if (!dadosExtraidos.valorAditivado) setAditivoValor(soma);
+              
+              alert("✅ Inteligência Artificial extraiu os DADOS GERAIS e ITENS com sucesso!");
+            } else {
+              alert("✅ Dados gerais lidos, mas a IA não encontrou uma tabela de itens para extrair.");
             }
-            
-            alert("✅ Inteligência Artificial extraiu os itens com sucesso!");
           } else {
-            alert("A IA analisou o arquivo, mas não encontrou uma tabela de itens clara.");
+            alert("A IA analisou o arquivo, mas não conseguiu estruturar os dados.");
           }
         } catch (erroApi) {
           console.error(erroApi);
-          alert("Erro no serviço da IA. Verifique sua chave de API ou a legibilidade do documento.");
+          alert("Erro no serviço da IA. Se estiver usando Word (DOCX), tente salvar como PDF e anexe novamente.");
         } finally {
           setProcessandoPdfIA(false);
         }
       };
-      leitor.readAsText(arquivoPdfAditivo);
+
+      // Inicia a leitura do arquivo como Base64
+      leitor.readAsDataURL(arquivoPdfAditivo);
+
     } catch (error) {
       console.error("Erro na leitura de arquivo:", error);
       alert("Falha ao ler o arquivo selecionado.");
