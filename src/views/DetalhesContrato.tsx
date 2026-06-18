@@ -12,7 +12,7 @@ import './DetalhesContrato.css';
 // IMPORTAÇÃO DOS COMPONENTES MODULARES
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
 import ModalLancarConsumo from '../components/DetalhesContrato/ModalLancarConsumo';
-import { extrairDadosContratoComIA } from '../services/geminiService'; // Importação do Serviço Gemini
+import { extrairDadosContratoComIA } from '../services/geminiService';
 
 interface ItemExtendido {
   id?: string;
@@ -150,22 +150,17 @@ export default function DetalhesContrato() {
     
     setProcessandoPdfIA(true);
     try {
-      // Como a API precisa de texto, lemos o arquivo PDF como base (texto bruto).
-      // Em produção real, você pode precisar de uma biblioteca como pdf.js para extrair texto limpo de PDF binário antes de enviar,
-      // mas o Gemini Flash 1.5 tem capacidades avançadas de leitura se o texto básico estiver presente ou se anexar via API direta.
       const leitor = new FileReader();
       
       leitor.onload = async (evento) => {
         try {
           const textoBruto = evento.target?.result as string;
           
-          // Chama a sua função importada do geminiService.ts
           const dadosExtraidos = await extrairDadosContratoComIA(textoBruto);
 
           if (dadosExtraidos && dadosExtraidos.itens && dadosExtraidos.itens.length > 0) {
             setItensDoAditivo(dadosExtraidos.itens);
             
-            // Calculando o valor global aditivado com base nos itens extraídos
             const soma = dadosExtraidos.itens.reduce((acc: number, item: any) => acc + (Number(item.valorTotalItem) || 0), 0);
             setAditivoValor(soma);
             
@@ -186,8 +181,6 @@ export default function DetalhesContrato() {
         }
       };
 
-      // Tenta ler o conteúdo. Se for um DOCX/TXT funciona perfeitamente. 
-      // Se for PDF, o texto extraído nativamente no frontend pode vir "sujo", mas o Gemini costuma conseguir limpar.
       leitor.readAsText(arquivoPdfAditivo);
 
     } catch (error) {
@@ -207,7 +200,7 @@ export default function DetalhesContrato() {
       let novoSaldo = Number(contrato.saldoContrato) || 0;
       let novaDataFimStr = contrato.dataFim;
       let valorAlteracao = 0;
-      let urlPdfSalvo = ''; // Preparado para o Firebase Storage futuro
+      let urlPdfSalvo = ''; 
 
       if (aditivoTipo === 'valor' || aditivoTipo === 'ambos') {
         const v = Number(aditivoValor);
@@ -256,7 +249,6 @@ export default function DetalhesContrato() {
       alert('Aditivo registrado com sucesso!');
       setIsModalAditivoOpen(false);
       
-      // Limpar formulário
       setAditivoDescricao('');
       setAditivoValor('');
       setAditivoNovaData('');
@@ -294,7 +286,6 @@ export default function DetalhesContrato() {
 
   if (!contrato) return <div style={{textAlign: 'center', padding: '50px'}}>A carregar relatório...</div>;
 
-  // --- LÓGICA DE ALERTAS E CORES ---
   const hoje = new Date();
   const vencimento = new Date(contrato.dataFim);
   const diffDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 3600 * 24));
@@ -304,7 +295,6 @@ export default function DetalhesContrato() {
   let borderValidade = diffDias <= 30 ? '#ff000033' : diffDias <= 90 ? '#ffc10733' : '#e2e8f0';
   let labelValidade = diffDias < 0 ? "Vencido" : diffDias <= 30 ? `Vence em ${diffDias} dias` : diffDias <= 90 ? `Restam ${diffDias} dias` : "Válido";
 
-  // Se estiver distratado, sobrepor as regras de cor
   if (contrato.dataDistrato) {
     corValidade = '#dc3545';
     fundoValidade = '#ffebee';
@@ -340,7 +330,6 @@ export default function DetalhesContrato() {
       });
     });
 
-    // INJEÇÃO DOS ITENS ADITIVADOS NO SALDO
     if (contrato.aditivos) {
       contrato.aditivos.forEach(aditivo => {
         if (aditivo.itensAditivados) {
@@ -348,7 +337,6 @@ export default function DetalhesContrato() {
             const chave = `${itemAditivo.numeroLote}|${itemAditivo.numeroItem}`;
             if (mapaSaldos.has(chave)) {
               const existente = mapaSaldos.get(chave);
-              // Lógica de aditivo simples: se tem item, consideramos como acréscimo de qtd/valor
               existente.qtdContratada += itemAditivo.quantidade;
               existente.vlContratado += itemAditivo.valorTotalItem;
             } else {
@@ -402,12 +390,10 @@ export default function DetalhesContrato() {
 
   const tabelaDeSaldos = gerarTabelaSaldos();
 
-  // --- GERAÇÃO DE RELATÓRIO PDF COMPLETO ---
   const gerarRelatorioPDF = () => {
     const docPdf = new jsPDF('landscape'); 
     
     const gerarConteudo = () => {
-      // CABEÇALHO
       docPdf.setFontSize(16);
       docPdf.setTextColor(0, 74, 153);
       docPdf.text(`Relatório de Contrato: ${contrato.numeroContrato}`, 45, 20);
@@ -422,7 +408,6 @@ export default function DetalhesContrato() {
 
       let currentY = 40;
 
-      // --- 1. DADOS GERAIS ---
       docPdf.setFontSize(12);
       docPdf.setTextColor(contrato.dataDistrato ? 220 : 0, contrato.dataDistrato ? 53 : 74, contrato.dataDistrato ? 69 : 153);
       docPdf.text('Dados Gerais do Contrato', 14, currentY);
@@ -434,7 +419,6 @@ export default function DetalhesContrato() {
       docPdf.text(`Objeto: ${contrato.objetoResumido}`, 14, currentY); currentY += 5;
       
       let linhaProcesso = `Processo Nº: ${contrato.numeroProcesso || '-'}`;
-      
       const modalidadeTexto = contrato.modalidade;
       const numModalidade = contrato.numeroModalidade || contrato.numeroPregao;
       
@@ -451,7 +435,6 @@ export default function DetalhesContrato() {
       }
 
       docPdf.text(linhaProcesso, 14, currentY); currentY += 5;
-      
       docPdf.text(`Data Início: ${formatarDataBr(contrato.dataInicio)}  |  Validade: ${formatarDataBr(contrato.dataFim)}`, 14, currentY); currentY += 5;
       docPdf.text(`Fiscal Responsável: ${contrato.fiscalContrato || 'Não informado'}`, 14, currentY); currentY += 5;
       
@@ -462,7 +445,6 @@ export default function DetalhesContrato() {
         currentY += 5; 
       }
 
-      // --- 2. POSIÇÃO FINANCEIRA ---
       docPdf.setFontSize(12);
       docPdf.setTextColor(40, 167, 69); // Verde
       docPdf.text('Posição Financeira', 14, currentY);
@@ -473,12 +455,12 @@ export default function DetalhesContrato() {
       docPdf.text(`Global Autorizado: ${contrato.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}  |  Valor Consumido: ${totalConsumido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}  |  Saldo Atual Disponível: ${contrato.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 14, currentY); 
       currentY += 12;
 
-      // --- 3. HISTÓRICO DE ADITIVOS E SEUS ITENS ---
+      // --- HISTÓRICO DE ADITIVOS E SEUS ITENS ---
       if (contrato.aditivos && contrato.aditivos.length > 0) {
         if (currentY > 150) { docPdf.addPage(); currentY = 20; }
 
         docPdf.setFontSize(12);
-        docPdf.setTextColor(255, 140, 0); // Laranja para Aditivos
+        docPdf.setTextColor(255, 140, 0); 
         docPdf.text('Histórico de Aditivos (Lei 14.133)', 14, currentY);
         currentY += 4;
 
@@ -492,7 +474,6 @@ export default function DetalhesContrato() {
              ad.dataRegistro
            ]);
            
-           // Inserir linhas secundárias para os itens do aditivo, se houver
            if (ad.itensAditivados && ad.itensAditivados.length > 0) {
              ad.itensAditivados.forEach(itemAd => {
                aditivosData.push([
@@ -517,7 +498,7 @@ export default function DetalhesContrato() {
         currentY = (docPdf as any).lastAutoTable.finalY + 12;
       }
 
-      // --- 4. TABELA: PLANILHA ORIGINAL ---
+      // --- PLANILHA ORIGINAL ---
       if (itensCatalogo.length > 0) {
         if (currentY > 150) { docPdf.addPage(); currentY = 20; }
         
@@ -547,12 +528,12 @@ export default function DetalhesContrato() {
         currentY = (docPdf as any).lastAutoTable.finalY + 12;
       }
 
-      // --- 5. TABELA: CONTROLE FÍSICO-FINANCEIRO (SALDOS) ---
+      // --- CONTROLE FÍSICO-FINANCEIRO (SALDOS) ---
       if (tabelaDeSaldos.length > 0) {
         if (currentY > 150) { docPdf.addPage(); currentY = 20; }
 
         docPdf.setFontSize(12);
-        docPdf.setTextColor(46, 125, 50); // Verde
+        docPdf.setTextColor(46, 125, 50);
         docPdf.text('Controle Físico-Financeiro (Saldos por Item)', 14, currentY);
         currentY += 4;
 
@@ -584,12 +565,12 @@ export default function DetalhesContrato() {
         currentY = (docPdf as any).lastAutoTable.finalY + 12;
       }
 
-      // --- 6. TABELA: HISTÓRICO DE LANÇAMENTOS ---
+      // --- HISTÓRICO DE LANÇAMENTOS ---
       if (itensConsumo.length > 0) {
         if (currentY > 150) { docPdf.addPage(); currentY = 20; }
 
         docPdf.setFontSize(12);
-        docPdf.setTextColor(220, 53, 69); // Vermelho
+        docPdf.setTextColor(220, 53, 69);
         docPdf.text('Histórico de Lançamentos (Auditoria de Empenhos)', 14, currentY);
         currentY += 4;
 
@@ -612,7 +593,6 @@ export default function DetalhesContrato() {
         });
       }
 
-      // Salva e abre o PDF
       const pdfBlob = docPdf.output('blob');
       window.open(URL.createObjectURL(pdfBlob), '_blank');
     };
@@ -656,25 +636,23 @@ export default function DetalhesContrato() {
         )}
 
         <div className="acoes-relatorio">
-          <button className="btn-acao btn-gerar" onClick={gerarRelatorioPDF}>📄 Gerar Relatório</button>
+          <button className="btn-acao btn-gerar" onClick={gerarRelatorioPDF}>📄 Gerar PDF</button>
           <button className="btn-acao btn-aditivo" onClick={() => setIsModalAditivoOpen(true)} disabled={!!contrato.dataDistrato}>➕ Aditivo</button>
           <button className="btn-acao btn-distrato" onClick={() => setIsModalDistratoOpen(true)} disabled={!!contrato.dataDistrato}>🛑 Distrato</button>
-          <button className="btn-acao btn-editar" onClick={() => setIsModalEditOpen(true)} disabled={!!contrato.dataDistrato}>✏️ Editar Contrato</button>
-          
-          <button className="btn-acao btn-excluir" onClick={excluirContrato} disabled={loading}>🗑️ Excluir Contrato</button>
+          <button className="btn-acao btn-editar" onClick={() => setIsModalEditOpen(true)} disabled={!!contrato.dataDistrato}>✏️ Editar</button>
+          <button className="btn-acao btn-excluir" onClick={excluirContrato} disabled={loading}>🗑️ Excluir</button>
           
           <button 
             className="btn-acao btn-lancar" 
             onClick={() => setIsModalLancamentoOpen(true)}
             disabled={!!contrato.dataDistrato}
-            title={contrato.dataDistrato ? "Contrato Distratado" : "Funcionalidade em manutenção para a implementação de Secretarias (Fase 2)"}
+            title={contrato.dataDistrato ? "Contrato Distratado" : "Lançar novo empenho de consumo"}
           >
-            + Lançar Consumo (Empenho)
+            + Lançar Consumo
           </button>
         </div>
 
         <div className="painel-relatorio">
-          
           <div className="card-relatorio">
             <h3 style={{ color: '#1e293b', marginTop: 0, marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
               Dados Gerais do Contrato
@@ -684,34 +662,28 @@ export default function DetalhesContrato() {
             <p className="objeto-destaque">{contrato.objetoResumido}</p>
 
             <div className="dashboard-cards">
-              
               <div className="info-card">
                 <span className="card-label">Processo Nº</span>
                 <span className="card-value">{contrato.numeroProcesso || '-'}</span>
               </div>
-
               <div className="info-card">
                 <span className="card-label">Modalidade</span>
                 <span className="card-value">{contrato.modalidade || '-'}</span>
               </div>
-
               <div className="info-card">
                 <span className="card-label">{contrato.modalidade ? `${contrato.modalidade} Nº` : 'Nº Modalidade'}</span>
                 <span className="card-value">{contrato.numeroModalidade || contrato.numeroPregao || '-'}</span>
               </div>
-
               {contrato.numeroAta && contrato.numeroAta.trim() !== '' && (
                 <div className="info-card">
                   <span className="card-label">Ata Nº</span>
                   <span className="card-value">{contrato.numeroAta}</span>
                 </div>
               )}
-
               <div className="info-card">
                 <span className="card-label">Data Início</span>
                 <span className="card-value">{formatarDataBr(contrato.dataInicio)}</span>
               </div>
-
               <div className="info-card" style={{ backgroundColor: fundoValidade, borderColor: borderValidade }}>
                 <span className="card-label" style={{ color: contrato.dataDistrato ? '#dc3545' : diffDias <= 90 ? corValidade : '#94a3b8' }}>Validade</span>
                 <span className="card-value" style={{ color: corValidade }}>
@@ -721,7 +693,6 @@ export default function DetalhesContrato() {
                   </span>
                 </span>
               </div>
-
               <div className="info-card" style={{ gridColumn: 'span 2' }}>
                 <span className="card-label">Fiscal Responsável</span>
                 <span className="card-value">{contrato.fiscalContrato || 'Não informado'}</span>
@@ -734,7 +705,6 @@ export default function DetalhesContrato() {
                 <span className="card-value small">{contrato.observacao}</span>
               </div>
             )}
-
           </div>
 
           <div className="card-financeiro">
