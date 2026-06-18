@@ -180,8 +180,8 @@ export default function Painel() {
         return [
           c.numeroContrato || '-',
           c.objetoCompleto || c.objetoResumido || '-',
-          (c.fornecedor || '').substring(0, 25) + ((c.fornecedor?.length || 0) > 25 ? '...' : ''),
-          (c.fiscalContrato || 'Não inf.').substring(0, 20) + ((c.fiscalContrato?.length || 0) > 20 ? '...' : ''),
+          c.fornecedor || '-',
+          c.fiscalContrato || 'Não inf.',
           formatarDataBr(c.dataFim),
           vTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
           sContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
