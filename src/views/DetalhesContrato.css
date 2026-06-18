@@ -299,45 +299,43 @@
 .btn-salvar:hover:not(:disabled) { background-color: #2563eb; }
 
 /* =========================================
-   ELEMENTOS DO ADITIVO (IA E MANUAL)
+   ELEMENTOS DO ADITIVO (IA E MANUAL) - CORRIGIDO
 ========================================= */
 .ia-upload-section {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 12px;
-}
-
-@media (min-width: 600px) {
-  .ia-upload-section {
-    flex-direction: row;
-    align-items: flex-end;
-  }
+  align-items: stretch;
 }
 
 .file-upload-box {
-  border: 1px solid #cbd5e1 !important;
-  padding: 8px !important;
-  border-radius: 8px !important;
+  flex: 1 1 200px;
+  border: 1px solid #cbd5e1;
+  padding: 8px 12px;
+  border-radius: 6px;
   background: #fff;
-  width: 100%;
-  box-sizing: border-box;
   font-size: 13px;
+  min-height: 38px;
+  box-sizing: border-box;
+  color: #475569;
 }
 
 .btn-ia {
   background-color: #8b5cf6;
   color: white;
-  padding: 10px 16px;
-  border-radius: 8px;
+  padding: 8px 16px;
+  border-radius: 6px;
   border: none;
   cursor: pointer;
-  font-weight: bold;
-  height: 40px;
+  font-weight: 600;
+  font-size: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   transition: background-color 0.2s;
   white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .btn-ia:hover:not(:disabled) {

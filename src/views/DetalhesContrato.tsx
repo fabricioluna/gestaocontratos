@@ -381,7 +381,6 @@ export default function DetalhesContrato() {
             const chave = `${itemAditivo.numeroLote}|${itemAditivo.numeroItem}`;
             if (mapaSaldos.has(chave)) {
               const existente = mapaSaldos.get(chave);
-              // Lógica de aditivo simples (acréscimo ou supressão definidos pelo valor da quantidade)
               existente.qtdContratada += itemAditivo.quantidade;
               existente.vlContratado += itemAditivo.valorTotalItem;
             } else {
@@ -972,24 +971,24 @@ export default function DetalhesContrato() {
 
               {(aditivoTipo === 'valor' || aditivoTipo === 'ambos') && (
                 <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                  <h4 style={{ margin: '0 0 12px 0', color: '#3b82f6' }}>📄 Importação e Seleção de Itens</h4>
+                  <h4 style={{ margin: '0 0 16px 0', color: '#3b82f6', fontSize: '15px' }}>📄 Importação e Seleção de Itens</h4>
                   
                   {/* --- IA SECTION --- */}
-                  <div className="ia-upload-section">
-                    <div className="form-group" style={{ flex: 1 }}>
-                      <label>Extração Automática via Arquivo (PDF/DOCX):</label>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px', display: 'block' }}>Extração Automática via Arquivo (PDF/DOCX):</label>
+                    <div className="ia-upload-section">
                       <input type="file" accept=".txt,.pdf,.docx" onChange={e => setArquivoPdfAditivo(e.target.files?.[0] || null)} className="file-upload-box" />
+                      <button type="button" onClick={lidarProcessamentoIA} disabled={processandoPdfIA} className="btn-ia">
+                        {processandoPdfIA ? '🤖 Lendo...' : '🤖 Extrair IA'}
+                      </button>
                     </div>
-                    <button type="button" onClick={lidarProcessamentoIA} disabled={processandoPdfIA} className="btn-ia">
-                      {processandoPdfIA ? '🤖 Lendo...' : '🤖 Extrair com IA'}
-                    </button>
                   </div>
 
                   <div style={{ textAlign: 'center', margin: '16px 0', color: '#94a3b8', fontSize: '12px', fontWeight: 'bold' }}>OU</div>
 
                   {/* --- MANUAL SECTION --- */}
                   <div className="manual-item-section">
-                    <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '8px', display: 'block' }}>Importar da Planilha Original do Contrato:</label>
+                    <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px', display: 'block' }}>Importar da Planilha Original do Contrato:</label>
                     <div className="form-grid" style={{ marginBottom: '10px' }}>
                       <div className="form-group full-width">
                         <select value={itemManualSel} onChange={e => {
