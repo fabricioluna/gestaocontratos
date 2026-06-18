@@ -1,7 +1,7 @@
 // src/views/DetalhesContrato.tsx
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, collection, query, where, deleteDoc, getDocs, writeBatch, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, deleteDoc, getDocs, writeBatch, updateDoc } from 'firebase/firestore';
 import * as mammoth from 'mammoth'; 
 import * as pdfjsLib from 'pdfjs-dist'; 
 import jsPDF from 'jspdf';
@@ -63,9 +63,10 @@ export default function DetalhesContrato() {
   const [opcIncluirAditivos, setOpcIncluirAditivos] = useState(true);
   const [opcIncluirEmpenhos, setOpcIncluirEmpenhos] = useState(true);
 
-  // Estados para Aditivo
+  // Estados para Aditivo (Criação e Edição)
   const [isModalAditivoOpen, setIsModalAditivoOpen] = useState(false);
-  const [aditivoDataAditivo, setAditivoDataAditivo] = useState(''); // Nova Data Manual
+  const [aditivoEmEdicao, setAditivoEmEdicao] = useState<Aditivo | null>(null);
+  const [aditivoDataAditivo, setAditivoDataAditivo] = useState('');
   const [aditivoDescricao, setAditivoDescricao] = useState('');
   const [aditivoTipo, setAditivoTipo] = useState<'prazo' | 'valor' | 'ambos'>('prazo');
   const [aditivoOperacao, setAditivoOperacao] = useState<'acrescimo' | 'supressao'>('acrescimo');
@@ -86,14 +87,28 @@ export default function DetalhesContrato() {
   const [distratoData, setDistratoData] = useState('');
   const [distratoMotivo, setDistratoMotivo] = useState('');
 
+  // FUNÇÃO PARA LIMPAR E FECHAR O MODAL DE ADITIVO
+  const fecharModalAditivo = () => {
+    setIsModalAditivoOpen(false);
+    setAditivoEmEdicao(null);
+    setAditivoDescricao('');
+    setAditivoDataAditivo('');
+    setAditivoTipo('prazo');
+    setAditivoOperacao('acrescimo');
+    setAditivoValor('');
+    setAditivoNovaData('');
+    setItensDoAditivo([]);
+    setArquivoPdfAditivo(null);
+  };
+
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setIsModalLancamentoOpen(false);
         setIsModalEditOpen(false);
-        setIsModalAditivoOpen(false);
         setIsModalDistratoOpen(false);
         setIsModalRelatorioOpen(false);
+        fecharModalAditivo();
       }
     };
     window.addEventListener('keydown', handleEsc);
@@ -262,6 +277,56 @@ export default function DetalhesContrato() {
     setAditivoValor(novaSoma > 0 ? novaSoma : '');
   };
 
+  // --- LÓGICAS DE EDIÇÃO E EXCLUSÃO DE ADITIVOS ---
+  const abrirEdicaoAditivo = (ad: Aditivo) => {
+    setAditivoEmEdicao(ad);
+    setAditivoDescricao(ad.descricao);
+    setAditivoTipo(ad.tipo);
+    setAditivoDataAditivo(ad.dataAditivo || '');
+    setAditivoNovaData(ad.novaDataFim || '');
+    
+    if (ad.valorAditivado !== undefined && ad.valorAditivado !== 0) {
+       setAditivoOperacao(ad.valorAditivado > 0 ? 'acrescimo' : 'supressao');
+       setAditivoValor(Math.abs(ad.valorAditivado));
+    } else {
+       setAditivoValor('');
+    }
+    
+    setItensDoAditivo(ad.itensAditivados || []);
+    setIsModalAditivoOpen(true);
+  };
+
+  const excluirAditivo = async (aditivoParaExcluir: Aditivo) => {
+    if (!id || !contrato) return;
+    if (!window.confirm("Tem certeza que deseja excluir este aditivo? O valor global e o saldo do contrato serão recalculados automaticamente.")) return;
+    
+    setLoading(true);
+    try {
+      const valorAjuste = aditivoParaExcluir.valorAditivado || 0;
+      
+      // Remove o impacto financeiro do aditivo que está sendo excluído
+      const novoValorTotal = Number(contrato.valorTotal) - valorAjuste;
+      const novoSaldo = Number(contrato.saldoContrato) - valorAjuste;
+      
+      // Filtra o aditivo excluído da lista
+      const novaListaAditivos = contrato.aditivos ? contrato.aditivos.filter(a => a.id !== aditivoParaExcluir.id) : [];
+
+      await updateDoc(doc(db, 'contratos', id), {
+        valorTotal: novoValorTotal,
+        saldoContrato: novoSaldo,
+        aditivos: novaListaAditivos,
+        dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
+      });
+
+      alert('Aditivo excluído com sucesso!');
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao excluir o aditivo.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const salvarAditivo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !contrato) return;
@@ -278,13 +343,21 @@ export default function DetalhesContrato() {
       let novaDataFimStr = contrato.dataFim;
       let valorAlteracao = 0;
 
+      // 1. REVERTER IMPACTO FINANCEIRO ANTIGO SE FOR UMA EDIÇÃO
+      if (aditivoEmEdicao) {
+        const valorAntigo = aditivoEmEdicao.valorAditivado || 0;
+        novoValorTotal -= valorAntigo;
+        novoSaldo -= valorAntigo;
+      }
+
+      // 2. APLICAR IMPACTO FINANCEIRO DO NOVO SALVAMENTO
       if (aditivoTipo === 'valor' || aditivoTipo === 'ambos') {
         const v = Number(aditivoValor);
         valorAlteracao = aditivoOperacao === 'acrescimo' ? v : -v;
         
         const limite25 = novoValorTotal * 0.25;
         if (v > limite25 && aditivoOperacao === 'acrescimo') {
-           if(!window.confirm(`Atenção: O acréscimo de ${v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} supera 25% do valor do contrato inicial. Deseja prosseguir sob amparo legal específico?`)) {
+           if(!window.confirm(`Atenção: O acréscimo de ${v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} supera 25% do valor atual. Deseja prosseguir sob amparo legal específico?`)) {
                setLoading(false);
                return;
            }
@@ -303,33 +376,36 @@ export default function DetalhesContrato() {
       }
 
       const novoAditivo: Aditivo = {
-        id: Date.now().toString(),
+        id: aditivoEmEdicao ? aditivoEmEdicao.id : Date.now().toString(),
         descricao: aditivoDescricao || 'Termo Aditivo',
-        dataAditivo: aditivoDataAditivo, // Data preenchida manualmente pelo usuário
+        dataAditivo: aditivoDataAditivo, 
         tipo: aditivoTipo,
         valorAditivado: valorAlteracao,
         novaDataFim: (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') && aditivoNovaData ? aditivoNovaData : "",
-        dataRegistro: new Date().toLocaleString('pt-BR'),
+        dataRegistro: aditivoEmEdicao ? aditivoEmEdicao.dataRegistro : new Date().toLocaleString('pt-BR'),
         itensAditivados: itensDoAditivo.length > 0 ? itensDoAditivo : [],
       };
+
+      // 3. ATUALIZAR A LISTA NO BANCO DE DADOS
+      let novaListaAditivos = contrato.aditivos ? [...contrato.aditivos] : [];
+      if (aditivoEmEdicao) {
+         const index = novaListaAditivos.findIndex(a => a.id === aditivoEmEdicao.id);
+         if (index !== -1) novaListaAditivos[index] = novoAditivo;
+      } else {
+         novaListaAditivos.push(novoAditivo);
+      }
 
       await updateDoc(doc(db, 'contratos', id), {
         valorTotal: novoValorTotal,
         saldoContrato: novoSaldo,
         dataFim: novaDataFimStr,
-        aditivos: arrayUnion(novoAditivo),
+        aditivos: novaListaAditivos, // Substitui todo o array (permite edições perfeitamente)
         dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
       });
 
-      alert('Aditivo registrado com sucesso!');
-      setIsModalAditivoOpen(false);
-      
-      setAditivoDataAditivo('');
-      setAditivoDescricao('');
-      setAditivoValor('');
-      setAditivoNovaData('');
-      setItensDoAditivo([]);
-      setArquivoPdfAditivo(null);
+      alert(aditivoEmEdicao ? 'Aditivo atualizado com sucesso!' : 'Aditivo registrado com sucesso!');
+      fecharModalAditivo();
+
     } catch (error) {
       console.error(error);
       alert("Erro ao salvar aditivo. Verifique o log.");
@@ -391,7 +467,6 @@ export default function DetalhesContrato() {
   const totalUnidades = itensConsumo.reduce((acc, curr) => acc + curr.quantidade, 0);
   const totalConsumido = itensConsumo.reduce((acc, curr) => acc + curr.valorTotalItem, 0);
 
-  // A função agora aceita um parâmetro para incluir ou não os Aditivos no cálculo da tabela
   const gerarTabelaSaldos = (incluirAditivos: boolean = true) => {
     const mapaSaldos = new Map();
 
@@ -470,9 +545,8 @@ export default function DetalhesContrato() {
 
   const tabelaDeSaldosTela = gerarTabelaSaldos(true);
 
-  // --- GERAÇÃO DO RELATÓRIO DINÂMICO ---
   const gerarRelatorioPDF = () => {
-    setIsModalRelatorioOpen(false); // Fecha o modal de opções
+    setIsModalRelatorioOpen(false); 
 
     const docPdf = new jsPDF('landscape'); 
     const gerarConteudo = () => {
@@ -535,7 +609,6 @@ export default function DetalhesContrato() {
       docPdf.setFontSize(10);
       docPdf.setTextColor(50, 50, 50);
       
-      // Lógica Financeira Dinâmica do Relatório
       const valorGlobalRelatorio = opcIncluirAditivos ? valorGlobalAtualizado : valorOriginal;
       const saldoAtualRelatorio = opcIncluirAditivos ? contrato.saldoContrato : (valorOriginal - totalConsumido);
 
@@ -547,7 +620,6 @@ export default function DetalhesContrato() {
       docPdf.text(`Global ${opcIncluirAditivos ? 'Atualizado' : 'Original'}: ${valorGlobalRelatorio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}  |  Valor Consumido: ${totalConsumido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}  |  Saldo Atual Disponível: ${saldoAtualRelatorio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 14, currentY); 
       currentY += 12;
 
-      // Renderiza Histórico de Aditivos apenas se a opção estiver marcada
       if (opcIncluirAditivos && contrato.aditivos && contrato.aditivos.length > 0) {
         if (currentY > 150) { docPdf.addPage(); currentY = 20; }
 
@@ -560,7 +632,7 @@ export default function DetalhesContrato() {
         contrato.aditivos.forEach(ad => {
            aditivosData.push([
              ad.descricao,
-             formatarDataBr(ad.dataAditivo), // Data Manual
+             formatarDataBr(ad.dataAditivo), 
              ad.tipo.toUpperCase(),
              ad.novaDataFim && ad.novaDataFim !== "" ? formatarDataBr(ad.novaDataFim) : '-',
              ad.valorAditivado ? ad.valorAditivado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'
@@ -619,7 +691,6 @@ export default function DetalhesContrato() {
         currentY = (docPdf as any).lastAutoTable.finalY + 12;
       }
 
-      // Gera Tabela de Saldos com base na configuração do relatório
       const tabelaDeSaldosRelatorio = gerarTabelaSaldos(opcIncluirAditivos);
 
       if (tabelaDeSaldosRelatorio.length > 0) {
@@ -658,7 +729,6 @@ export default function DetalhesContrato() {
         currentY = (docPdf as any).lastAutoTable.finalY + 12;
       }
 
-      // Renderiza Histórico de Empenhos apenas se a opção estiver marcada
       if (opcIncluirEmpenhos && itensConsumo.length > 0) {
         if (currentY > 150) { docPdf.addPage(); currentY = 20; }
 
@@ -856,7 +926,7 @@ export default function DetalhesContrato() {
                   <th>Nova Validade</th>
                   <th>Valor Aditivado/Suprimido</th>
                   <th>Itens Aditivados</th>
-                  <th>Data Sistema</th>
+                  <th style={{ textAlign: 'center' }}>Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -878,7 +948,10 @@ export default function DetalhesContrato() {
                         </ul>
                       ) : 'Nenhum item alterado'}
                     </td>
-                    <td style={{ fontSize: '12px', color: '#64748b' }}>{ad.dataRegistro}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', marginRight: '8px' }} onClick={() => abrirEdicaoAditivo(ad)} disabled={!!contrato.dataDistrato} title="Editar Aditivo">✏️</button>
+                      <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => excluirAditivo(ad)} disabled={!!contrato.dataDistrato} title="Excluir Aditivo">🗑️</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1041,12 +1114,14 @@ export default function DetalhesContrato() {
         </div>
       )}
 
-      {/* --- MODAL DE ADITIVO --- */}
+      {/* --- MODAL DE ADITIVO (CRIAÇÃO / EDIÇÃO) --- */}
       {isModalAditivoOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <button className="btn-fechar" onClick={() => setIsModalAditivoOpen(false)}>×</button>
-            <h2 style={{ color: '#f59e0b', marginTop: 0, borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>Registrar Aditivo</h2>
+            <button className="btn-fechar" onClick={fecharModalAditivo}>×</button>
+            <h2 style={{ color: '#f59e0b', marginTop: 0, borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              {aditivoEmEdicao ? 'Editar Aditivo' : 'Registrar Aditivo'}
+            </h2>
             
             <form onSubmit={salvarAditivo} style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
               
@@ -1172,9 +1247,9 @@ export default function DetalhesContrato() {
               )}
 
               <div className="modal-acoes">
-                <button type="button" className="btn-cancelar" onClick={() => setIsModalAditivoOpen(false)}>Cancelar</button>
+                <button type="button" className="btn-cancelar" onClick={fecharModalAditivo}>Cancelar</button>
                 <button type="submit" className="btn-salvar" disabled={loading}>
-                  {loading ? 'Salvando...' : 'Confirmar Aditivo'}
+                  {loading ? 'Salvando...' : (aditivoEmEdicao ? 'Atualizar Aditivo' : 'Confirmar Aditivo')}
                 </button>
               </div>
             </form>
