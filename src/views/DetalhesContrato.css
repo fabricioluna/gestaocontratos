@@ -96,13 +96,11 @@
   background-color: #fff;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-  /* Configuração para linha horizontal única */
   flex-wrap: nowrap;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-/* Estilização suave da barra de rolagem para os botões */
 .acoes-relatorio::-webkit-scrollbar {
   height: 6px;
 }
@@ -116,18 +114,18 @@
 }
 
 .btn-acao {
-  padding: 6px 12px; /* Mais compacto e amigável */
+  padding: 6px 12px; 
   border-radius: 6px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 13px; /* Fonte levemente menor */
+  font-size: 13px; 
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
   transition: all 0.2s ease-in-out;
-  white-space: nowrap; /* Impede a quebra do texto do botão */
+  white-space: nowrap; 
 }
 
 .btn-acao:hover:not(:disabled) {
@@ -141,7 +139,6 @@
   transform: none;
 }
 
-/* Variações de Cores Soft/Modernas */
 .btn-gerar { background-color: #f8fafc; color: #0f172a; border: 1px solid #cbd5e1; }
 .btn-aditivo { background-color: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
 .btn-distrato { background-color: #fef2f2; color: #ef4444; border: 1px solid #fecaca; }
@@ -300,3 +297,56 @@
 .btn-cancelar { background-color: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; }
 .btn-salvar { background-color: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: background-color 0.2s; }
 .btn-salvar:hover:not(:disabled) { background-color: #2563eb; }
+
+/* =========================================
+   ELEMENTOS DO ADITIVO (IA E MANUAL)
+========================================= */
+.ia-upload-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (min-width: 600px) {
+  .ia-upload-section {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+}
+
+.file-upload-box {
+  border: 1px solid #cbd5e1 !important;
+  padding: 8px !important;
+  border-radius: 8px !important;
+  background: #fff;
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+}
+
+.btn-ia {
+  background-color: #8b5cf6;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+}
+
+.btn-ia:hover:not(:disabled) {
+  background-color: #7c3aed;
+}
+
+.manual-item-section {
+  background-color: #fff;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}

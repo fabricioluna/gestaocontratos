@@ -61,10 +61,15 @@ export default function DetalhesContrato() {
   const [aditivoValor, setAditivoValor] = useState<number | ''>('');
   const [aditivoNovaData, setAditivoNovaData] = useState('');
   
-  // Novos estados para Aditivo de Itens e PDF
+  // Estados para Aditivo de Itens (IA e Manual) e PDF
   const [itensDoAditivo, setItensDoAditivo] = useState<ItemAditivo[]>([]);
   const [arquivoPdfAditivo, setArquivoPdfAditivo] = useState<File | null>(null);
   const [processandoPdfIA, setProcessandoPdfIA] = useState(false);
+
+  // Estados para Inserção Manual de Itens do Contrato
+  const [itemManualSel, setItemManualSel] = useState<string>('');
+  const [itemManualQtd, setItemManualQtd] = useState<number | ''>('');
+  const [itemManualVlUnit, setItemManualVlUnit] = useState<number | ''>('');
 
   const [isModalDistratoOpen, setIsModalDistratoOpen] = useState(false);
   const [distratoData, setDistratoData] = useState('');
@@ -155,7 +160,6 @@ export default function DetalhesContrato() {
       leitor.onload = async (evento) => {
         try {
           const textoBruto = evento.target?.result as string;
-          
           const dadosExtraidos = await extrairDadosContratoComIA(textoBruto);
 
           if (dadosExtraidos && dadosExtraidos.itens && dadosExtraidos.itens.length > 0) {
@@ -180,14 +184,55 @@ export default function DetalhesContrato() {
           setProcessandoPdfIA(false);
         }
       };
-
       leitor.readAsText(arquivoPdfAditivo);
-
     } catch (error) {
       console.error("Erro na leitura de arquivo:", error);
       alert("Falha ao ler o arquivo selecionado.");
       setProcessandoPdfIA(false);
     }
+  };
+
+  // --- LÓGICA PARA ADICIONAR ITEM DO CONTRATO MANUALMENTE ---
+  const itensCatalogo = itens.filter(i => i.tipoRegistro === 'catalogo' || !i.tipoRegistro);
+  
+  const lidarAdicionarItemManual = () => {
+    if (!itemManualSel) return;
+    const original = itensCatalogo.find(i => i.id === itemManualSel);
+    if (!original) return;
+
+    const qtd = Number(itemManualQtd) || 0;
+    const vlUnit = Number(itemManualVlUnit) || original.valorUnitario;
+    const vlTotal = qtd * vlUnit;
+
+    const novoItem: ItemAditivo = {
+      numeroLote: original.numeroLote,
+      numeroItem: original.numeroItem,
+      discriminacao: original.discriminacao,
+      unidade: original.unidade,
+      quantidade: qtd,
+      valorUnitario: vlUnit,
+      valorTotalItem: vlTotal
+    };
+
+    const novaListaItens = [...itensDoAditivo, novoItem];
+    setItensDoAditivo(novaListaItens);
+    
+    const novaSoma = novaListaItens.reduce((acc, i) => acc + i.valorTotalItem, 0);
+    setAditivoValor(novaSoma);
+
+    // Reseta form manual
+    setItemManualSel('');
+    setItemManualQtd('');
+    setItemManualVlUnit('');
+  };
+
+  const removerItemAditivo = (index: number) => {
+    const novaLista = [...itensDoAditivo];
+    novaLista.splice(index, 1);
+    setItensDoAditivo(novaLista);
+    
+    const novaSoma = novaLista.reduce((acc, i) => acc + i.valorTotalItem, 0);
+    setAditivoValor(novaSoma > 0 ? novaSoma : '');
   };
 
   const salvarAditivo = async (e: React.FormEvent) => {
@@ -305,7 +350,6 @@ export default function DetalhesContrato() {
   const percentualSaldo = (contrato.saldoContrato / contrato.valorTotal);
   const alertaSaldoCritico = percentualSaldo < 0.3;
 
-  const itensCatalogo = itens.filter(i => i.tipoRegistro === 'catalogo' || !i.tipoRegistro);
   const itensConsumo = itens.filter(i => i.tipoRegistro === 'consumo');
 
   const totalItens = itensConsumo.length;
@@ -337,6 +381,7 @@ export default function DetalhesContrato() {
             const chave = `${itemAditivo.numeroLote}|${itemAditivo.numeroItem}`;
             if (mapaSaldos.has(chave)) {
               const existente = mapaSaldos.get(chave);
+              // Lógica de aditivo simples (acréscimo ou supressão definidos pelo valor da quantidade)
               existente.qtdContratada += itemAditivo.quantidade;
               existente.vlContratado += itemAditivo.valorTotalItem;
             } else {
@@ -927,21 +972,85 @@ export default function DetalhesContrato() {
 
               {(aditivoTipo === 'valor' || aditivoTipo === 'ambos') && (
                 <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                  <h4 style={{ margin: '0 0 12px 0', color: '#3b82f6' }}>📄 Importação de Itens (Opcional via IA)</h4>
+                  <h4 style={{ margin: '0 0 12px 0', color: '#3b82f6' }}>📄 Importação e Seleção de Itens</h4>
                   
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', marginBottom: '16px' }}>
+                  {/* --- IA SECTION --- */}
+                  <div className="ia-upload-section">
                     <div className="form-group" style={{ flex: 1 }}>
-                      <label>Anexar Termo (PDF/DOCX em formato texto suportado):</label>
-                      <input type="file" accept=".txt,.pdf,.docx" onChange={e => setArquivoPdfAditivo(e.target.files?.[0] || null)} />
+                      <label>Extração Automática via Arquivo (PDF/DOCX):</label>
+                      <input type="file" accept=".txt,.pdf,.docx" onChange={e => setArquivoPdfAditivo(e.target.files?.[0] || null)} className="file-upload-box" />
                     </div>
-                    <button type="button" onClick={lidarProcessamentoIA} disabled={processandoPdfIA} style={{ backgroundColor: '#8b5cf6', color: 'white', padding: '10px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+                    <button type="button" onClick={lidarProcessamentoIA} disabled={processandoPdfIA} className="btn-ia">
                       {processandoPdfIA ? '🤖 Lendo...' : '🤖 Extrair com IA'}
                     </button>
                   </div>
 
-                  <div className="form-grid" style={{ marginBottom: '0' }}>
+                  <div style={{ textAlign: 'center', margin: '16px 0', color: '#94a3b8', fontSize: '12px', fontWeight: 'bold' }}>OU</div>
+
+                  {/* --- MANUAL SECTION --- */}
+                  <div className="manual-item-section">
+                    <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '8px', display: 'block' }}>Importar da Planilha Original do Contrato:</label>
+                    <div className="form-grid" style={{ marginBottom: '10px' }}>
+                      <div className="form-group full-width">
+                        <select value={itemManualSel} onChange={e => {
+                          setItemManualSel(e.target.value);
+                          const original = itensCatalogo.find(i => i.id === e.target.value);
+                          if (original) setItemManualVlUnit(original.valorUnitario);
+                        }}>
+                          <option value="">Selecione um item cadastrado...</option>
+                          {itensCatalogo.map(i => (
+                            <option key={i.id} value={i.id}>Lote {i.numeroLote} - Item {i.numeroItem} | {i.discriminacao}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Qtd (+ ou -):</label>
+                        <input type="number" step="0.01" value={itemManualQtd} onChange={e => setItemManualQtd(Number(e.target.value))} placeholder="Ex: 500" />
+                      </div>
+                      <div className="form-group">
+                        <label>Vl. Unit. (R$):</label>
+                        <input type="number" step="0.01" value={itemManualVlUnit} onChange={e => setItemManualVlUnit(Number(e.target.value))} />
+                      </div>
+                    </div>
+                    <button type="button" className="btn-acao btn-gerar" style={{ width: '100%', padding: '10px' }} onClick={lidarAdicionarItemManual}>
+                      ➕ Adicionar à Lista do Aditivo
+                    </button>
+                  </div>
+
+                  {/* --- LISTA DE ITENS DO ADITIVO --- */}
+                  {itensDoAditivo.length > 0 && (
+                    <div style={{ marginTop: '16px', backgroundColor: 'white', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <p style={{ fontSize: '12px', fontWeight: 'bold', margin: '0 0 8px 0', color: '#10b981' }}>✓ Itens do Aditivo ({itensDoAditivo.length})</p>
+                      <table className="tabela-itens" style={{ fontSize: '11px', marginBottom: 0 }}>
+                        <thead>
+                          <tr>
+                            <th>Item</th>
+                            <th>Qtd</th>
+                            <th>Vl. Unit</th>
+                            <th>Vl. Total</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {itensDoAditivo.map((item, idx) => (
+                            <tr key={idx}>
+                              <td>{item.discriminacao}</td>
+                              <td>{item.quantidade} {item.unidade}</td>
+                              <td>R$ {item.valorUnitario}</td>
+                              <td>R$ {item.valorTotalItem.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                              <td style={{ textAlign: 'center', padding: '4px' }}>
+                                <button type="button" onClick={() => removerItemAditivo(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }} title="Remover item">❌</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <div className="form-grid" style={{ marginTop: '16px', marginBottom: '0' }}>
                     <div className="form-group">
-                      <label>Operação:</label>
+                      <label>Operação Global:</label>
                       <select value={aditivoOperacao} onChange={e => setAditivoOperacao(e.target.value as any)}>
                         <option value="acrescimo">Acréscimo (+)</option>
                         <option value="supressao">Supressão (-)</option>
@@ -950,19 +1059,9 @@ export default function DetalhesContrato() {
                     <div className="form-group">
                       <label>Valor Global Alterado (R$):</label>
                       <input type="number" required min="0.01" step="0.01" value={aditivoValor} onChange={e => setAditivoValor(Number(e.target.value))} placeholder="Ex: 5000.00" />
+                      <small style={{ color: '#64748b', fontSize: '10px', display: 'block', marginTop: '4px' }}>Calculado automaticamente ao inserir itens.</small>
                     </div>
                   </div>
-
-                  {itensDoAditivo.length > 0 && (
-                    <div style={{ marginTop: '16px', backgroundColor: 'white', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                      <p style={{ fontSize: '12px', fontWeight: 'bold', margin: '0 0 8px 0', color: '#10b981' }}>✓ {itensDoAditivo.length} Itens extraídos</p>
-                      <ul style={{ fontSize: '11px', margin: 0, paddingLeft: '16px', color: '#475569' }}>
-                        {itensDoAditivo.map((item, idx) => (
-                          <li key={idx}>{item.quantidade}x Item {item.numeroItem}: {item.discriminacao} (R$ {item.valorTotalItem})</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                 </div>
               )}
 
