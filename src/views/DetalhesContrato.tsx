@@ -12,7 +12,7 @@ import './DetalhesContrato.css';
 // IMPORTAÇÃO DOS COMPONENTES MODULARES
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
 import ModalLancarConsumo from '../components/DetalhesContrato/ModalLancarConsumo';
-import { extrairDadosContratoComIA, extrairDadosAditivoComIA } from '../services/geminiService'; // Importação atualizada
+import { extrairDadosContratoComIA, extrairDadosAditivoComIA } from '../services/geminiService';
 
 interface ItemExtendido {
   id?: string;
@@ -146,62 +146,76 @@ export default function DetalhesContrato() {
     }
   };
 
-  // --- LÓGICA DE INTEGRAÇÃO COM GEMINI (IA) PARA O ADITIVO ---
+  // --- LÓGICA DE INTEGRAÇÃO COM GEMINI (IA) BLINDADA ---
   const lidarProcessamentoIA = async () => {
     if (!arquivoPdfAditivo) {
       alert("Por favor, selecione o arquivo do Termo Aditivo primeiro.");
       return;
     }
     
+    // BLOQUEIO INTELIGENTE DE DOCX
+    const isPdf = arquivoPdfAditivo.type === 'application/pdf' || arquivoPdfAditivo.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      alert("⚠️ FORMATO NÃO SUPORTADO PELA IA\n\nPara garantir a leitura perfeita da tabela de itens, por favor, salve o seu documento do Word (DOCX) em formato PDF e anexe novamente.");
+      return;
+    }
+
     setProcessandoPdfIA(true);
     try {
       const leitor = new FileReader();
       
-      // Correção vital: Ler como DataURL (Base64) garante que arquivos binários como PDF não quebrem a leitura.
       leitor.onload = async (evento) => {
         try {
           const resultado = evento.target?.result as string;
-          // O readAsDataURL retorna "data:application/pdf;base64,JVBE..." - Extraímos só o código.
+          // Separa o prefixo "data:application/pdf;base64," para enviar só o binário limpo
           const base64Data = resultado.split(',')[1];
-          const mimeType = arquivoPdfAditivo.type || 'application/pdf';
           
-          const dadosExtraidos = await extrairDadosAditivoComIA(base64Data, mimeType);
+          // Chama o serviço atualizado
+          const dadosExtraidos = await extrairDadosAditivoComIA(base64Data, 'application/pdf');
 
           if (dadosExtraidos) {
-            // Autopreenchimento Inteligente dos inputs da tela
+            // Autopreenchimento defensivo
             if (dadosExtraidos.descricao) setAditivoDescricao(dadosExtraidos.descricao);
             if (dadosExtraidos.tipo) setAditivoTipo(dadosExtraidos.tipo);
             if (dadosExtraidos.novaDataFim) setAditivoNovaData(dadosExtraidos.novaDataFim);
-            if (dadosExtraidos.valorAditivado) setAditivoValor(dadosExtraidos.valorAditivado);
+            
+            if (dadosExtraidos.valorAditivado) {
+              setAditivoValor(Number(dadosExtraidos.valorAditivado));
+            }
 
-            if (dadosExtraidos.itens && dadosExtraidos.itens.length > 0) {
+            if (dadosExtraidos.itens && Array.isArray(dadosExtraidos.itens) && dadosExtraidos.itens.length > 0) {
               setItensDoAditivo(dadosExtraidos.itens);
               
-              // Se a IA falhou em pegar o valor global, calculamos pela soma dos itens
+              // Recalcula a soma caso a IA não tenha extraído o valor total global
               const soma = dadosExtraidos.itens.reduce((acc: number, item: any) => acc + (Number(item.valorTotalItem) || 0), 0);
-              if (!dadosExtraidos.valorAditivado) setAditivoValor(soma);
+              if (!dadosExtraidos.valorAditivado && soma > 0) setAditivoValor(soma);
               
               alert("✅ Inteligência Artificial extraiu os DADOS GERAIS e ITENS com sucesso!");
             } else {
-              alert("✅ Dados gerais lidos, mas a IA não encontrou uma tabela de itens para extrair.");
+              alert("✅ Dados gerais lidos, mas a IA não encontrou uma tabela de itens clara no PDF.");
             }
           } else {
             alert("A IA analisou o arquivo, mas não conseguiu estruturar os dados.");
           }
-        } catch (erroApi) {
+        } catch (erroApi: any) {
           console.error(erroApi);
-          alert("Erro no serviço da IA. Se estiver usando Word (DOCX), tente salvar como PDF e anexe novamente.");
+          alert(`Erro na IA: ${erroApi.message}`);
         } finally {
           setProcessandoPdfIA(false);
         }
       };
 
-      // Inicia a leitura do arquivo como Base64
+      leitor.onerror = () => {
+        alert("Erro ao tentar ler o arquivo selecionado no seu navegador.");
+        setProcessandoPdfIA(false);
+      }
+
+      // Lê como DataURL (Base64) para garantir a integridade do PDF
       leitor.readAsDataURL(arquivoPdfAditivo);
 
     } catch (error) {
       console.error("Erro na leitura de arquivo:", error);
-      alert("Falha ao ler o arquivo selecionado.");
+      alert("Falha inesperada ao preparar o arquivo.");
       setProcessandoPdfIA(false);
     }
   };
@@ -989,9 +1003,9 @@ export default function DetalhesContrato() {
                   
                   {/* --- IA SECTION --- */}
                   <div style={{ marginBottom: '16px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px', display: 'block' }}>Extração Automática via Arquivo (PDF/DOCX):</label>
+                    <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px', display: 'block' }}>Extração Automática via Arquivo (Somente PDF):</label>
                     <div className="ia-upload-section">
-                      <input type="file" accept=".txt,.pdf,.docx" onChange={e => setArquivoPdfAditivo(e.target.files?.[0] || null)} className="file-upload-box" />
+                      <input type="file" accept=".pdf" onChange={e => setArquivoPdfAditivo(e.target.files?.[0] || null)} className="file-upload-box" />
                       <button type="button" onClick={lidarProcessamentoIA} disabled={processandoPdfIA} className="btn-ia">
                         {processandoPdfIA ? '🤖 Lendo...' : '🤖 Extrair IA'}
                       </button>
