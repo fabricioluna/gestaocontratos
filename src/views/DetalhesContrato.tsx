@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, collection, query, where, deleteDoc, getDocs, writeBatch, updateDoc, arrayUnion } from 'firebase/firestore';
+import * as mammoth from 'mammoth'; 
+import * as pdfjsLib from 'pdfjs-dist'; 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { db } from '../firebase';
@@ -9,10 +11,13 @@ import type { Contrato, Aditivo, ItemAditivo } from '../types';
 import logo from '../assets/logopmp.png';
 import './DetalhesContrato.css';
 
+// CONFIGURAÇÃO DO WORKER DO PDFJS
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
+
 // IMPORTAÇÃO DOS COMPONENTES MODULARES
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
 import ModalLancarConsumo from '../components/DetalhesContrato/ModalLancarConsumo';
-import { extrairDadosContratoComIA, extrairDadosAditivoComIA } from '../services/geminiService';
+import { extrairDadosAditivoComIA } from '../services/geminiService';
 
 interface ItemExtendido {
   id?: string;
@@ -75,7 +80,6 @@ export default function DetalhesContrato() {
   const [distratoData, setDistratoData] = useState('');
   const [distratoMotivo, setDistratoMotivo] = useState('');
 
-  // --- MELHORIA UX: FECHAR MODAIS COM ESC ---
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -146,81 +150,73 @@ export default function DetalhesContrato() {
     }
   };
 
-  // --- LÓGICA DE INTEGRAÇÃO COM GEMINI (IA) BLINDADA ---
+  // --- LÓGICA DE IA IDÊNTICA AO MODAL DE NOVO CONTRATO ---
   const lidarProcessamentoIA = async () => {
     if (!arquivoPdfAditivo) {
       alert("Por favor, selecione o arquivo do Termo Aditivo primeiro.");
       return;
     }
-    
-    // BLOQUEIO INTELIGENTE DE DOCX
-    const isPdf = arquivoPdfAditivo.type === 'application/pdf' || arquivoPdfAditivo.name.toLowerCase().endsWith('.pdf');
-    if (!isPdf) {
-      alert("⚠️ FORMATO NÃO SUPORTADO PELA IA\n\nPara garantir a leitura perfeita da tabela de itens, por favor, salve o seu documento do Word (DOCX) em formato PDF e anexe novamente.");
-      return;
-    }
 
     setProcessandoPdfIA(true);
     try {
-      const leitor = new FileReader();
+      const arrayBuffer = await arquivoPdfAditivo.arrayBuffer();
+      let textoCompleto = '';
       
-      leitor.onload = async (evento) => {
-        try {
-          const resultado = evento.target?.result as string;
-          // Separa o prefixo "data:application/pdf;base64," para enviar só o binário limpo
-          const base64Data = resultado.split(',')[1];
-          
-          // Chama o serviço atualizado
-          const dadosExtraidos = await extrairDadosAditivoComIA(base64Data, 'application/pdf');
-
-          if (dadosExtraidos) {
-            // Autopreenchimento defensivo
-            if (dadosExtraidos.descricao) setAditivoDescricao(dadosExtraidos.descricao);
-            if (dadosExtraidos.tipo) setAditivoTipo(dadosExtraidos.tipo);
-            if (dadosExtraidos.novaDataFim) setAditivoNovaData(dadosExtraidos.novaDataFim);
-            
-            if (dadosExtraidos.valorAditivado) {
-              setAditivoValor(Number(dadosExtraidos.valorAditivado));
-            }
-
-            if (dadosExtraidos.itens && Array.isArray(dadosExtraidos.itens) && dadosExtraidos.itens.length > 0) {
-              setItensDoAditivo(dadosExtraidos.itens);
-              
-              // Recalcula a soma caso a IA não tenha extraído o valor total global
-              const soma = dadosExtraidos.itens.reduce((acc: number, item: any) => acc + (Number(item.valorTotalItem) || 0), 0);
-              if (!dadosExtraidos.valorAditivado && soma > 0) setAditivoValor(soma);
-              
-              alert("✅ Inteligência Artificial extraiu os DADOS GERAIS e ITENS com sucesso!");
-            } else {
-              alert("✅ Dados gerais lidos, mas a IA não encontrou uma tabela de itens clara no PDF.");
-            }
-          } else {
-            alert("A IA analisou o arquivo, mas não conseguiu estruturar os dados.");
-          }
-        } catch (erroApi: any) {
-          console.error(erroApi);
-          alert(`Erro na IA: ${erroApi.message}`);
-        } finally {
-          setProcessandoPdfIA(false);
+      // LEITURA DE PDF VIA PDFJS
+      if (arquivoPdfAditivo.name.toLowerCase().endsWith('.pdf')) {
+        const typedArray = new Uint8Array(arrayBuffer);
+        const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const strings = content.items.map((item: any) => item.str);
+          textoCompleto += strings.join(" ") + "\n";
         }
-      };
-
-      leitor.onerror = () => {
-        alert("Erro ao tentar ler o arquivo selecionado no seu navegador.");
-        setProcessandoPdfIA(false);
+      } 
+      // LEITURA DE WORD VIA MAMMOTH
+      else if (arquivoPdfAditivo.name.toLowerCase().endsWith('.docx')) {
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        textoCompleto = result.value;
+      } else {
+         const text = await arquivoPdfAditivo.text();
+         textoCompleto = text;
       }
 
-      // Lê como DataURL (Base64) para garantir a integridade do PDF
-      leitor.readAsDataURL(arquivoPdfAditivo);
+      const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
 
-    } catch (error) {
-      console.error("Erro na leitura de arquivo:", error);
-      alert("Falha inesperada ao preparar o arquivo.");
+      if (textoLimpo.trim().length < 50) {
+         throw new Error("Não foi possível extrair texto legível deste documento.");
+      }
+
+      const dadosExtraidos = await extrairDadosAditivoComIA(textoLimpo);
+
+      if (dadosExtraidos) {
+        if (dadosExtraidos.descricao) setAditivoDescricao(dadosExtraidos.descricao);
+        if (dadosExtraidos.tipo) setAditivoTipo(dadosExtraidos.tipo);
+        if (dadosExtraidos.novaDataFim) setAditivoNovaData(dadosExtraidos.novaDataFim);
+        if (dadosExtraidos.valorAditivado) setAditivoValor(Number(dadosExtraidos.valorAditivado));
+
+        if (dadosExtraidos.itens && dadosExtraidos.itens.length > 0) {
+          setItensDoAditivo(dadosExtraidos.itens);
+          
+          const soma = dadosExtraidos.itens.reduce((acc: number, item: any) => acc + (Number(item.valorTotalItem) || 0), 0);
+          if (!dadosExtraidos.valorAditivado && soma > 0) setAditivoValor(soma);
+          
+          alert("✅ IA extraiu os DADOS e ITENS com sucesso!");
+        } else {
+          alert("✅ Dados gerais lidos, mas não foram encontrados itens na tabela. Você pode adicionar manualmente.");
+        }
+      } else {
+        alert("A IA analisou o arquivo, mas não conseguiu estruturar os dados.");
+      }
+    } catch (error: any) {
+      console.error(error);
+      alert(error.message || "Erro inesperado ao processar o documento via IA.");
+    } finally {
       setProcessandoPdfIA(false);
     }
   };
 
-  // --- LÓGICA PARA ADICIONAR ITEM DO CONTRATO MANUALMENTE ---
   const itensCatalogo = itens.filter(i => i.tipoRegistro === 'catalogo' || !i.tipoRegistro);
   
   const lidarAdicionarItemManual = () => {
@@ -248,7 +244,6 @@ export default function DetalhesContrato() {
     const novaSoma = novaListaItens.reduce((acc, i) => acc + i.valorTotalItem, 0);
     setAditivoValor(novaSoma);
 
-    // Reseta form manual
     setItemManualSel('');
     setItemManualQtd('');
     setItemManualVlUnit('');
@@ -273,7 +268,6 @@ export default function DetalhesContrato() {
       let novoSaldo = Number(contrato.saldoContrato) || 0;
       let novaDataFimStr = contrato.dataFim;
       let valorAlteracao = 0;
-      let urlPdfSalvo = ''; 
 
       if (aditivoTipo === 'valor' || aditivoTipo === 'ambos') {
         const v = Number(aditivoValor);
@@ -308,7 +302,6 @@ export default function DetalhesContrato() {
         novaDataFim: (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') ? aditivoNovaData : undefined,
         dataRegistro: new Date().toLocaleString('pt-BR'),
         itensAditivados: itensDoAditivo.length > 0 ? itensDoAditivo : undefined,
-        urlArquivoPdf: urlPdfSalvo
       };
 
       await updateDoc(doc(db, 'contratos', id), {
@@ -518,7 +511,7 @@ export default function DetalhesContrato() {
       }
 
       docPdf.setFontSize(12);
-      docPdf.setTextColor(40, 167, 69); // Verde
+      docPdf.setTextColor(40, 167, 69);
       docPdf.text('Posição Financeira', 14, currentY);
       currentY += 6;
 
@@ -527,7 +520,6 @@ export default function DetalhesContrato() {
       docPdf.text(`Global Autorizado: ${contrato.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}  |  Valor Consumido: ${totalConsumido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}  |  Saldo Atual Disponível: ${contrato.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 14, currentY); 
       currentY += 12;
 
-      // --- HISTÓRICO DE ADITIVOS E SEUS ITENS ---
       if (contrato.aditivos && contrato.aditivos.length > 0) {
         if (currentY > 150) { docPdf.addPage(); currentY = 20; }
 
@@ -570,7 +562,6 @@ export default function DetalhesContrato() {
         currentY = (docPdf as any).lastAutoTable.finalY + 12;
       }
 
-      // --- PLANILHA ORIGINAL ---
       if (itensCatalogo.length > 0) {
         if (currentY > 150) { docPdf.addPage(); currentY = 20; }
         
@@ -600,7 +591,6 @@ export default function DetalhesContrato() {
         currentY = (docPdf as any).lastAutoTable.finalY + 12;
       }
 
-      // --- CONTROLE FÍSICO-FINANCEIRO (SALDOS) ---
       if (tabelaDeSaldos.length > 0) {
         if (currentY > 150) { docPdf.addPage(); currentY = 20; }
 
@@ -637,7 +627,6 @@ export default function DetalhesContrato() {
         currentY = (docPdf as any).lastAutoTable.finalY + 12;
       }
 
-      // --- HISTÓRICO DE LANÇAMENTOS ---
       if (itensConsumo.length > 0) {
         if (currentY > 150) { docPdf.addPage(); currentY = 20; }
 
@@ -1003,9 +992,9 @@ export default function DetalhesContrato() {
                   
                   {/* --- IA SECTION --- */}
                   <div style={{ marginBottom: '16px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px', display: 'block' }}>Extração Automática via Arquivo (Somente PDF):</label>
+                    <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px', display: 'block' }}>Extração Automática via Arquivo (PDF ou DOCX):</label>
                     <div className="ia-upload-section">
-                      <input type="file" accept=".pdf" onChange={e => setArquivoPdfAditivo(e.target.files?.[0] || null)} className="file-upload-box" />
+                      <input type="file" accept=".txt,.pdf,.docx" onChange={e => setArquivoPdfAditivo(e.target.files?.[0] || null)} className="file-upload-box" />
                       <button type="button" onClick={lidarProcessamentoIA} disabled={processandoPdfIA} className="btn-ia">
                         {processandoPdfIA ? '🤖 Lendo...' : '🤖 Extrair IA'}
                       </button>
