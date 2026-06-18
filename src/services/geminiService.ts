@@ -3,9 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
-// Função auxiliar para criar o modelo com fallback de nomenclatura
 const getModelWithFallback = (genAI: GoogleGenerativeAI) => {
-  // Utilizamos a nomenclatura -latest para evitar erros 404 em rotas atualizadas do Google
   return genAI.getGenerativeModel({ 
     model: 'gemini-1.5-flash-latest',
     generationConfig: {
@@ -67,7 +65,6 @@ export const extrairDadosContratoComIA = async (textoDoContrato: string) => {
     const response = await result.response;
     let text = response.text();
     
-    // Tratamento de segurança e limpeza de Markdown
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
        text = jsonMatch[0];
@@ -84,7 +81,7 @@ export const extrairDadosContratoComIA = async (textoDoContrato: string) => {
 };
 
 // ============================================================================
-// FUNÇÃO BLINDADA E COM FALLBACK PARA TERMOS ADITIVOS (PDF)
+// FUNÇÃO BLINDADA COM INSTRUÇÕES EXPLÍCITAS PARA A TABELA DO ADITIVO
 // ============================================================================
 export const extrairDadosAditivoComIA = async (arquivoBase64: string, mimeType: string) => {
   if (!API_KEY) throw new Error("Chave da API do Gemini não configurada.");
@@ -92,24 +89,24 @@ export const extrairDadosAditivoComIA = async (arquivoBase64: string, mimeType: 
   try {
     const genAI = new GoogleGenerativeAI(API_KEY);
     
-    // Para PDF, o modelo PRO costuma ser mais robusto, então tentamos o Flash-latest primeiro
-    // Se a sua chave for mais antiga, o Flash-latest corrige o 404.
     let model = genAI.getGenerativeModel({ 
       model: 'gemini-1.5-flash-latest',
       generationConfig: { temperature: 0.1, responseMimeType: "application/json" }
     });
 
+    // PROMPT ATUALIZADO: Focado em ensinar a IA a "ler" a tabela do seu modelo de PDF
     const prompt = `
       Você é um auditor especialista em licitações públicas.
-      Sua tarefa é analisar a imagem/PDF do Termo Aditivo anexado e extrair os dados em formato JSON estrito.
+      Sua tarefa é analisar o PDF do Termo Aditivo anexado e extrair os dados em formato JSON estrito.
       
-      REGRAS CRÍTICAS:
-      1. Retorne APENAS um objeto JSON válido. Não inclua textos explicativos.
-      2. "novaDataFim" deve ser no formato "YYYY-MM-DD" (se não houver alteração de validade, retorne "").
-      3. "valorAditivado", "quantidade", "valorUnitario" e "valorTotalItem" DEVEM ser NÚMEROS (ex: 1500.50). Remova "R$", troque a vírgula por ponto e remova pontos de milhar.
-      4. Extraia todos os itens listados na tabela de acréscimo/supressão.
+      REGRAS CRÍTICAS DE LEITURA (PRESTE MUITA ATENÇÃO):
+      1. TABELA DE ITENS: Procure no documento (geralmente nas páginas centrais, no item "Descrição dos itens") uma tabela contendo as colunas: ITEM, DESCRIÇÃO, UNID, QTDE, VALOR UNIT, VALOR TOTAL.
+      2. Você DEVE extrair TODAS as linhas de produtos dessa tabela e inseri-las no array "itens". Nunca retorne o array "itens" vazio se essa tabela existir.
+      3. NÚMEROS: "valorAditivado", "quantidade", "valorUnitario" e "valorTotalItem" DEVEM ser extraídos como NÚMEROS decimais. Remova o "R$", troque a vírgula por ponto e remova os pontos de milhar (Exemplo: "R$ 146.000,00" vira 146000.00).
+      4. DATAS: "novaDataFim" deve ser no formato "YYYY-MM-DD". Se o aditivo não alterar a validade ou prazo de vigência, retorne "".
+      5. Retorne APENAS um objeto JSON válido.
       
-      FORMATO JSON ESPERADO (Siga esta estrutura exata):
+      FORMATO JSON ESPERADO (Siga esta estrutura exata baseada na sua leitura):
       {
         "descricao": "Ex: 1º Termo Aditivo",
         "tipo": "valor",
@@ -119,11 +116,20 @@ export const extrairDadosAditivoComIA = async (arquivoBase64: string, mimeType: 
           {
             "numeroLote": "Único",
             "numeroItem": "1",
-            "discriminacao": "ÓLEO DIESEL S10",
+            "discriminacao": "ÓLEO DÍESEL S10",
             "unidade": "LITRO",
             "quantidade": 25000,
             "valorUnitario": 5.84,
             "valorTotalItem": 146000.00
+          },
+          {
+            "numeroLote": "Único",
+            "numeroItem": "2",
+            "discriminacao": "GASOLINA COMUM",
+            "unidade": "LITRO",
+            "quantidade": 10000,
+            "valorUnitario": 5.98,
+            "valorTotalItem": 59800.00
           }
         ]
       }
@@ -139,7 +145,6 @@ export const extrairDadosAditivoComIA = async (arquivoBase64: string, mimeType: 
       ]);
     } catch (err: any) {
       console.warn("Falha no gemini-1.5-flash-latest, tentando fallback para gemini-1.5-pro-latest...", err);
-      // Fallback em caso de 404 da rota Flash
       model = genAI.getGenerativeModel({ 
         model: 'gemini-1.5-pro-latest',
         generationConfig: { temperature: 0.1, responseMimeType: "application/json" }
