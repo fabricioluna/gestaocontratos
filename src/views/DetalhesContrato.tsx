@@ -1,17 +1,18 @@
 // src/views/DetalhesContrato.tsx
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, collection, query, where, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, deleteDoc, getDocs, writeBatch, updateDoc, arrayUnion } from 'firebase/firestore';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { db } from '../firebase';
-import type { Contrato } from '../types';
+import type { Contrato, Aditivo, ItemAditivo } from '../types';
 import logo from '../assets/logopmp.png';
 import './DetalhesContrato.css';
 
 // IMPORTAÇÃO DOS COMPONENTES MODULARES
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
 import ModalLancarConsumo from '../components/DetalhesContrato/ModalLancarConsumo';
+import { extrairDadosContratoComIA } from '../services/geminiService'; // Importação do Serviço Gemini
 
 interface ItemExtendido {
   id?: string;
@@ -52,12 +53,31 @@ export default function DetalhesContrato() {
   const [isModalLancamentoOpen, setIsModalLancamentoOpen] = useState(false);
   const [isModalEditOpen, setIsModalEditOpen] = useState(false);
 
+  // Estados para Aditivo
+  const [isModalAditivoOpen, setIsModalAditivoOpen] = useState(false);
+  const [aditivoDescricao, setAditivoDescricao] = useState('');
+  const [aditivoTipo, setAditivoTipo] = useState<'prazo' | 'valor' | 'ambos'>('prazo');
+  const [aditivoOperacao, setAditivoOperacao] = useState<'acrescimo' | 'supressao'>('acrescimo');
+  const [aditivoValor, setAditivoValor] = useState<number | ''>('');
+  const [aditivoNovaData, setAditivoNovaData] = useState('');
+  
+  // Novos estados para Aditivo de Itens e PDF
+  const [itensDoAditivo, setItensDoAditivo] = useState<ItemAditivo[]>([]);
+  const [arquivoPdfAditivo, setArquivoPdfAditivo] = useState<File | null>(null);
+  const [processandoPdfIA, setProcessandoPdfIA] = useState(false);
+
+  const [isModalDistratoOpen, setIsModalDistratoOpen] = useState(false);
+  const [distratoData, setDistratoData] = useState('');
+  const [distratoMotivo, setDistratoMotivo] = useState('');
+
   // --- MELHORIA UX: FECHAR MODAIS COM ESC ---
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setIsModalLancamentoOpen(false);
         setIsModalEditOpen(false);
+        setIsModalAditivoOpen(false);
+        setIsModalDistratoOpen(false);
       }
     };
     window.addEventListener('keydown', handleEsc);
@@ -121,6 +141,157 @@ export default function DetalhesContrato() {
     }
   };
 
+  // --- LÓGICA DE INTEGRAÇÃO COM GEMINI (IA) ---
+  const lidarProcessamentoIA = async () => {
+    if (!arquivoPdfAditivo) {
+      alert("Por favor, selecione o arquivo do Termo Aditivo primeiro.");
+      return;
+    }
+    
+    setProcessandoPdfIA(true);
+    try {
+      // Como a API precisa de texto, lemos o arquivo PDF como base (texto bruto).
+      // Em produção real, você pode precisar de uma biblioteca como pdf.js para extrair texto limpo de PDF binário antes de enviar,
+      // mas o Gemini Flash 1.5 tem capacidades avançadas de leitura se o texto básico estiver presente ou se anexar via API direta.
+      const leitor = new FileReader();
+      
+      leitor.onload = async (evento) => {
+        try {
+          const textoBruto = evento.target?.result as string;
+          
+          // Chama a sua função importada do geminiService.ts
+          const dadosExtraidos = await extrairDadosContratoComIA(textoBruto);
+
+          if (dadosExtraidos && dadosExtraidos.itens && dadosExtraidos.itens.length > 0) {
+            setItensDoAditivo(dadosExtraidos.itens);
+            
+            // Calculando o valor global aditivado com base nos itens extraídos
+            const soma = dadosExtraidos.itens.reduce((acc: number, item: any) => acc + (Number(item.valorTotalItem) || 0), 0);
+            setAditivoValor(soma);
+            
+            if (dadosExtraidos.dataFim) {
+              setAditivoNovaData(dadosExtraidos.dataFim);
+              setAditivoTipo('ambos');
+            }
+            
+            alert("✅ Inteligência Artificial extraiu os itens com sucesso!");
+          } else {
+            alert("A IA analisou o arquivo, mas não encontrou uma tabela de itens clara.");
+          }
+        } catch (erroApi) {
+          console.error(erroApi);
+          alert("Erro no serviço da IA. Verifique sua chave de API ou a legibilidade do documento.");
+        } finally {
+          setProcessandoPdfIA(false);
+        }
+      };
+
+      // Tenta ler o conteúdo. Se for um DOCX/TXT funciona perfeitamente. 
+      // Se for PDF, o texto extraído nativamente no frontend pode vir "sujo", mas o Gemini costuma conseguir limpar.
+      leitor.readAsText(arquivoPdfAditivo);
+
+    } catch (error) {
+      console.error("Erro na leitura de arquivo:", error);
+      alert("Falha ao ler o arquivo selecionado.");
+      setProcessandoPdfIA(false);
+    }
+  };
+
+  const salvarAditivo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !contrato) return;
+
+    try {
+      setLoading(true);
+      let novoValorTotal = Number(contrato.valorTotal) || 0;
+      let novoSaldo = Number(contrato.saldoContrato) || 0;
+      let novaDataFimStr = contrato.dataFim;
+      let valorAlteracao = 0;
+      let urlPdfSalvo = ''; // Preparado para o Firebase Storage futuro
+
+      if (aditivoTipo === 'valor' || aditivoTipo === 'ambos') {
+        const v = Number(aditivoValor);
+        valorAlteracao = aditivoOperacao === 'acrescimo' ? v : -v;
+        
+        const limite25 = novoValorTotal * 0.25;
+        if (v > limite25 && aditivoOperacao === 'acrescimo') {
+           if(!window.confirm(`Atenção: O acréscimo de ${v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} supera 25% do valor do contrato inicial. Deseja prosseguir sob amparo legal específico?`)) {
+               setLoading(false);
+               return;
+           }
+        }
+        novoValorTotal += valorAlteracao;
+        novoSaldo += valorAlteracao;
+      }
+
+      if (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') {
+        if (!aditivoNovaData) {
+          alert('Informe a nova data de validade.');
+          setLoading(false);
+          return;
+        }
+        novaDataFimStr = aditivoNovaData;
+      }
+
+      const novoAditivo: Aditivo = {
+        id: Date.now().toString(),
+        descricao: aditivoDescricao || 'Termo Aditivo',
+        dataAditivo: new Date().toISOString().split('T')[0],
+        tipo: aditivoTipo,
+        valorAditivado: valorAlteracao,
+        novaDataFim: (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') ? aditivoNovaData : undefined,
+        dataRegistro: new Date().toLocaleString('pt-BR'),
+        itensAditivados: itensDoAditivo.length > 0 ? itensDoAditivo : undefined,
+        urlArquivoPdf: urlPdfSalvo
+      };
+
+      await updateDoc(doc(db, 'contratos', id), {
+        valorTotal: novoValorTotal,
+        saldoContrato: novoSaldo,
+        dataFim: novaDataFimStr,
+        aditivos: arrayUnion(novoAditivo),
+        dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
+      });
+
+      alert('Aditivo registrado com sucesso!');
+      setIsModalAditivoOpen(false);
+      
+      // Limpar formulário
+      setAditivoDescricao('');
+      setAditivoValor('');
+      setAditivoNovaData('');
+      setItensDoAditivo([]);
+      setArquivoPdfAditivo(null);
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao salvar aditivo.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const salvarDistrato = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !contrato) return;
+
+    try {
+      setLoading(true);
+      await updateDoc(doc(db, 'contratos', id), {
+        dataDistrato: distratoData,
+        motivoDistrato: distratoMotivo,
+        dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
+      });
+      
+      alert('Distrato registrado com sucesso!');
+      setIsModalDistratoOpen(false);
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao registrar distrato.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!contrato) return <div style={{textAlign: 'center', padding: '50px'}}>A carregar relatório...</div>;
 
   // --- LÓGICA DE ALERTAS E CORES ---
@@ -128,10 +299,18 @@ export default function DetalhesContrato() {
   const vencimento = new Date(contrato.dataFim);
   const diffDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 3600 * 24));
   
-  const corValidade = diffDias <= 30 ? '#dc3545' : diffDias <= 90 ? '#856404' : '#334155';
-  const fundoValidade = diffDias <= 30 ? '#ffebee' : diffDias <= 90 ? '#fff9c4' : '#f8fafc';
-  const borderValidade = diffDias <= 30 ? '#ff000033' : diffDias <= 90 ? '#ffc10733' : '#e2e8f0';
-  const labelValidade = diffDias < 0 ? "Vencido" : diffDias <= 30 ? `Vence em ${diffDias} dias` : diffDias <= 90 ? `Restam ${diffDias} dias` : "Válido";
+  let corValidade = diffDias <= 30 ? '#dc3545' : diffDias <= 90 ? '#856404' : '#334155';
+  let fundoValidade = diffDias <= 30 ? '#ffebee' : diffDias <= 90 ? '#fff9c4' : '#f8fafc';
+  let borderValidade = diffDias <= 30 ? '#ff000033' : diffDias <= 90 ? '#ffc10733' : '#e2e8f0';
+  let labelValidade = diffDias < 0 ? "Vencido" : diffDias <= 30 ? `Vence em ${diffDias} dias` : diffDias <= 90 ? `Restam ${diffDias} dias` : "Válido";
+
+  // Se estiver distratado, sobrepor as regras de cor
+  if (contrato.dataDistrato) {
+    corValidade = '#dc3545';
+    fundoValidade = '#ffebee';
+    borderValidade = '#dc3545';
+    labelValidade = "Encerrado (Distratado)";
+  }
 
   const percentualSaldo = (contrato.saldoContrato / contrato.valorTotal);
   const alertaSaldoCritico = percentualSaldo < 0.3;
@@ -160,6 +339,35 @@ export default function DetalhesContrato() {
         vlConsumido: 0
       });
     });
+
+    // INJEÇÃO DOS ITENS ADITIVADOS NO SALDO
+    if (contrato.aditivos) {
+      contrato.aditivos.forEach(aditivo => {
+        if (aditivo.itensAditivados) {
+          aditivo.itensAditivados.forEach(itemAditivo => {
+            const chave = `${itemAditivo.numeroLote}|${itemAditivo.numeroItem}`;
+            if (mapaSaldos.has(chave)) {
+              const existente = mapaSaldos.get(chave);
+              // Lógica de aditivo simples: se tem item, consideramos como acréscimo de qtd/valor
+              existente.qtdContratada += itemAditivo.quantidade;
+              existente.vlContratado += itemAditivo.valorTotalItem;
+            } else {
+              mapaSaldos.set(chave, {
+                lote: itemAditivo.numeroLote,
+                item: itemAditivo.numeroItem,
+                descricao: `${itemAditivo.discriminacao} (Aditivado)`,
+                unidade: itemAditivo.unidade,
+                qtdContratada: itemAditivo.quantidade,
+                vlUnitario: itemAditivo.valorUnitario,
+                vlContratado: itemAditivo.valorTotalItem,
+                qtdConsumida: 0,
+                vlConsumido: 0
+              });
+            }
+          });
+        }
+      });
+    }
 
     itensConsumo.forEach(cons => {
       const chave = `${cons.numeroLote}|${cons.numeroItem}`;
@@ -206,13 +414,17 @@ export default function DetalhesContrato() {
       
       docPdf.setFontSize(10);
       docPdf.setTextColor(100, 100, 100);
-      docPdf.text(`Órgão: ${nomesOrgaos[contrato.orgaoId] || ''} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 26);
+      let statusTexto = `Órgão: ${nomesOrgaos[contrato.orgaoId] || ''} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`;
+      if (contrato.dataDistrato) {
+        statusTexto += ` | STATUS: DISTRATADO EM ${formatarDataBr(contrato.dataDistrato)}`;
+      }
+      docPdf.text(statusTexto, 45, 26);
 
       let currentY = 40;
 
       // --- 1. DADOS GERAIS ---
       docPdf.setFontSize(12);
-      docPdf.setTextColor(0, 74, 153);
+      docPdf.setTextColor(contrato.dataDistrato ? 220 : 0, contrato.dataDistrato ? 53 : 74, contrato.dataDistrato ? 69 : 153);
       docPdf.text('Dados Gerais do Contrato', 14, currentY);
       currentY += 6;
 
@@ -243,7 +455,6 @@ export default function DetalhesContrato() {
       docPdf.text(`Data Início: ${formatarDataBr(contrato.dataInicio)}  |  Validade: ${formatarDataBr(contrato.dataFim)}`, 14, currentY); currentY += 5;
       docPdf.text(`Fiscal Responsável: ${contrato.fiscalContrato || 'Não informado'}`, 14, currentY); currentY += 5;
       
-      // OBSERVAÇÃO SÓ APARECE SE PREENCHIDA
       if (contrato.observacao && contrato.observacao.trim() !== '') {
         docPdf.text(`Observações: ${contrato.observacao}`, 14, currentY); 
         currentY += 10;
@@ -262,8 +473,54 @@ export default function DetalhesContrato() {
       docPdf.text(`Global Autorizado: ${contrato.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}  |  Valor Consumido: ${totalConsumido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}  |  Saldo Atual Disponível: ${contrato.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 14, currentY); 
       currentY += 12;
 
-      // --- 3. TABELA: PLANILHA ORIGINAL ---
+      // --- 3. HISTÓRICO DE ADITIVOS E SEUS ITENS ---
+      if (contrato.aditivos && contrato.aditivos.length > 0) {
+        if (currentY > 150) { docPdf.addPage(); currentY = 20; }
+
+        docPdf.setFontSize(12);
+        docPdf.setTextColor(255, 140, 0); // Laranja para Aditivos
+        docPdf.text('Histórico de Aditivos (Lei 14.133)', 14, currentY);
+        currentY += 4;
+
+        const aditivosData: any[] = [];
+        contrato.aditivos.forEach(ad => {
+           aditivosData.push([
+             ad.descricao,
+             ad.tipo.toUpperCase(),
+             ad.novaDataFim ? formatarDataBr(ad.novaDataFim) : '-',
+             ad.valorAditivado ? ad.valorAditivado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-',
+             ad.dataRegistro
+           ]);
+           
+           // Inserir linhas secundárias para os itens do aditivo, se houver
+           if (ad.itensAditivados && ad.itensAditivados.length > 0) {
+             ad.itensAditivados.forEach(itemAd => {
+               aditivosData.push([
+                 `  ↳ Lote ${itemAd.numeroLote} - Item ${itemAd.numeroItem}: ${itemAd.discriminacao}`,
+                 '', 
+                 '',
+                 `+ ${itemAd.quantidade} ${itemAd.unidade}`,
+                 `Vl. Total: ${itemAd.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+               ]);
+             });
+           }
+        });
+
+        autoTable(docPdf, {
+          startY: currentY,
+          head: [['Descrição / Itens', 'Tipo', 'Nova Validade', 'Vl. Global Aditivado / Qtd', 'Data Registro / Vl. Item']],
+          body: aditivosData,
+          theme: 'striped',
+          headStyles: { fillColor: [255, 140, 0] },
+          styles: { fontSize: 8, cellPadding: 2 }
+        });
+        currentY = (docPdf as any).lastAutoTable.finalY + 12;
+      }
+
+      // --- 4. TABELA: PLANILHA ORIGINAL ---
       if (itensCatalogo.length > 0) {
+        if (currentY > 150) { docPdf.addPage(); currentY = 20; }
+        
         docPdf.setFontSize(12);
         docPdf.setTextColor(0, 74, 153);
         docPdf.text('Planilha Original do Contrato', 14, currentY);
@@ -290,7 +547,7 @@ export default function DetalhesContrato() {
         currentY = (docPdf as any).lastAutoTable.finalY + 12;
       }
 
-      // --- 4. TABELA: CONTROLE FÍSICO-FINANCEIRO (SALDOS) ---
+      // --- 5. TABELA: CONTROLE FÍSICO-FINANCEIRO (SALDOS) ---
       if (tabelaDeSaldos.length > 0) {
         if (currentY > 150) { docPdf.addPage(); currentY = 20; }
 
@@ -327,7 +584,7 @@ export default function DetalhesContrato() {
         currentY = (docPdf as any).lastAutoTable.finalY + 12;
       }
 
-      // --- 5. TABELA: HISTÓRICO DE LANÇAMENTOS ---
+      // --- 6. TABELA: HISTÓRICO DE LANÇAMENTOS ---
       if (itensConsumo.length > 0) {
         if (currentY > 150) { docPdf.addPage(); currentY = 20; }
 
@@ -391,18 +648,26 @@ export default function DetalhesContrato() {
 
       <main className="detalhes-container">
         
+        {contrato.dataDistrato && (
+          <div style={{ backgroundColor: '#dc3545', color: 'white', padding: '15px', borderRadius: '8px', marginBottom: '20px', textAlign: 'center', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+            ⚠️ CONTRATO DISTRATADO EM {formatarDataBr(contrato.dataDistrato)}
+            {contrato.motivoDistrato && <div style={{ fontSize: '14px', marginTop: '5px', fontWeight: 'normal' }}>Motivo: {contrato.motivoDistrato}</div>}
+          </div>
+        )}
+
         <div className="acoes-relatorio">
-          <button className="btn-acao" style={{ backgroundColor: '#17a2b8', color: 'white' }} onClick={gerarRelatorioPDF}>📄 Gerar Relatório</button>
-          <button className="btn-acao" style={{ backgroundColor: '#dc3545', color: 'white' }} onClick={excluirContrato} disabled={loading}>🗑️ Excluir Contrato</button>
-          <button className="btn-acao btn-editar" onClick={() => setIsModalEditOpen(true)}>✏️ Editar Contrato</button>
+          <button className="btn-acao btn-gerar" onClick={gerarRelatorioPDF}>📄 Gerar Relatório</button>
+          <button className="btn-acao btn-aditivo" onClick={() => setIsModalAditivoOpen(true)} disabled={!!contrato.dataDistrato}>➕ Aditivo</button>
+          <button className="btn-acao btn-distrato" onClick={() => setIsModalDistratoOpen(true)} disabled={!!contrato.dataDistrato}>🛑 Distrato</button>
+          <button className="btn-acao btn-editar" onClick={() => setIsModalEditOpen(true)} disabled={!!contrato.dataDistrato}>✏️ Editar Contrato</button>
           
-          {/* BOTÃO DESATIVADO TEMPORARIAMENTE */}
+          <button className="btn-acao btn-excluir" onClick={excluirContrato} disabled={loading}>🗑️ Excluir Contrato</button>
+          
           <button 
             className="btn-acao btn-lancar" 
             onClick={() => setIsModalLancamentoOpen(true)}
-            disabled
-            title="Funcionalidade em manutenção para a implementação de Secretarias (Fase 2)"
-            style={{ opacity: 0.5, cursor: 'not-allowed' }}
+            disabled={!!contrato.dataDistrato}
+            title={contrato.dataDistrato ? "Contrato Distratado" : "Funcionalidade em manutenção para a implementação de Secretarias (Fase 2)"}
           >
             + Lançar Consumo (Empenho)
           </button>
@@ -411,7 +676,7 @@ export default function DetalhesContrato() {
         <div className="painel-relatorio">
           
           <div className="card-relatorio">
-            <h3 style={{ color: '#004a99', marginTop: 0, marginBottom: '20px', borderBottom: '2px solid #f1f5f9', paddingBottom: '10px' }}>
+            <h3 style={{ color: '#1e293b', marginTop: 0, marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
               Dados Gerais do Contrato
             </h3>
             
@@ -448,7 +713,7 @@ export default function DetalhesContrato() {
               </div>
 
               <div className="info-card" style={{ backgroundColor: fundoValidade, borderColor: borderValidade }}>
-                <span className="card-label" style={{ color: diffDias <= 90 ? corValidade : '#94a3b8' }}>Validade</span>
+                <span className="card-label" style={{ color: contrato.dataDistrato ? '#dc3545' : diffDias <= 90 ? corValidade : '#94a3b8' }}>Validade</span>
                 <span className="card-value" style={{ color: corValidade }}>
                   {formatarDataBr(contrato.dataFim)}
                   <span style={{ display: 'block', fontSize: '11px', marginTop: '2px', fontWeight: 'bold' }}>
@@ -474,23 +739,23 @@ export default function DetalhesContrato() {
 
           <div className="card-financeiro">
             <div>
-              <h3 style={{ color: '#28a745', marginTop: 0, textAlign: 'center' }}>Posição Financeira</h3>
+              <h3 style={{ color: '#10b981', marginTop: 0, textAlign: 'center' }}>Posição Financeira</h3>
               <div className="bloco-saldo">
-                <div style={{ fontSize: '15px', color: '#555', marginBottom: '5px' }}>
+                <div style={{ fontSize: '15px', color: '#475569', marginBottom: '5px' }}>
                   <strong>Global Autorizado:</strong> {contrato.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </div>
-                <div style={{ fontSize: '15px', color: '#dc3545', marginBottom: '10px' }}>
+                <div style={{ fontSize: '15px', color: '#ef4444', marginBottom: '10px' }}>
                   <strong>Valor Consumido:</strong> {totalConsumido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </div>
-                <div style={{ borderTop: '1px solid #ddd', margin: '10px 0' }}></div>
-                <div style={{ fontSize: '12px', color: '#666' }}>Saldo Atual Disponível</div>
+                <div style={{ borderTop: '1px solid #e2e8f0', margin: '10px 0' }}></div>
+                <div style={{ fontSize: '12px', color: '#64748b' }}>Saldo Atual Disponível</div>
                 
-                <div className={`valor-saldo ${contrato.saldoContrato >= 0 ? 'saldo-positivo' : 'saldo-negativo'}`} style={alertaSaldoCritico ? { color: '#e65100', border: '2px solid #e65100', padding: '10px', backgroundColor: '#fff3e0' } : {}}>
-                  {alertaSaldoCritico && <div style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px' }}>⚠️ SALDO INFERIOR A 30%</div>}
+                <div className={`valor-saldo ${contrato.saldoContrato >= 0 ? 'saldo-positivo' : 'saldo-negativo'}`} style={alertaSaldoCritico && !contrato.dataDistrato ? { color: '#ea580c', border: '2px solid #ea580c', padding: '10px', backgroundColor: '#fff7ed', borderRadius: '8px' } : { borderRadius: '8px' }}>
+                  {alertaSaldoCritico && !contrato.dataDistrato && <div style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px' }}>⚠️ SALDO INFERIOR A 30%</div>}
                   {contrato.saldoContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </div>
                 
-                <div style={{ fontSize: '11px', color: '#999', marginTop: '5px' }}>Atualizado em: {contrato.dataUltimaAtualizacao || 'N/A'}</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '5px' }}>Atualizado em: {contrato.dataUltimaAtualizacao || 'N/A'}</div>
               </div>
             </div>
             <div className="metricas-itens">
@@ -500,8 +765,50 @@ export default function DetalhesContrato() {
           </div>
         </div>
 
+        {/* --- EXIBIÇÃO DE ADITIVOS NA TELA --- */}
+        {contrato.aditivos && contrato.aditivos.length > 0 && (
+          <div className="secao-itens">
+            <h3 style={{ color: '#f59e0b' }}>📑 Histórico de Aditivos</h3>
+            <table className="tabela-itens">
+              <thead>
+                <tr>
+                  <th>Descrição</th>
+                  <th>Tipo</th>
+                  <th>Nova Validade</th>
+                  <th>Valor Aditivado/Suprimido</th>
+                  <th>Itens Aditivados</th>
+                  <th>Data Registro</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contrato.aditivos.map(ad => (
+                  <tr key={ad.id}>
+                    <td style={{ fontWeight: '600' }}>{ad.descricao}</td>
+                    <td style={{ textTransform: 'uppercase', fontSize: '12px' }}>{ad.tipo}</td>
+                    <td style={{ fontWeight: '600' }}>{ad.novaDataFim ? formatarDataBr(ad.novaDataFim) : '-'}</td>
+                    <td style={{ color: ad.valorAditivado < 0 ? '#ef4444' : '#10b981', fontWeight: '600' }}>
+                      {ad.valorAditivado ? ad.valorAditivado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
+                    </td>
+                    <td style={{ fontSize: '12px', color: '#64748b' }}>
+                      {ad.itensAditivados && ad.itensAditivados.length > 0 ? (
+                        <ul style={{ margin: 0, paddingLeft: '15px' }}>
+                          {ad.itensAditivados.map((item, idx) => (
+                            <li key={idx}>{item.quantidade}x Item {item.numeroItem}</li>
+                          ))}
+                        </ul>
+                      ) : 'Nenhum item alterado'}
+                    </td>
+                    <td style={{ fontSize: '12px', color: '#64748b' }}>{ad.dataRegistro}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* --- EXIBIÇÃO DE PLANILHA ORIGINAL --- */}
         {itensCatalogo.length > 0 ? (
-          <div className="secao-itens" style={{ marginBottom: '30px' }}>
+          <div className="secao-itens">
             <h3 style={{ color: '#004a99' }}>📋 Planilha Original do Contrato</h3>
             <table className="tabela-itens">
               <thead>
@@ -531,15 +838,16 @@ export default function DetalhesContrato() {
             </table>
           </div>
         ) : (
-          <div className="secao-itens" style={{ marginBottom: '30px', textAlign: 'center', color: '#666' }}>
+          <div className="secao-itens" style={{ textAlign: 'center', color: '#666' }}>
             <h3 style={{ color: '#004a99' }}>📋 Planilha Original do Contrato</h3>
             <p>Nenhum item original foi importado na criação deste contrato.</p>
           </div>
         )}
 
+        {/* --- EXIBIÇÃO CONTROLE FÍSICO FINANCEIRO --- */}
         {tabelaDeSaldos.length > 0 && (
-          <div className="secao-itens" style={{ marginBottom: '30px', overflowX: 'auto' }}>
-            <h3 style={{ color: '#2e7d32' }}>📊 Controle Físico-Financeiro (Saldos por Item)</h3>
+          <div className="secao-itens">
+            <h3 style={{ color: '#2e7d32' }}>📊 Controle Físico-Financeiro (Saldos por Item Consolidados)</h3>
             <table className="tabela-saldos">
               <thead>
                 <tr>
@@ -582,6 +890,7 @@ export default function DetalhesContrato() {
           </div>
         )}
 
+        {/* --- EXIBIÇÃO HISTÓRICO DE CONSUMO --- */}
         <div className="secao-itens">
           <h3 style={{ color: '#dc3545' }}>📝 Histórico de Lançamentos (Auditoria de Empenhos)</h3>
           <table className="tabela-itens">
@@ -615,19 +924,120 @@ export default function DetalhesContrato() {
         </div>
       </main>
 
-      <ModalLancarConsumo 
-        isOpen={isModalLancamentoOpen} 
-        onClose={() => setIsModalLancamentoOpen(false)} 
-        contratoId={id!} 
-        saldoContrato={contrato.saldoContrato} 
-      />
+      {/* --- MODAL DE ADITIVO --- */}
+      {isModalAditivoOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <button className="btn-fechar" onClick={() => setIsModalAditivoOpen(false)}>×</button>
+            <h2 style={{ color: '#f59e0b', marginTop: 0, borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>Registrar Aditivo</h2>
+            
+            <form onSubmit={salvarAditivo} style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+              <div className="form-group full-width">
+                <label>Descrição do Aditivo:</label>
+                <input type="text" required placeholder="Ex: 1º Termo Aditivo de Prazo e Valor" value={aditivoDescricao} onChange={e => setAditivoDescricao(e.target.value)} />
+              </div>
+              
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Tipo de Aditivo:</label>
+                  <select value={aditivoTipo} onChange={e => setAditivoTipo(e.target.value as any)}>
+                    <option value="prazo">Apenas Prazo</option>
+                    <option value="valor">Apenas Valor</option>
+                    <option value="ambos">Prazo e Valor</option>
+                  </select>
+                </div>
 
-      <ModalEditarContrato 
-        isOpen={isModalEditOpen} 
-        onClose={() => setIsModalEditOpen(false)} 
-        contratoOriginal={contrato} 
-      />
+                {(aditivoTipo === 'prazo' || aditivoTipo === 'ambos') && (
+                  <div className="form-group">
+                    <label>Nova Data de Validade:</label>
+                    <input type="date" required value={aditivoNovaData} onChange={e => setAditivoNovaData(e.target.value)} />
+                  </div>
+                )}
+              </div>
 
+              {(aditivoTipo === 'valor' || aditivoTipo === 'ambos') && (
+                <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                  <h4 style={{ margin: '0 0 12px 0', color: '#3b82f6' }}>📄 Importação de Itens (Opcional via IA)</h4>
+                  
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', marginBottom: '16px' }}>
+                    <div className="form-group" style={{ flex: 1 }}>
+                      <label>Anexar Termo (PDF/DOCX em formato texto suportado):</label>
+                      <input type="file" accept=".txt,.pdf,.docx" onChange={e => setArquivoPdfAditivo(e.target.files?.[0] || null)} />
+                    </div>
+                    <button type="button" onClick={lidarProcessamentoIA} disabled={processandoPdfIA} style={{ backgroundColor: '#8b5cf6', color: 'white', padding: '10px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+                      {processandoPdfIA ? '🤖 Lendo...' : '🤖 Extrair com IA'}
+                    </button>
+                  </div>
+
+                  <div className="form-grid" style={{ marginBottom: '0' }}>
+                    <div className="form-group">
+                      <label>Operação:</label>
+                      <select value={aditivoOperacao} onChange={e => setAditivoOperacao(e.target.value as any)}>
+                        <option value="acrescimo">Acréscimo (+)</option>
+                        <option value="supressao">Supressão (-)</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Valor Global Alterado (R$):</label>
+                      <input type="number" required min="0.01" step="0.01" value={aditivoValor} onChange={e => setAditivoValor(Number(e.target.value))} placeholder="Ex: 5000.00" />
+                    </div>
+                  </div>
+
+                  {itensDoAditivo.length > 0 && (
+                    <div style={{ marginTop: '16px', backgroundColor: 'white', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <p style={{ fontSize: '12px', fontWeight: 'bold', margin: '0 0 8px 0', color: '#10b981' }}>✓ {itensDoAditivo.length} Itens extraídos</p>
+                      <ul style={{ fontSize: '11px', margin: 0, paddingLeft: '16px', color: '#475569' }}>
+                        {itensDoAditivo.map((item, idx) => (
+                          <li key={idx}>{item.quantidade}x Item {item.numeroItem}: {item.discriminacao} (R$ {item.valorTotalItem})</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="modal-acoes">
+                <button type="button" className="btn-cancelar" onClick={() => setIsModalAditivoOpen(false)}>Cancelar</button>
+                <button type="submit" className="btn-salvar" disabled={loading}>
+                  {loading ? 'Salvando...' : 'Confirmar Aditivo'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL DE DISTRATO --- */}
+      {isModalDistratoOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '400px' }}>
+            <button className="btn-fechar" onClick={() => setIsModalDistratoOpen(false)}>×</button>
+            <h2 style={{ color: '#ef4444', marginTop: 0, borderBottom: '1px solid #fecaca', paddingBottom: '12px' }}>Registrar Distrato</h2>
+            <p style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>Atenção: Ao registrar o distrato, o contrato será considerado encerrado e não aceitará novos aditivos ou lançamentos.</p>
+            
+            <form onSubmit={salvarDistrato} style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+              <div className="form-group">
+                <label>Data do Distrato:</label>
+                <input type="date" required value={distratoData} onChange={e => setDistratoData(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Motivo do Distrato (Opcional):</label>
+                <textarea rows={3} value={distratoMotivo} onChange={e => setDistratoMotivo(e.target.value)} placeholder="Informe a justificativa ou embasamento legal..."></textarea>
+              </div>
+              
+              <div className="modal-acoes">
+                <button type="button" className="btn-cancelar" onClick={() => setIsModalDistratoOpen(false)}>Cancelar</button>
+                <button type="submit" className="btn-salvar" style={{ backgroundColor: '#ef4444' }} disabled={loading}>
+                  {loading ? 'Registrando...' : 'Confirmar Distrato'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <ModalLancarConsumo isOpen={isModalLancamentoOpen} onClose={() => setIsModalLancamentoOpen(false)} contratoId={id!} saldoContrato={contrato.saldoContrato} />
+      <ModalEditarContrato isOpen={isModalEditOpen} onClose={() => setIsModalEditOpen(false)} contratoOriginal={contrato} />
     </div>
   );
 }
