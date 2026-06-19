@@ -1,37 +1,41 @@
+// src/views/Login.tsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebase'; // Importação do auth seguro
 import logo from '../assets/logopmp.png';
 import './Login.css';
 
 export default function Login() {
   const [orgao, setOrgao] = useState('prefeitura');
-  const [login, setLogin] = useState('');
+  const [loginUsuario, setLoginUsuario] = useState(''); // Renomeado para não conflitar
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState(false);
+  const [loading, setLoading] = useState(false);
   
   const navigate = useNavigate();
 
-  const fazerLogin = (e: React.FormEvent) => {
+  const fazerLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    let autenticado = false;
+    setErro(false);
+    setLoading(true);
 
-    // NOVAS CREDENCIAIS CONFIGURADAS AQUI
-    if (orgao === 'prefeitura' && login === 'prefeitura' && senha === 'pmp10') {
-      autenticado = true;
-    } else if (orgao === 'fmas' && login === 'assistencia' && senha === 'fmas10') {
-      autenticado = true;
-    } else if (orgao === 'fme' && login === 'educacao' && senha === 'fme10') {
-      autenticado = true;
-    } else if (orgao === 'fms' && login === 'saude' && senha === 'fms10') {
-      autenticado = true;
-    }
+    try {
+      // Cria o email fake baseado no login digitado para enviar pro Firebase
+      const emailFirebase = `${loginUsuario.trim().toLowerCase()}@pesqueira.pe.gov.br`;
+      
+      // AUTENTICAÇÃO REAL NO SERVIDOR DO GOOGLE
+      await signInWithEmailAndPassword(auth, emailFirebase, senha);
 
-    if (autenticado) {
+      // Se passou da linha acima, a senha e o utilizador existem e estão corretos!
       sessionStorage.setItem('orgaoLogado', orgao);
-      setErro(false);
       navigate('/painel');
-    } else {
-      setErro(true);
+
+    } catch (error) {
+      console.error("Erro na autenticação:", error);
+      setErro(true); // Mostra erro se as credenciais estiverem erradas
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -57,9 +61,10 @@ export default function Login() {
             <input 
               type="text" 
               id="login" 
-              placeholder="Digite seu login" 
-              value={login}
-              onChange={(e) => setLogin(e.target.value)}
+              placeholder="Digite seu login (ex: prefeitura)" 
+              value={loginUsuario}
+              onChange={(e) => setLoginUsuario(e.target.value)}
+              required
             />
           </div>
 
@@ -71,10 +76,13 @@ export default function Login() {
               placeholder="Digite sua senha" 
               value={senha}
               onChange={(e) => setSenha(e.target.value)}
+              required
             />
           </div>
 
-          <button type="submit">Entrar</button>
+          <button type="submit" disabled={loading}>
+            {loading ? 'A autenticar...' : 'Entrar'}
+          </button>
 
           {erro && <p className="error-message">Login ou senha incorretos!</p>}
         </form>
