@@ -5,7 +5,7 @@ import { collection, query, where, onSnapshot, doc, deleteDoc, getDocs, writeBat
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { db } from '../firebase';
-import type { Contrato } from '../types';
+import type { Contrato } from '../types/types';
 import logo from '../assets/logopmp.png';
 import './Painel.css';
 

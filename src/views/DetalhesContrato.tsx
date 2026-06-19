@@ -7,7 +7,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { db } from '../firebase';
-import type { Contrato, Aditivo, ItemAditivo } from '../types';
+import type { Contrato, Aditivo, ItemAditivo } from '../types/types';
 import logo from '../assets/logopmp.png';
 import './DetalhesContrato.css';
 

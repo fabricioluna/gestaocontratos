@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { parseMoeda } from '../../utils/formatters';
-import type { Contrato } from '../../types';
+import type { Contrato } from '../../types/types';
 
 interface ModalEditarContratoProps {
   isOpen: boolean;
