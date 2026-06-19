@@ -1,37 +1,20 @@
 // src/views/DetalhesContrato.tsx
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, collection, query, where, deleteDoc, getDocs, writeBatch, updateDoc } from 'firebase/firestore';
-import * as mammoth from 'mammoth'; 
-import * as pdfjsLib from 'pdfjs-dist'; 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { db } from '../firebase';
-import type { Contrato, Aditivo, ItemAditivo } from '../types/types';
 import logo from '../assets/logopmp.png';
 import './DetalhesContrato.css';
 
-// CONFIGURAÇÃO DO WORKER DO PDFJS
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
-
-// IMPORTAÇÃO DOS COMPONENTES MODULARES
+// IMPORTAÇÃO DOS COMPONENTES MODULARES (UI)
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
 import ModalLancarConsumo from '../components/DetalhesContrato/ModalLancarConsumo';
-import { extrairDadosAditivoComIA } from '../services/geminiService';
+import ModalOpcoesRelatorio from '../components/DetalhesContrato/ModalOpcoesRelatorio';
+import ModalAditivo from '../components/DetalhesContrato/ModalAditivo';
+import ModalDistrato from '../components/DetalhesContrato/ModalDistrato';
 
-interface ItemExtendido {
-  id?: string;
-  contratoId: string;
-  numeroLote: string;
-  numeroItem: string;
-  discriminacao: string;
-  unidade: string;
-  quantidade: number;
-  valorUnitario: number;
-  valorTotalItem: number;
-  dataAdicao?: string;
-  tipoRegistro?: 'catalogo' | 'consumo';
-}
+// IMPORTAÇÃO DO NOSSO NOVO HOOK (LÓGICA)
+import { useDetalhesContrato } from '../hooks/useDetalhesContrato';
 
 const formatarDataBr = (dataString: string) => {
   if (!dataString) return 'N/A';
@@ -51,54 +34,30 @@ export default function DetalhesContrato() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [contrato, setContrato] = useState<Contrato | null>(null);
-  const [itens, setItens] = useState<ItemExtendido[]>([]);
-  const [loading, setLoading] = useState(false);
+  // CONSUMINDO A LÓGICA DE NEGÓCIO DO HOOK
+  const hookState = useDetalhesContrato(id);
+  const {
+    contrato, itensCatalogo, itensConsumo, loading,
+    gerarTabelaSaldos, tabelaDeSaldosTela,
+    valorGlobalAtualizado, totalAditivosAplicados, valorOriginal, totalConsumido,
+    fecharModalAditivoState, abrirEdicaoAditivo, excluirAditivo, excluirContrato
+  } = hookState;
 
+  // ESTADOS DE UI (Apenas para controlar a visibilidade dos modais)
   const [isModalLancamentoOpen, setIsModalLancamentoOpen] = useState(false);
   const [isModalEditOpen, setIsModalEditOpen] = useState(false);
-
-  // Estados para Opções do Relatório PDF
   const [isModalRelatorioOpen, setIsModalRelatorioOpen] = useState(false);
+  const [isModalAditivoOpen, setIsModalAditivoOpen] = useState(false);
+  const [isModalDistratoOpen, setIsModalDistratoOpen] = useState(false);
+
+  // Opções do PDF
   const [opcIncluirAditivos, setOpcIncluirAditivos] = useState(true);
   const [opcIncluirEmpenhos, setOpcIncluirEmpenhos] = useState(true);
 
-  // Estados para Aditivo (Criação e Edição)
-  const [isModalAditivoOpen, setIsModalAditivoOpen] = useState(false);
-  const [aditivoEmEdicao, setAditivoEmEdicao] = useState<Aditivo | null>(null);
-  const [aditivoDataAditivo, setAditivoDataAditivo] = useState('');
-  const [aditivoDescricao, setAditivoDescricao] = useState('');
-  const [aditivoTipo, setAditivoTipo] = useState<'prazo' | 'valor' | 'ambos'>('prazo');
-  const [aditivoOperacao, setAditivoOperacao] = useState<'acrescimo' | 'supressao'>('acrescimo');
-  const [aditivoValor, setAditivoValor] = useState<number | ''>('');
-  const [aditivoNovaData, setAditivoNovaData] = useState('');
-  
-  // Estados para Aditivo de Itens (IA e Manual) e PDF
-  const [itensDoAditivo, setItensDoAditivo] = useState<ItemAditivo[]>([]);
-  const [arquivoPdfAditivo, setArquivoPdfAditivo] = useState<File | null>(null);
-  const [processandoPdfIA, setProcessandoPdfIA] = useState(false);
-
-  // Estados para Inserção Manual de Itens do Contrato
-  const [itemManualSel, setItemManualSel] = useState<string>('');
-  const [itemManualQtd, setItemManualQtd] = useState<number | ''>('');
-  const [itemManualVlUnit, setItemManualVlUnit] = useState<number | ''>('');
-
-  const [isModalDistratoOpen, setIsModalDistratoOpen] = useState(false);
-  const [distratoData, setDistratoData] = useState('');
-  const [distratoMotivo, setDistratoMotivo] = useState('');
-
-  // FUNÇÃO PARA LIMPAR E FECHAR O MODAL DE ADITIVO
+  // FECHAR COM ESC E INTEGRAÇÃO DO HOOK
   const fecharModalAditivo = () => {
     setIsModalAditivoOpen(false);
-    setAditivoEmEdicao(null);
-    setAditivoDescricao('');
-    setAditivoDataAditivo('');
-    setAditivoTipo('prazo');
-    setAditivoOperacao('acrescimo');
-    setAditivoValor('');
-    setAditivoNovaData('');
-    setItensDoAditivo([]);
-    setArquivoPdfAditivo(null);
+    fecharModalAditivoState();
   };
 
   useEffect(() => {
@@ -115,333 +74,9 @@ export default function DetalhesContrato() {
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
-  useEffect(() => {
-    if (!id) return;
-    
-    const unsubContrato = onSnapshot(doc(db, 'contratos', id), (docSnap) => {
-      if (docSnap.exists()) {
-        const dados = { id: docSnap.id, ...docSnap.data() } as Contrato;
-        setContrato(dados);
-      }
-    });
-
-    const qItens = query(collection(db, 'itens'), where('contratoId', '==', id));
-    const unsubItens = onSnapshot(qItens, (querySnapshot) => {
-      const lista: ItemExtendido[] = [];
-      querySnapshot.forEach((d) => lista.push({ id: d.id, ...d.data() } as ItemExtendido));
-      
-      lista.sort((a, b) => {
-        const loteA = a.numeroLote || '';
-        const loteB = b.numeroLote || '';
-        const cmpLote = loteA.localeCompare(loteB, undefined, { numeric: true });
-        if (cmpLote !== 0) return cmpLote;
-        const itemA = a.numeroItem || '';
-        const itemB = b.numeroItem || '';
-        return itemA.localeCompare(itemB, undefined, { numeric: true });
-      });
-      setItens(lista);
-    });
-
-    return () => { unsubContrato(); unsubItens(); };
-  }, [id]);
-
-  const excluirContrato = async () => {
-    if (!id) return;
-    if (window.confirm("Tem certeza que deseja excluir este contrato e TODO o seu histórico? Esta ação não pode ser desfeita.")) {
-      setLoading(true);
-      try {
-        await deleteDoc(doc(db, 'contratos', id));
-        
-        const qItens = query(collection(db, 'itens'), where('contratoId', '==', id));
-        const querySnapshot = await getDocs(qItens);
-        
-        if (!querySnapshot.empty) {
-          const batch = writeBatch(db);
-          querySnapshot.forEach((itemDoc) => {
-            batch.delete(itemDoc.ref);
-          });
-          await batch.commit();
-        }
-        
-        alert("Contrato excluído com sucesso!");
-        navigate('/painel');
-      } catch (error) {
-        alert("Erro ao excluir contrato.");
-        setLoading(false);
-      }
-    }
-  };
-
-  const lidarProcessamentoIA = async () => {
-    if (!arquivoPdfAditivo) {
-      alert("Por favor, selecione o arquivo do Termo Aditivo primeiro.");
-      return;
-    }
-
-    setProcessandoPdfIA(true);
-    try {
-      const arrayBuffer = await arquivoPdfAditivo.arrayBuffer();
-      let textoCompleto = '';
-      
-      if (arquivoPdfAditivo.name.toLowerCase().endsWith('.pdf')) {
-        const typedArray = new Uint8Array(arrayBuffer);
-        const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          const strings = content.items.map((item: any) => item.str);
-          textoCompleto += strings.join(" ") + "\n";
-        }
-      } 
-      else if (arquivoPdfAditivo.name.toLowerCase().endsWith('.docx')) {
-        const result = await mammoth.extractRawText({ arrayBuffer });
-        textoCompleto = result.value;
-      } else {
-         const text = await arquivoPdfAditivo.text();
-         textoCompleto = text;
-      }
-
-      const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
-
-      if (textoLimpo.trim().length < 50) {
-         throw new Error("Não foi possível extrair texto legível deste documento.");
-      }
-
-      const dadosExtraidos = await extrairDadosAditivoComIA(textoLimpo);
-
-      if (dadosExtraidos) {
-        if (dadosExtraidos.descricao) setAditivoDescricao(dadosExtraidos.descricao);
-        if (dadosExtraidos.tipo) setAditivoTipo(dadosExtraidos.tipo);
-        if (dadosExtraidos.novaDataFim) setAditivoNovaData(dadosExtraidos.novaDataFim);
-        if (dadosExtraidos.valorAditivado) setAditivoValor(Number(dadosExtraidos.valorAditivado));
-
-        if (dadosExtraidos.itens && dadosExtraidos.itens.length > 0) {
-          setItensDoAditivo(dadosExtraidos.itens);
-          
-          const soma = dadosExtraidos.itens.reduce((acc: number, item: any) => acc + (Number(item.valorTotalItem) || 0), 0);
-          if (!dadosExtraidos.valorAditivado && soma > 0) setAditivoValor(soma);
-          
-          alert("✅ IA extraiu os DADOS e ITENS com sucesso!");
-        } else {
-          alert("✅ Dados gerais lidos, mas não foram encontrados itens na tabela. Você pode adicionar manualmente.");
-        }
-      } else {
-        alert("A IA analisou o arquivo, mas não conseguiu estruturar os dados.");
-      }
-    } catch (error: any) {
-      console.error(error);
-      alert(error.message || "Erro inesperado ao processar o documento via IA.");
-    } finally {
-      setProcessandoPdfIA(false);
-    }
-  };
-
-  const itensCatalogo = itens.filter(i => i.tipoRegistro === 'catalogo' || !i.tipoRegistro);
-  
-  const lidarAdicionarItemManual = () => {
-    if (!itemManualSel) return;
-    const original = itensCatalogo.find(i => i.id === itemManualSel);
-    if (!original) return;
-
-    const qtd = Number(itemManualQtd) || 0;
-    const vlUnit = Number(itemManualVlUnit) || original.valorUnitario;
-    const vlTotal = qtd * vlUnit;
-
-    const novoItem: ItemAditivo = {
-      numeroLote: original.numeroLote,
-      numeroItem: original.numeroItem,
-      discriminacao: original.discriminacao,
-      unidade: original.unidade,
-      quantidade: qtd,
-      valorUnitario: vlUnit,
-      valorTotalItem: vlTotal
-    };
-
-    const novaListaItens = [...itensDoAditivo, novoItem];
-    setItensDoAditivo(novaListaItens);
-    
-    const novaSoma = novaListaItens.reduce((acc, i) => acc + i.valorTotalItem, 0);
-    setAditivoValor(novaSoma);
-
-    setItemManualSel('');
-    setItemManualQtd('');
-    setItemManualVlUnit('');
-  };
-
-  const removerItemAditivo = (index: number) => {
-    const novaLista = [...itensDoAditivo];
-    novaLista.splice(index, 1);
-    setItensDoAditivo(novaLista);
-    
-    const novaSoma = novaLista.reduce((acc, i) => acc + i.valorTotalItem, 0);
-    setAditivoValor(novaSoma > 0 ? novaSoma : '');
-  };
-
-  // --- LÓGICAS DE EDIÇÃO E EXCLUSÃO DE ADITIVOS ---
-  const abrirEdicaoAditivo = (ad: Aditivo) => {
-    setAditivoEmEdicao(ad);
-    setAditivoDescricao(ad.descricao);
-    setAditivoTipo(ad.tipo);
-    setAditivoDataAditivo(ad.dataAditivo || '');
-    setAditivoNovaData(ad.novaDataFim || '');
-    
-    if (ad.valorAditivado !== undefined && ad.valorAditivado !== 0) {
-       setAditivoOperacao(ad.valorAditivado > 0 ? 'acrescimo' : 'supressao');
-       setAditivoValor(Math.abs(ad.valorAditivado));
-    } else {
-       setAditivoValor('');
-    }
-    
-    setItensDoAditivo(ad.itensAditivados || []);
-    setIsModalAditivoOpen(true);
-  };
-
-  const excluirAditivo = async (aditivoParaExcluir: Aditivo) => {
-    if (!id || !contrato) return;
-    if (!window.confirm("Tem certeza que deseja excluir este aditivo? O valor global e o saldo do contrato serão recalculados automaticamente.")) return;
-    
-    setLoading(true);
-    try {
-      const valorAjuste = aditivoParaExcluir.valorAditivado || 0;
-      
-      // Remove o impacto financeiro do aditivo que está sendo excluído
-      const novoValorTotal = Number(contrato.valorTotal) - valorAjuste;
-      const novoSaldo = Number(contrato.saldoContrato) - valorAjuste;
-      
-      // Filtra o aditivo excluído da lista
-      const novaListaAditivos = contrato.aditivos ? contrato.aditivos.filter(a => a.id !== aditivoParaExcluir.id) : [];
-
-      await updateDoc(doc(db, 'contratos', id), {
-        valorTotal: novoValorTotal,
-        saldoContrato: novoSaldo,
-        aditivos: novaListaAditivos,
-        dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
-      });
-
-      alert('Aditivo excluído com sucesso!');
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao excluir o aditivo.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const salvarAditivo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!id || !contrato) return;
-
-    if (!aditivoDataAditivo) {
-      alert("Por favor, preencha a Data de Assinatura do Aditivo.");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      let novoValorTotal = Number(contrato.valorTotal) || 0;
-      let novoSaldo = Number(contrato.saldoContrato) || 0;
-      let novaDataFimStr = contrato.dataFim;
-      let valorAlteracao = 0;
-
-      // 1. REVERTER IMPACTO FINANCEIRO ANTIGO SE FOR UMA EDIÇÃO
-      if (aditivoEmEdicao) {
-        const valorAntigo = aditivoEmEdicao.valorAditivado || 0;
-        novoValorTotal -= valorAntigo;
-        novoSaldo -= valorAntigo;
-      }
-
-      // 2. APLICAR IMPACTO FINANCEIRO DO NOVO SALVAMENTO
-      if (aditivoTipo === 'valor' || aditivoTipo === 'ambos') {
-        const v = Number(aditivoValor);
-        valorAlteracao = aditivoOperacao === 'acrescimo' ? v : -v;
-        
-        const limite25 = novoValorTotal * 0.25;
-        if (v > limite25 && aditivoOperacao === 'acrescimo') {
-           if(!window.confirm(`Atenção: O acréscimo de ${v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} supera 25% do valor atual. Deseja prosseguir sob amparo legal específico?`)) {
-               setLoading(false);
-               return;
-           }
-        }
-        novoValorTotal += valorAlteracao;
-        novoSaldo += valorAlteracao;
-      }
-
-      if (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') {
-        if (!aditivoNovaData) {
-          alert('Informe a nova data de validade.');
-          setLoading(false);
-          return;
-        }
-        novaDataFimStr = aditivoNovaData;
-      }
-
-      const novoAditivo: Aditivo = {
-        id: aditivoEmEdicao ? aditivoEmEdicao.id : Date.now().toString(),
-        descricao: aditivoDescricao || 'Termo Aditivo',
-        dataAditivo: aditivoDataAditivo, 
-        tipo: aditivoTipo,
-        valorAditivado: valorAlteracao,
-        novaDataFim: (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') && aditivoNovaData ? aditivoNovaData : "",
-        dataRegistro: aditivoEmEdicao ? aditivoEmEdicao.dataRegistro : new Date().toLocaleString('pt-BR'),
-        itensAditivados: itensDoAditivo.length > 0 ? itensDoAditivo : [],
-      };
-
-      // 3. ATUALIZAR A LISTA NO BANCO DE DADOS
-      let novaListaAditivos = contrato.aditivos ? [...contrato.aditivos] : [];
-      if (aditivoEmEdicao) {
-         const index = novaListaAditivos.findIndex(a => a.id === aditivoEmEdicao.id);
-         if (index !== -1) novaListaAditivos[index] = novoAditivo;
-      } else {
-         novaListaAditivos.push(novoAditivo);
-      }
-
-      await updateDoc(doc(db, 'contratos', id), {
-        valorTotal: novoValorTotal,
-        saldoContrato: novoSaldo,
-        dataFim: novaDataFimStr,
-        aditivos: novaListaAditivos, // Substitui todo o array (permite edições perfeitamente)
-        dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
-      });
-
-      alert(aditivoEmEdicao ? 'Aditivo atualizado com sucesso!' : 'Aditivo registrado com sucesso!');
-      fecharModalAditivo();
-
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao salvar aditivo. Verifique o log.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const salvarDistrato = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!id || !contrato) return;
-
-    try {
-      setLoading(true);
-      await updateDoc(doc(db, 'contratos', id), {
-        dataDistrato: distratoData,
-        motivoDistrato: distratoMotivo,
-        dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
-      });
-      
-      alert('Distrato registrado com sucesso!');
-      setIsModalDistratoOpen(false);
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao registrar distrato.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   if (!contrato) return <div style={{textAlign: 'center', padding: '50px'}}>A carregar relatório...</div>;
 
-  const valorGlobalAtualizado = Number(contrato.valorTotal) || 0;
-  const totalAditivosAplicados = contrato.aditivos ? contrato.aditivos.reduce((acc, ad) => acc + (ad.valorAditivado || 0), 0) : 0;
-  const valorOriginal = valorGlobalAtualizado - totalAditivosAplicados;
-
+  // LÓGICA VISUAL DE CORES E STATUS
   const hoje = new Date();
   const vencimento = new Date(contrato.dataFim);
   const diffDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 3600 * 24));
@@ -461,94 +96,14 @@ export default function DetalhesContrato() {
   const percentualSaldo = (contrato.saldoContrato / valorGlobalAtualizado);
   const alertaSaldoCritico = percentualSaldo < 0.3;
 
-  const itensConsumo = itens.filter(i => i.tipoRegistro === 'consumo');
-
   const totalItens = itensConsumo.length;
   const totalUnidades = itensConsumo.reduce((acc, curr) => acc + curr.quantidade, 0);
-  const totalConsumido = itensConsumo.reduce((acc, curr) => acc + curr.valorTotalItem, 0);
 
-  const gerarTabelaSaldos = (incluirAditivos: boolean = true) => {
-    const mapaSaldos = new Map();
-
-    itensCatalogo.forEach(cat => {
-      const chave = `${cat.numeroLote}|${cat.numeroItem}`;
-      mapaSaldos.set(chave, {
-        lote: cat.numeroLote,
-        item: cat.numeroItem,
-        descricao: cat.discriminacao,
-        unidade: cat.unidade,
-        qtdContratada: cat.quantidade,
-        vlUnitario: cat.valorUnitario,
-        vlContratado: cat.valorTotalItem,
-        qtdConsumida: 0,
-        vlConsumido: 0
-      });
-    });
-
-    if (incluirAditivos && contrato.aditivos) {
-      contrato.aditivos.forEach(aditivo => {
-        if (aditivo.itensAditivados) {
-          aditivo.itensAditivados.forEach(itemAditivo => {
-            const chave = `${itemAditivo.numeroLote}|${itemAditivo.numeroItem}`;
-            if (mapaSaldos.has(chave)) {
-              const existente = mapaSaldos.get(chave);
-              existente.qtdContratada += itemAditivo.quantidade;
-              existente.vlContratado += itemAditivo.valorTotalItem;
-            } else {
-              mapaSaldos.set(chave, {
-                lote: itemAditivo.numeroLote,
-                item: itemAditivo.numeroItem,
-                descricao: `${itemAditivo.discriminacao} (Aditivado)`,
-                unidade: itemAditivo.unidade,
-                qtdContratada: itemAditivo.quantidade,
-                vlUnitario: itemAditivo.valorUnitario,
-                vlContratado: itemAditivo.valorTotalItem,
-                qtdConsumida: 0,
-                vlConsumido: 0
-              });
-            }
-          });
-        }
-      });
-    }
-
-    itensConsumo.forEach(cons => {
-      const chave = `${cons.numeroLote}|${cons.numeroItem}`;
-      if (mapaSaldos.has(chave)) {
-        const existente = mapaSaldos.get(chave);
-        existente.qtdConsumida += cons.quantidade;
-        existente.vlConsumido += cons.valorTotalItem;
-      } else {
-        mapaSaldos.set(chave, {
-          lote: cons.numeroLote,
-          item: cons.numeroItem,
-          descricao: cons.discriminacao,
-          unidade: cons.unidade,
-          qtdContratada: 0,
-          vlUnitario: cons.valorUnitario,
-          vlContratado: 0,
-          qtdConsumida: cons.quantidade,
-          vlConsumido: cons.valorTotalItem
-        });
-      }
-    });
-
-    const arraySaldos = Array.from(mapaSaldos.values());
-    arraySaldos.sort((a, b) => {
-      const cmpLote = (a.lote || '').localeCompare(b.lote || '', undefined, { numeric: true });
-      if (cmpLote !== 0) return cmpLote;
-      return (a.item || '').localeCompare(b.item || '', undefined, { numeric: true });
-    });
-
-    return arraySaldos;
-  };
-
-  const tabelaDeSaldosTela = gerarTabelaSaldos(true);
-
+  // GERAÇÃO DO PDF
   const gerarRelatorioPDF = () => {
     setIsModalRelatorioOpen(false); 
-
     const docPdf = new jsPDF('landscape'); 
+    
     const gerarConteudo = () => {
       docPdf.setFontSize(16);
       docPdf.setTextColor(0, 74, 153);
@@ -762,13 +317,8 @@ export default function DetalhesContrato() {
 
     const img = new Image();
     img.src = logo;
-    img.onload = () => {
-      docPdf.addImage(img, 'PNG', 14, 10, 25, 25);
-      gerarConteudo();
-    };
-    img.onerror = () => {
-      gerarConteudo(); 
-    };
+    img.onload = () => { docPdf.addImage(img, 'PNG', 14, 10, 25, 25); gerarConteudo(); };
+    img.onerror = () => { gerarConteudo(); };
   };
 
   return (
@@ -803,7 +353,7 @@ export default function DetalhesContrato() {
           <button className="btn-acao btn-aditivo" onClick={() => setIsModalAditivoOpen(true)} disabled={!!contrato.dataDistrato}>➕ Aditivo</button>
           <button className="btn-acao btn-distrato" onClick={() => setIsModalDistratoOpen(true)} disabled={!!contrato.dataDistrato}>🛑 Distrato</button>
           <button className="btn-acao btn-editar" onClick={() => setIsModalEditOpen(true)} disabled={!!contrato.dataDistrato}>✏️ Editar</button>
-          <button className="btn-acao btn-excluir" onClick={excluirContrato} disabled={loading}>🗑️ Excluir</button>
+          <button className="btn-acao btn-excluir" onClick={() => excluirContrato(() => navigate('/painel'))} disabled={loading}>🗑️ Excluir</button>
           
           <button 
             className="btn-acao btn-lancar" 
@@ -949,7 +499,7 @@ export default function DetalhesContrato() {
                       ) : 'Nenhum item alterado'}
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', marginRight: '8px' }} onClick={() => abrirEdicaoAditivo(ad)} disabled={!!contrato.dataDistrato} title="Editar Aditivo">✏️</button>
+                      <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', marginRight: '8px' }} onClick={() => { abrirEdicaoAditivo(ad); setIsModalAditivoOpen(true); }} disabled={!!contrato.dataDistrato} title="Editar Aditivo">✏️</button>
                       <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => excluirAditivo(ad)} disabled={!!contrato.dataDistrato} title="Excluir Aditivo">🗑️</button>
                     </td>
                   </tr>
@@ -1059,7 +609,7 @@ export default function DetalhesContrato() {
             </thead>
             <tbody>
               {itensConsumo.length === 0 ? (
-                <tr><td colSpan={6} style={{textAlign: 'center'}}>Nenhum empenho/consumo registrado ainda.</td></tr>
+                <tr><td colSpan={6} style={{textAlign: 'center'}}>Nenhum empenho/consumo registado ainda.</td></tr>
               ) : (
                 itensConsumo.map(item => (
                   <tr key={item.id}>
@@ -1077,217 +627,29 @@ export default function DetalhesContrato() {
         </div>
       </main>
 
-      {/* --- MODAL DE OPÇÕES DE RELATÓRIO --- */}
-      {isModalRelatorioOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '450px' }}>
-            <button className="btn-fechar" onClick={() => setIsModalRelatorioOpen(false)}>×</button>
-            <h2 style={{ color: '#0f172a', marginTop: 0, borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>Opções do Relatório</h2>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#334155', cursor: 'pointer' }}>
-                <input 
-                  type="checkbox" 
-                  checked={opcIncluirAditivos} 
-                  onChange={e => setOpcIncluirAditivos(e.target.checked)} 
-                  style={{ width: '18px', height: '18px' }}
-                />
-                Considerar Termos Aditivos no cálculo financeiro e histórico
-              </label>
-
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#334155', cursor: 'pointer' }}>
-                <input 
-                  type="checkbox" 
-                  checked={opcIncluirEmpenhos} 
-                  onChange={e => setOpcIncluirEmpenhos(e.target.checked)} 
-                  style={{ width: '18px', height: '18px' }}
-                />
-                Incluir tabela de Histórico de Lançamentos (Empenhos)
-              </label>
-            </div>
-
-            <div className="modal-acoes" style={{ marginTop: '25px' }}>
-              <button className="btn-cancelar" onClick={() => setIsModalRelatorioOpen(false)}>Cancelar</button>
-              <button className="btn-salvar" style={{ backgroundColor: '#10b981' }} onClick={gerarRelatorioPDF}>Gerar PDF</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL DE ADITIVO (CRIAÇÃO / EDIÇÃO) --- */}
-      {isModalAditivoOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <button className="btn-fechar" onClick={fecharModalAditivo}>×</button>
-            <h2 style={{ color: '#f59e0b', marginTop: 0, borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
-              {aditivoEmEdicao ? 'Editar Aditivo' : 'Registrar Aditivo'}
-            </h2>
-            
-            <form onSubmit={salvarAditivo} style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
-              
-              <div className="form-grid">
-                <div className="form-group full-width">
-                  <label>Descrição do Aditivo:</label>
-                  <input type="text" required placeholder="Ex: 1º Termo Aditivo de Prazo e Valor" value={aditivoDescricao} onChange={e => setAditivoDescricao(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>Data de Assinatura do Aditivo:</label>
-                  <input type="date" required value={aditivoDataAditivo} onChange={e => setAditivoDataAditivo(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>Tipo de Aditivo:</label>
-                  <select value={aditivoTipo} onChange={e => setAditivoTipo(e.target.value as any)}>
-                    <option value="prazo">Apenas Prazo</option>
-                    <option value="valor">Apenas Valor</option>
-                    <option value="ambos">Prazo e Valor</option>
-                  </select>
-                </div>
-              </div>
-
-              {(aditivoTipo === 'prazo' || aditivoTipo === 'ambos') && (
-                <div className="form-group">
-                  <label>Nova Data de Validade:</label>
-                  <input type="date" required value={aditivoNovaData} onChange={e => setAditivoNovaData(e.target.value)} />
-                </div>
-              )}
-
-              {(aditivoTipo === 'valor' || aditivoTipo === 'ambos') && (
-                <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
-                  <h4 style={{ margin: '0 0 16px 0', color: '#3b82f6', fontSize: '15px' }}>📄 Importação e Seleção de Itens</h4>
-                  
-                  {/* --- IA SECTION --- */}
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px', display: 'block' }}>Extração Automática via Arquivo (PDF ou DOCX):</label>
-                    <div className="ia-upload-section">
-                      <input type="file" accept=".txt,.pdf,.docx" onChange={e => setArquivoPdfAditivo(e.target.files?.[0] || null)} className="file-upload-box" />
-                      <button type="button" onClick={lidarProcessamentoIA} disabled={processandoPdfIA} className="btn-ia">
-                        {processandoPdfIA ? '🤖 Lendo...' : '🤖 Extrair IA'}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div style={{ textAlign: 'center', margin: '16px 0', color: '#94a3b8', fontSize: '12px', fontWeight: 'bold' }}>OU</div>
-
-                  {/* --- MANUAL SECTION --- */}
-                  <div className="manual-item-section">
-                    <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', marginBottom: '8px', display: 'block' }}>Importar da Planilha Original do Contrato:</label>
-                    <div className="form-grid" style={{ marginBottom: '10px' }}>
-                      <div className="form-group full-width">
-                        <select value={itemManualSel} onChange={e => {
-                          setItemManualSel(e.target.value);
-                          const original = itensCatalogo.find(i => i.id === e.target.value);
-                          if (original) setItemManualVlUnit(original.valorUnitario);
-                        }}>
-                          <option value="">Selecione um item cadastrado...</option>
-                          {itensCatalogo.map(i => (
-                            <option key={i.id} value={i.id}>Lote {i.numeroLote} - Item {i.numeroItem} | {i.discriminacao}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label>Qtd (+ ou -):</label>
-                        <input type="number" step="0.01" value={itemManualQtd} onChange={e => setItemManualQtd(Number(e.target.value))} placeholder="Ex: 500" />
-                      </div>
-                      <div className="form-group">
-                        <label>Vl. Unit. (R$):</label>
-                        <input type="number" step="0.01" value={itemManualVlUnit} onChange={e => setItemManualVlUnit(Number(e.target.value))} />
-                      </div>
-                    </div>
-                    <button type="button" className="btn-acao btn-gerar" style={{ width: '100%', padding: '10px' }} onClick={lidarAdicionarItemManual}>
-                      ➕ Adicionar à Lista do Aditivo
-                    </button>
-                  </div>
-
-                  {/* --- LISTA DE ITENS DO ADITIVO --- */}
-                  {itensDoAditivo.length > 0 && (
-                    <div style={{ marginTop: '16px', backgroundColor: 'white', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                      <p style={{ fontSize: '12px', fontWeight: 'bold', margin: '0 0 8px 0', color: '#10b981' }}>✓ Itens do Aditivo ({itensDoAditivo.length})</p>
-                      <table className="tabela-itens" style={{ fontSize: '11px', marginBottom: 0 }}>
-                        <thead>
-                          <tr>
-                            <th>Item</th>
-                            <th>Qtd</th>
-                            <th>Vl. Unit</th>
-                            <th>Vl. Total</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {itensDoAditivo.map((item, idx) => (
-                            <tr key={idx}>
-                              <td>{item.discriminacao}</td>
-                              <td>{item.quantidade >= 0 ? '+' : ''}{item.quantidade} {item.unidade}</td>
-                              <td>R$ {item.valorUnitario}</td>
-                              <td>R$ {item.valorTotalItem.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                              <td style={{ textAlign: 'center', padding: '4px' }}>
-                                <button type="button" onClick={() => removerItemAditivo(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }} title="Remover item">❌</button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  <div className="form-grid" style={{ marginTop: '16px', marginBottom: '0' }}>
-                    <div className="form-group">
-                      <label>Operação Global:</label>
-                      <select value={aditivoOperacao} onChange={e => setAditivoOperacao(e.target.value as any)}>
-                        <option value="acrescimo">Acréscimo (+)</option>
-                        <option value="supressao">Supressão (-)</option>
-                      </select>
-                    </div>
-                    <div className="form-group">
-                      <label>Valor Global Alterado (R$):</label>
-                      <input type="number" required min="0.01" step="0.01" value={aditivoValor} onChange={e => setAditivoValor(Number(e.target.value))} placeholder="Ex: 5000.00" />
-                      <small style={{ color: '#64748b', fontSize: '10px', display: 'block', marginTop: '4px' }}>Calculado automaticamente ao inserir itens.</small>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="modal-acoes">
-                <button type="button" className="btn-cancelar" onClick={fecharModalAditivo}>Cancelar</button>
-                <button type="submit" className="btn-salvar" disabled={loading}>
-                  {loading ? 'Salvando...' : (aditivoEmEdicao ? 'Atualizar Aditivo' : 'Confirmar Aditivo')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL DE DISTRATO --- */}
-      {isModalDistratoOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '400px' }}>
-            <button className="btn-fechar" onClick={() => setIsModalDistratoOpen(false)}>×</button>
-            <h2 style={{ color: '#ef4444', marginTop: 0, borderBottom: '1px solid #fecaca', paddingBottom: '12px' }}>Registrar Distrato</h2>
-            <p style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.5' }}>Atenção: Ao registrar o distrato, o contrato será considerado encerrado e não aceitará novos aditivos ou lançamentos.</p>
-            
-            <form onSubmit={salvarDistrato} style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
-              <div className="form-group">
-                <label>Data do Distrato:</label>
-                <input type="date" required value={distratoData} onChange={e => setDistratoData(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>Motivo do Distrato (Opcional):</label>
-                <textarea rows={3} value={distratoMotivo} onChange={e => setDistratoMotivo(e.target.value)} placeholder="Informe a justificativa ou embasamento legal..."></textarea>
-              </div>
-              
-              <div className="modal-acoes">
-                <button type="button" className="btn-cancelar" onClick={() => setIsModalDistratoOpen(false)}>Cancelar</button>
-                <button type="submit" className="btn-salvar" style={{ backgroundColor: '#ef4444' }} disabled={loading}>
-                  {loading ? 'Registrando...' : 'Confirmar Distrato'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
+      {/* RENDERIZAÇÃO DOS COMPONENTES MODULARES */}
       <ModalLancarConsumo isOpen={isModalLancamentoOpen} onClose={() => setIsModalLancamentoOpen(false)} contratoId={id!} saldoContrato={contrato.saldoContrato} />
       <ModalEditarContrato isOpen={isModalEditOpen} onClose={() => setIsModalEditOpen(false)} contratoOriginal={contrato} />
+      
+      <ModalOpcoesRelatorio 
+        isOpen={isModalRelatorioOpen} 
+        onClose={() => setIsModalRelatorioOpen(false)}
+        opcIncluirAditivos={opcIncluirAditivos} setOpcIncluirAditivos={setOpcIncluirAditivos}
+        opcIncluirEmpenhos={opcIncluirEmpenhos} setOpcIncluirEmpenhos={setOpcIncluirEmpenhos}
+        gerarRelatorioPDF={gerarRelatorioPDF}
+      />
+
+      <ModalDistrato 
+        isOpen={isModalDistratoOpen} 
+        onClose={() => setIsModalDistratoOpen(false)}
+        {...hookState}
+      />
+
+      <ModalAditivo 
+        isOpen={isModalAditivoOpen} 
+        onClose={fecharModalAditivo}
+        {...hookState}
+      />
     </div>
   );
 }
