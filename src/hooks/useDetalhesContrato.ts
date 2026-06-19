@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { doc, onSnapshot, collection, query, where, deleteDoc, getDocs, writeBatch, updateDoc } from 'firebase/firestore';
 import * as mammoth from 'mammoth'; 
 import * as pdfjsLib from 'pdfjs-dist'; 
+import toast from 'react-hot-toast'; // IMPORTAÇÃO DO TOAST
 import { db } from '../firebase';
 import type { Contrato, Aditivo, ItemAditivo } from '../types/types';
 import { extrairDadosAditivoComIA } from '../services/geminiService';
@@ -172,6 +173,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
   const excluirContrato = async (onSuccess: () => void) => {
     if (!id) return;
     if (window.confirm("Tem certeza que deseja excluir este contrato e TODO o seu histórico? Esta ação não pode ser desfeita.")) {
+      const toastId = toast.loading('A excluir contrato...');
       setLoading(true);
       try {
         await deleteDoc(doc(db, 'contratos', id));
@@ -184,10 +186,10 @@ export const useDetalhesContrato = (id: string | undefined) => {
           await batch.commit();
         }
         
-        alert("Contrato excluído com sucesso!");
+        toast.success("Contrato excluído com sucesso!", { id: toastId });
         onSuccess();
       } catch (error) {
-        alert("Erro ao excluir contrato.");
+        toast.error("Erro ao excluir contrato.", { id: toastId });
       } finally {
         setLoading(false);
       }
@@ -209,10 +211,13 @@ export const useDetalhesContrato = (id: string | undefined) => {
 
   const lidarProcessamentoIA = async () => {
     if (!arquivoPdfAditivo) {
-      alert("Por favor, selecione o arquivo do Termo Aditivo primeiro.");
+      toast.error("Por favor, selecione o arquivo do Termo Aditivo primeiro.");
       return;
     }
+    
     setProcessandoPdfIA(true);
+    const toastId = toast.loading('A processar documento com Inteligência Artificial...');
+    
     try {
       const arrayBuffer = await arquivoPdfAditivo.arrayBuffer();
       let textoCompleto = '';
@@ -249,16 +254,17 @@ export const useDetalhesContrato = (id: string | undefined) => {
           setItensDoAditivo(dadosExtraidos.itens);
           const soma = dadosExtraidos.itens.reduce((acc: number, item: any) => acc + (Number(item.valorTotalItem) || 0), 0);
           if (!dadosExtraidos.valorAditivado && soma > 0) setAditivoValor(soma);
-          alert("✅ IA extraiu os DADOS e ITENS com sucesso!");
+          
+          toast.success("IA extraiu os DADOS e ITENS com sucesso!", { id: toastId });
         } else {
-          alert("✅ Dados gerais lidos, mas não foram encontrados itens na tabela. Pode adicionar manualmente.");
+          toast.success("Dados gerais lidos, mas não foram encontrados itens na tabela. Pode adicionar manualmente.", { id: toastId, duration: 5000 });
         }
       } else {
-        alert("A IA analisou o ficheiro, mas não conseguiu estruturar os dados.");
+        toast.error("A IA analisou o ficheiro, mas não conseguiu estruturar os dados.", { id: toastId });
       }
     } catch (error: any) {
       console.error(error);
-      alert(error.message || "Erro inesperado ao processar o documento via IA.");
+      toast.error(error.message || "Erro inesperado ao processar o documento via IA.", { id: toastId });
     } finally {
       setProcessandoPdfIA(false);
     }
@@ -320,6 +326,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
     if (!id || !contrato) return;
     if (!window.confirm("Tem certeza que deseja excluir este aditivo? O valor global e o saldo do contrato serão recalculados automaticamente.")) return;
     
+    const toastId = toast.loading('A excluir aditivo...');
     setLoading(true);
     try {
       const valorAjuste = aditivoParaExcluir.valorAditivado || 0;
@@ -333,10 +340,10 @@ export const useDetalhesContrato = (id: string | undefined) => {
         aditivos: novaListaAditivos,
         dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
       });
-      alert('Aditivo excluído com sucesso!');
+      toast.success('Aditivo excluído com sucesso!', { id: toastId });
     } catch (error) {
       console.error(error);
-      alert("Erro ao excluir o aditivo.");
+      toast.error("Erro ao excluir o aditivo.", { id: toastId });
     } finally {
       setLoading(false);
     }
@@ -345,10 +352,12 @@ export const useDetalhesContrato = (id: string | undefined) => {
   const salvarAditivo = async (e: React.FormEvent, onSuccess: () => void) => {
     e.preventDefault();
     if (!id || !contrato) return;
-    if (!aditivoDataAditivo) { alert("Por favor, preencha a Data de Assinatura do Aditivo."); return; }
+    if (!aditivoDataAditivo) { 
+      toast.error("Por favor, preencha a Data de Assinatura do Aditivo."); 
+      return; 
+    }
 
     try {
-      setLoading(true);
       let novoValorTotal = Number(contrato.valorTotal) || 0;
       let novoSaldo = Number(contrato.saldoContrato) || 0;
       let novaDataFimStr = contrato.dataFim;
@@ -364,10 +373,11 @@ export const useDetalhesContrato = (id: string | undefined) => {
         const v = Number(aditivoValor);
         valorAlteracao = aditivoOperacao === 'acrescimo' ? v : -v;
         const limite25 = novoValorTotal * 0.25;
+        
+        // Mantemos o confirm aqui porque é um alerta legal exigido e exige decisão humana, não um mero aviso.
         if (v > limite25 && aditivoOperacao === 'acrescimo') {
            if(!window.confirm(`Atenção: O acréscimo de ${v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} supera 25% do valor atual. Deseja prosseguir sob amparo legal específico?`)) {
-               setLoading(false);
-               return;
+               return; 
            }
         }
         novoValorTotal += valorAlteracao;
@@ -375,9 +385,15 @@ export const useDetalhesContrato = (id: string | undefined) => {
       }
 
       if (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') {
-        if (!aditivoNovaData) { alert('Informe a nova data de validade.'); setLoading(false); return; }
+        if (!aditivoNovaData) { 
+          toast.error('Informe a nova data de validade.'); 
+          return; 
+        }
         novaDataFimStr = aditivoNovaData;
       }
+
+      const toastId = toast.loading('A guardar aditivo...');
+      setLoading(true);
 
       const novoAditivo: Aditivo = {
         id: aditivoEmEdicao ? aditivoEmEdicao.id : Date.now().toString(),
@@ -406,12 +422,12 @@ export const useDetalhesContrato = (id: string | undefined) => {
         dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
       });
 
-      alert(aditivoEmEdicao ? 'Aditivo atualizado com sucesso!' : 'Aditivo registado com sucesso!');
+      toast.success(aditivoEmEdicao ? 'Aditivo atualizado com sucesso!' : 'Aditivo registado com sucesso!', { id: toastId });
       fecharModalAditivoState();
       onSuccess();
     } catch (error) {
       console.error(error);
-      alert("Erro ao salvar aditivo. Verifique o log.");
+      toast.error("Erro ao guardar aditivo. Verifique o log.");
     } finally {
       setLoading(false);
     }
@@ -421,6 +437,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
     e.preventDefault();
     if (!id || !contrato) return;
 
+    const toastId = toast.loading('A registar distrato...');
     try {
       setLoading(true);
       await updateDoc(doc(db, 'contratos', id), {
@@ -428,11 +445,11 @@ export const useDetalhesContrato = (id: string | undefined) => {
         motivoDistrato: distratoMotivo,
         dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
       });
-      alert('Distrato registado com sucesso!');
+      toast.success('Distrato registado com sucesso!', { id: toastId });
       onSuccess();
     } catch (error) {
       console.error(error);
-      alert("Erro ao registar distrato.");
+      toast.error("Erro ao registar distrato.", { id: toastId });
     } finally {
       setLoading(false);
     }

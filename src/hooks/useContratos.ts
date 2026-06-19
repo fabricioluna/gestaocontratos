@@ -1,6 +1,7 @@
 // src/hooks/useContratos.ts
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
+import toast from 'react-hot-toast'; // IMPORTAÇÃO AQUI
 import { db } from '../firebase';
 import type { Contrato } from '../types/types';
 
@@ -20,8 +21,6 @@ export const useContratos = (orgaoLogado: string | null) => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const lista: Contrato[] = [];
       
-      console.log(`[Firebase Debug] Documentos encontrados na coleção 'contratos': ${snapshot.size}`);
-      
       snapshot.forEach((docSnap) => {
         const dados = docSnap.data();
         const identificadorOrgao = dados.orgaoId || dados.orgao || '';
@@ -34,6 +33,7 @@ export const useContratos = (orgaoLogado: string | null) => {
       setContratos(lista);
     }, (error) => {
       console.error("[Firebase Debug] Erro ao ler a coleção 'contratos':", error);
+      toast.error('Erro ao conectar com a base de dados em tempo real.'); // TOAST DE ERRO
     });
     
     return () => unsubscribe();
@@ -102,8 +102,9 @@ export const useContratos = (orgaoLogado: string | null) => {
   // 5. EXCLUSÃO COM CASCADE (DELETA ITENS VINCULADOS)
   const excluirContrato = async (contratoId: string) => {
     if (window.confirm('Tem certeza que deseja excluir este contrato e todos os itens vinculados?')) {
-      setLoading(true);
-      try {
+      // Usamos um Toast do tipo "Promise" para dar feedback de loading e sucesso ao mesmo tempo!
+      const exclusaoPromise = async () => {
+        setLoading(true);
         await deleteDoc(doc(db, 'contratos', contratoId));
         const qItens = query(collection(db, 'itens'), where('contratoId', '==', contratoId));
         const querySnapshot = await getDocs(qItens);
@@ -112,13 +113,14 @@ export const useContratos = (orgaoLogado: string | null) => {
           querySnapshot.forEach((itemDoc) => { batch.delete(itemDoc.ref); });
           await batch.commit();
         }
-        alert('Contrato excluído com sucesso!');
-      } catch (error) { 
-        alert('Erro ao excluir contrato.'); 
-        console.error(error);
-      } finally { 
-        setLoading(false); 
-      }
+        setLoading(false);
+      };
+
+      toast.promise(exclusaoPromise(), {
+        loading: 'A excluir contrato e itens...',
+        success: 'Contrato excluído com sucesso!',
+        error: 'Erro ao excluir o contrato.',
+      });
     }
   };
 
