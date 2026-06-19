@@ -1,34 +1,37 @@
 // src/views/Painel.tsx
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, onSnapshot, doc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { db } from '../firebase';
 import type { Contrato } from '../types/types';
 import logo from '../assets/logopmp.png';
 import './Painel.css';
 
 import { formatarDataBr } from '../utils/formatters';
 
-// IMPORTAÇÃO DOS NOSSOS NOVOS COMPONENTES MODULARIZADOS
+// IMPORTAÇÃO DOS NOSSOS NOVOS COMPONENTES MODULARES E DO HOOK
 import ModalNovoContrato from '../components/Painel/ModalNovoContrato';
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
+import { useContratos } from '../hooks/useContratos';
 
 export default function Painel() {
   const navigate = useNavigate();
   const orgaoLogado = sessionStorage.getItem('orgaoLogado');
 
-  const [contratos, setContratos] = useState<Contrato[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Consumindo a Lógica de Negócio através do nosso Hook Customizado
+  const { 
+    contratosFiltrados, 
+    loading, 
+    termoBusca, 
+    setTermoBusca, 
+    ordenacao, 
+    lidarComOrdenacao, 
+    excluirContrato 
+  } = useContratos(orgaoLogado);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isModalEditOpen, setIsModalEditOpen] = useState(false);
   const [contratoParaEditar, setContratoParaEditar] = useState<Contrato | null>(null);
-  
-  const [termoBusca, setTermoBusca] = useState('');
-  
-  const [ordenacao, setOrdenacao] = useState<{ campo: string, direcao: 'asc' | 'desc' }>({ campo: 'numeroContrato', direcao: 'desc' });
 
   const nomesOrgaos: { [key: string]: string } = {
     'prefeitura': 'Prefeitura Municipal de Pesqueira',
@@ -37,7 +40,12 @@ export default function Painel() {
     'fms': 'Fundo Municipal de Saúde (FMS)'
   };
 
-  // FECHAR COM ESC
+  // REDIRECIONAMENTO DE SEGURANÇA
+  useEffect(() => {
+    if (!orgaoLogado) { navigate('/'); }
+  }, [orgaoLogado, navigate]);
+
+  // FECHAR MODAIS COM ESC
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -49,93 +57,7 @@ export default function Painel() {
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
-  // CARREGAR DADOS COM MONITORAMENTO DE LOG NO CONSOLE
-  useEffect(() => {
-    if (!orgaoLogado) { navigate('/'); return; }
-    
-    const q = query(collection(db, 'contratos'));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const lista: Contrato[] = [];
-      
-      console.log(`[Firebase Debug] Documentos encontrados na coleção 'contratos': ${snapshot.size}`);
-      
-      snapshot.forEach((docSnap) => {
-        const dados = docSnap.data();
-        const identificadorOrgao = dados.orgaoId || dados.orgao || '';
-        
-        if (identificadorOrgao.toLowerCase().includes(orgaoLogado.toLowerCase())) {
-          lista.push({ id: docSnap.id, ...dados } as Contrato);
-        }
-      });
-      
-      setContratos(lista);
-    }, (error) => {
-      console.error("[Firebase Debug] Erro ao ler a coleção 'contratos':", error);
-    });
-    
-    return () => unsubscribe();
-  }, [orgaoLogado, navigate]);
-
-  const lidarComOrdenacao = (campo: string) => {
-    setOrdenacao(prev => ({ campo, direcao: prev.campo === campo && prev.direcao === 'asc' ? 'desc' : 'asc' }));
-  };
-
-  // --- ORDENAÇÃO INTELIGENTE ---
-  const contratosOrdenados = [...contratos].sort((a, b) => {
-    
-    if (ordenacao.campo === 'numeroContrato') {
-      const extrairAnoNumero = (c: Contrato) => {
-        const numStr = c.numeroContrato || '';
-        const partes = numStr.split('/');
-        
-        let numero = 0;
-        let ano = 0;
-        
-        if (partes.length > 0) {
-          numero = parseInt(partes[0].replace(/\D/g, ''), 10) || 0;
-        }
-        
-        if (partes.length > 1 && partes[1].replace(/\D/g, '').length >= 4) {
-          ano = parseInt(partes[1].replace(/\D/g, '').substring(0, 4), 10) || 0;
-        } else {
-          if (c.dataInicio) {
-            ano = parseInt(c.dataInicio.substring(0, 4), 10) || 0;
-          }
-        }
-        return { ano, numero };
-      };
-
-      const valA = extrairAnoNumero(a);
-      const valB = extrairAnoNumero(b);
-
-      if (valA.ano !== valB.ano) {
-        return ordenacao.direcao === 'asc' ? valA.ano - valB.ano : valB.ano - valA.ano;
-      }
-      return ordenacao.direcao === 'asc' ? valA.numero - valB.numero : valB.numero - valA.numero;
-    }
-
-    let valorA: any = a[ordenacao.campo as keyof Contrato] || '';
-    let valorB: any = b[ordenacao.campo as keyof Contrato] || '';
-    if (typeof valorA === 'string') valorA = valorA.toLowerCase();
-    if (typeof valorB === 'string') valorB = valorB.toLowerCase();
-    
-    if (valorA < valorB) return ordenacao.direcao === 'asc' ? -1 : 1;
-    if (valorA > valorB) return ordenacao.direcao === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  const contratosFiltrados = contratosOrdenados.filter((c) => {
-    const termo = termoBusca.toLowerCase();
-    return (
-      (c.numeroContrato || '').toLowerCase().includes(termo) ||
-      (c.fornecedor || '').toLowerCase().includes(termo) ||
-      (c.objetoResumido || '').toLowerCase().includes(termo) ||
-      (c.objetoCompleto || '').toLowerCase().includes(termo) ||
-      (c.fiscalContrato || '').toLowerCase().includes(termo)
-    );
-  });
-
+  // FUNÇÕES VISUAIS (Cores, Setas, PDF)
   const getRowStyle = (dataFim: string) => {
     if (!dataFim) return {};
     const hoje = new Date();
@@ -170,7 +92,7 @@ export default function Painel() {
       docPdf.setFontSize(16); docPdf.setTextColor(0, 74, 153);
       docPdf.text(orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Relatório de Contratos', 45, 20);
       docPdf.setFontSize(11); docPdf.setTextColor(100, 100, 100);
-      const textoFiltro = termoBusca ? ` (Filtro applied: "${termoBusca}")` : '';
+      const textoFiltro = termoBusca ? ` (Filtro aplicado: "${termoBusca}")` : '';
       docPdf.text(`Listagem Geral de Contratos${textoFiltro} - Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 28);
       
       const tableData = contratosFiltrados.map(c => {
@@ -214,23 +136,6 @@ export default function Painel() {
   const abrirEdicao = (c: Contrato) => {
     setContratoParaEditar(c);
     setIsModalEditOpen(true);
-  };
-
-  const excluirContrato = async (contratoId: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este contrato e todos os itens vinculados?')) {
-      setLoading(true);
-      try {
-        await deleteDoc(doc(db, 'contratos', contratoId));
-        const qItens = query(collection(db, 'itens'), where('contratoId', '==', contratoId));
-        const querySnapshot = await getDocs(qItens);
-        if (!querySnapshot.empty) {
-          const batch = writeBatch(db);
-          querySnapshot.forEach((itemDoc) => { batch.delete(itemDoc.ref); });
-          await batch.commit();
-        }
-        alert('Contrato excluído com sucesso!');
-      } catch (error) { alert('Erro ao excluir contrato.'); } finally { setLoading(false); }
-    }
   };
 
   return (
