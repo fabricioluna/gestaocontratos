@@ -1,9 +1,10 @@
 // src/components/Painel/ModalEditarContrato.tsx
 import React, { useState, useEffect } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 import { db } from '../../firebase';
 import { parseMoeda } from '../../utils/formatters';
-import type { Contrato } from '../../types/types';
+import type { Contrato, FormContratoState } from '../../types/types';
 
 interface ModalEditarContratoProps {
   isOpen: boolean;
@@ -12,7 +13,7 @@ interface ModalEditarContratoProps {
 }
 
 export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal }: ModalEditarContratoProps) {
-  const [formEdit, setFormEdit] = useState<any>({});
+  const [formEdit, setFormEdit] = useState<Partial<FormContratoState>>({});
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -29,21 +30,23 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
   if (!isOpen || !contratoOriginal) return null;
 
   const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    setFormEdit((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
+    setFormEdit(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const formatarTresDigitosEdit = (e: React.FocusEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     if (value && /^\d+$/.test(value)) {
-      setFormEdit((prev: any) => ({ ...prev, [name]: value.padStart(3, '0') }));
+      setFormEdit(prev => ({ ...prev, [name]: value.padStart(3, '0') }));
     }
   };
 
   const salvarEdicaoContrato = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const toastId = toast.loading('A guardar alterações...');
+    
     try {
-      const novoValorGlobal = parseMoeda(formEdit.valorTotal);
+      const novoValorGlobal = parseMoeda(formEdit.valorTotal || '0');
       const valorJaConsumido = contratoOriginal.valorTotal - contratoOriginal.saldoContrato;
       const novoSaldo = novoValorGlobal - valorJaConsumido;
 
@@ -53,10 +56,10 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
         saldoContrato: novoSaldo, 
         dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
       });
-      alert('Contrato atualizado com sucesso!');
+      toast.success('Contrato atualizado com sucesso!', { id: toastId });
       onClose();
     } catch (error) { 
-      alert("Erro ao editar contrato."); 
+      toast.error("Erro ao editar contrato.", { id: toastId }); 
     } finally { 
       setLoading(false); 
     }
@@ -69,7 +72,8 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
         <form onSubmit={salvarEdicaoContrato}>
           <div className="form-grid">
             <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formEdit.numeroContrato || ''} onChange={lidarComMudancaEdit} onBlur={formatarTresDigitosEdit} /></div>
-            <div className="form-group"><label>Nº/Ano Processo</label><input type="text" name="numeroProcesso" required value={formEdit.numeroProcesso || ''} onChange={lidarComMudancaEdit} placeholder="000/0000" /></div>
+            <div className="form-group"><label>Nº/Ano Processo</label><input type="text" name="numeroProcesso" value={formEdit.numeroProcesso || ''} onChange={lidarComMudancaEdit} placeholder="000/0000" /></div>
+            
             <div className="form-group">
               <label>Modalidade</label>
               <select name="modalidade" value={formEdit.modalidade || ''} onChange={lidarComMudancaEdit} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
@@ -79,8 +83,10 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
                 <option value="Dispensa">Dispensa</option>
                 <option value="Inexigibilidade">Inexigibilidade</option>
                 <option value="Credenciamento">Credenciamento</option>
+                <option value="Contratação Direta">Contratação Direta</option>
               </select>
             </div>
+            
             <div className="form-group"><label>Nº/Ano Modalidade</label><input type="text" name="numeroModalidade" value={formEdit.numeroModalidade || ''} onChange={lidarComMudancaEdit} placeholder="000/0000" /></div>
             <div className="form-group"><label>Nº/Ano da Ata</label><input type="text" name="numeroAta" value={formEdit.numeroAta || ''} onChange={lidarComMudancaEdit} placeholder="000/0000" /></div>
             <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formEdit.fornecedor || ''} onChange={lidarComMudancaEdit} /></div>

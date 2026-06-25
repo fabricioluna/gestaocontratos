@@ -1,4 +1,4 @@
-// src/types.ts
+// src/types/types.ts
 
 export interface ItemAditivo {
   numeroLote: string;
@@ -15,11 +15,11 @@ export interface Aditivo {
   descricao: string;
   dataAditivo: string;
   tipo: 'prazo' | 'valor' | 'ambos';
-  valorAditivado: number; // positivo para acréscimo, negativo para supressão
+  valorAditivado: number;
   novaDataFim?: string;
   dataRegistro: string;
-  itensAditivados?: ItemAditivo[]; // Novo: itens específicos do aditivo
-  urlArquivoPdf?: string; // Novo: link para o PDF do termo no Firebase Storage
+  itensAditivados?: ItemAditivo[];
+  urlArquivoPdf?: string;
 }
 
 export interface Contrato {
@@ -27,10 +27,8 @@ export interface Contrato {
   orgaoId: string;
   numeroContrato: string;
   numeroProcesso: string;
-  
   modalidade?: string;
   numeroModalidade?: string;
-  
   numeroPregao?: string; 
   numeroAta?: string;
   fornecedor: string;
@@ -43,7 +41,6 @@ export interface Contrato {
   fiscalContrato?: string;
   observacao?: string;
   dataUltimaAtualizacao?: string;
-
   dataDistrato?: string;
   motivoDistrato?: string;
   aditivos?: Aditivo[];
@@ -62,3 +59,20 @@ export interface Item {
   tipoRegistro?: 'catalogo' | 'consumo';
   dataAdicao?: string;
 }
+
+// NOVO: Tipagem estrita para os formulários de edição e criação
+export type FormContratoState = {
+  numeroContrato: string;
+  numeroProcesso: string;
+  modalidade: string;
+  numeroModalidade: string;
+  numeroAta: string;
+  fornecedor: string;
+  objetoCompleto: string;
+  objetoResumido: string;
+  dataInicio: string;
+  dataFim: string;
+  valorTotal: string; // No form usamos string por causa da máscara de moeda
+  fiscalContrato: string;
+  observacao: string;
+};

@@ -9,16 +9,16 @@ import './Painel.css';
 
 import { formatarDataBr } from '../utils/formatters';
 
-// IMPORTAÇÃO DOS NOSSOS NOVOS COMPONENTES MODULARES E DO HOOK
+// IMPORTAÇÃO DOS COMPONENTES MODULARES
 import ModalNovoContrato from '../components/Painel/ModalNovoContrato';
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
+import ModalRelatorioGlobal from '../components/Painel/ModalRelatorioGlobal'; // NOVO MODAL
 import { useContratos } from '../hooks/useContratos';
 
 export default function Painel() {
   const navigate = useNavigate();
   const orgaoLogado = sessionStorage.getItem('orgaoLogado');
 
-  // Consumindo a Lógica de Negócio através do nosso Hook Customizado
   const { 
     contratosFiltrados, 
     loading, 
@@ -33,6 +33,11 @@ export default function Painel() {
   const [isModalEditOpen, setIsModalEditOpen] = useState(false);
   const [contratoParaEditar, setContratoParaEditar] = useState<Contrato | null>(null);
 
+  // NOVOS ESTADOS PARA O RELATÓRIO
+  const [isModalRelatorioOpen, setIsModalRelatorioOpen] = useState(false);
+  const [opcIncluirSaldo, setOpcIncluirSaldo] = useState(true);
+  const [opcIncluirAditivos, setOpcIncluirAditivos] = useState(false);
+
   const nomesOrgaos: { [key: string]: string } = {
     'prefeitura': 'Prefeitura Municipal de Pesqueira',
     'fmas': 'Fundo Municipal de Assistência Social (FMAS)',
@@ -40,24 +45,18 @@ export default function Painel() {
     'fms': 'Fundo Municipal de Saúde (FMS)'
   };
 
-  // REDIRECIONAMENTO DE SEGURANÇA
-  useEffect(() => {
-    if (!orgaoLogado) { navigate('/'); }
-  }, [orgaoLogado, navigate]);
-
-  // FECHAR MODAIS COM ESC
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setIsModalOpen(false);
         setIsModalEditOpen(false);
+        setIsModalRelatorioOpen(false);
       }
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
-  // FUNÇÕES VISUAIS (Cores, Setas, PDF)
   const getRowStyle = (dataFim: string) => {
     if (!dataFim) return {};
     const hoje = new Date();
@@ -87,7 +86,10 @@ export default function Painel() {
   };
 
   const gerarRelatorioPDF = () => {
+    setIsModalRelatorioOpen(false); // Fecha o modal após o clique
+
     const docPdf = new jsPDF('landscape'); 
+    
     const gerarTabela = () => {
       docPdf.setFontSize(16); docPdf.setTextColor(0, 74, 153);
       docPdf.text(orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Relatório de Contratos', 45, 20);
@@ -95,38 +97,77 @@ export default function Painel() {
       const textoFiltro = termoBusca ? ` (Filtro aplicado: "${termoBusca}")` : '';
       docPdf.text(`Listagem Geral de Contratos${textoFiltro} - Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 28);
       
-      const tableData = contratosFiltrados.map(c => {
+      // Cabeçalhos Dinâmicos
+      const headRow = ['Nº Contrato', 'Objeto', 'Fornecedor', 'Fiscal', 'Validade', 'Valor Global'];
+      if (opcIncluirSaldo) {
+        headRow.push('Saldo Atual');
+      }
+
+      // Corpo Dinâmico (Com suporte a linhas de Aditivos combinadas)
+      type TableCell = string | { content: string, colSpan: number, styles: any };
+      const tableData: TableCell[][] = [];
+
+      contratosFiltrados.forEach(c => {
         const vTotal = Number(c.valorTotal) || 0;
         const sContrato = c.saldoContrato !== undefined ? Number(c.saldoContrato) : vTotal;
 
-        return [
+        const rowData: TableCell[] = [
           c.numeroContrato || '-',
           c.objetoCompleto || c.objetoResumido || '-',
           c.fornecedor || '-',
           c.fiscalContrato || 'Não inf.',
           formatarDataBr(c.dataFim),
-          vTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-          sContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+          vTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
         ];
+
+        if (opcIncluirSaldo) {
+          rowData.push(sContrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
+        }
+
+        tableData.push(rowData);
+
+        // Se o utilizador pediu aditivos, inserimos uma sub-linha para cada aditivo
+        if (opcIncluirAditivos && c.aditivos && c.aditivos.length > 0) {
+          c.aditivos.forEach(ad => {
+            const strValidade = ad.novaDataFim ? formatarDataBr(ad.novaDataFim) : 'N/A';
+            const strValor = ad.valorAditivado ? ad.valorAditivado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ 0,00';
+            const desc = `↳ ADITIVO: ${ad.descricao} | Tipo: ${ad.tipo.toUpperCase()} | Assinatura: ${formatarDataBr(ad.dataAditivo)} | Nova Validade: ${strValidade} | Valor Aditivado/Suprimido: ${strValor}`;
+
+            tableData.push([
+              { 
+                content: desc, 
+                colSpan: headRow.length, 
+                styles: { fillColor: [248, 250, 252], textColor: [71, 85, 105], fontStyle: 'italic', cellPadding: 3 } 
+              }
+            ]);
+          });
+        }
       });
+
+      // Configuração das larguras dependendo de quantas colunas existem
+      const colStyles: any = { 
+        0: { halign: 'center', cellWidth: 25 }, 
+        4: { halign: 'center', cellWidth: 22 }, 
+        5: { halign: 'right', cellWidth: opcIncluirSaldo ? 26 : 32 } 
+      };
+      if (opcIncluirSaldo) {
+        colStyles[6] = { halign: 'right', cellWidth: 26 };
+      }
 
       autoTable(docPdf, {
         startY: 40,
-        head: [['Nº Contrato', 'Objeto', 'Fornecedor', 'Fiscal', 'Validade', 'Valor Global', 'Saldo Atual']],
+        head: [headRow],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [0, 74, 153] },
         styles: { fontSize: 8, cellPadding: 3 },
-        columnStyles: { 
-          0: { halign: 'center', cellWidth: 25 }, 
-          4: { halign: 'center', cellWidth: 22 }, 
-          5: { halign: 'right', cellWidth: 30 }, 
-          6: { halign: 'right', cellWidth: 30 } 
-        }
+        columnStyles: colStyles
       });
+
       const pdfBlob = docPdf.output('blob');
       window.open(URL.createObjectURL(pdfBlob), '_blank');
     };
+
     const img = new Image();
     img.src = logo;
     img.onload = () => { docPdf.addImage(img, 'PNG', 14, 10, 25, 25); gerarTabela(); };
@@ -159,7 +200,8 @@ export default function Painel() {
             <input type="text" placeholder="Buscar por Nº do Contrato, Fornecedor, Objeto ou Fiscal..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} style={{ width: '100%', padding: '10px 14px 10px 40px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button onClick={gerarRelatorioPDF} className="btn-cancelar">Relatório</button>
+            {/* O BOTÃO AGORA CHAMA O MODAL EM VEZ DE GERAR O PDF DIRETAMENTE */}
+            <button onClick={() => setIsModalRelatorioOpen(true)} className="btn-cancelar">📄 Relatório Geral</button>
             <button onClick={() => setIsModalOpen(true)} className="btn-salvar">Novo Contrato</button>
           </div>
         </div>
@@ -222,6 +264,17 @@ export default function Painel() {
       {/* COMPONENTES MODULARES */}
       <ModalNovoContrato isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} orgaoLogado={orgaoLogado} />
       <ModalEditarContrato isOpen={isModalEditOpen} onClose={() => setIsModalEditOpen(false)} contratoOriginal={contratoParaEditar} />
+      
+      {/* NOVO COMPONENTE DO RELATÓRIO GLOBAL */}
+      <ModalRelatorioGlobal 
+        isOpen={isModalRelatorioOpen}
+        onClose={() => setIsModalRelatorioOpen(false)}
+        opcIncluirSaldo={opcIncluirSaldo}
+        setOpcIncluirSaldo={setOpcIncluirSaldo}
+        opcIncluirAditivos={opcIncluirAditivos}
+        setOpcIncluirAditivos={setOpcIncluirAditivos}
+        gerarRelatorioPDF={gerarRelatorioPDF}
+      />
       
     </div>
   );

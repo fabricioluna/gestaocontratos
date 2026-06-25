@@ -4,9 +4,11 @@ import { collection, addDoc, writeBatch, doc } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth'; 
 import * as pdfjsLib from 'pdfjs-dist'; 
+import toast from 'react-hot-toast';
 import { db } from '../../firebase';
 import { parseMoeda, extrairNumeroPlanilha } from '../../utils/formatters';
 import { extrairDadosContratoComIA } from '../../services/geminiService';
+import type { FormContratoState, Item } from '../../types/types';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
 
@@ -21,10 +23,10 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(false);
-  const [itensPrevia, setItensPrevia] = useState<any[]>([]);
+  const [itensPrevia, setItensPrevia] = useState<Item[]>([]);
   const [formItem, setFormItem] = useState({ numeroLote: '', numeroItem: '', discriminacao: '', unidade: '', quantidade: '', valorUnitario: '' });
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormContratoState>({
     numeroContrato: '', numeroProcesso: '', modalidade: '', numeroModalidade: '', numeroAta: '',
     fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '',
     dataFim: '', valorTotal: '', fiscalContrato: '', observacao: ''
@@ -33,21 +35,21 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
   if (!isOpen) return null;
 
   const lidarComMudanca = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    setFormData((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
+    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const lidarComMudancaItem = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormItem((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
+    setFormItem(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const formatarTresDigitos = (e: React.FocusEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     if (value && /^\d+$/.test(value)) {
-      setFormData((prev: any) => ({ ...prev, [name]: value.padStart(3, '0') }));
+      setFormData(prev => ({ ...prev, [name]: value.padStart(3, '0') }));
     }
   };
 
-  const tratarValorIA = (valor: any): string => {
+  const tratarValorIA = (valor: unknown): string => {
     if (valor === undefined || valor === null) return '';
     if (typeof valor === 'number') return valor.toFixed(2).replace('.', ',');
     const numLimpo = Number(String(valor).replace(/[^0-9.-]+/g, ""));
@@ -59,33 +61,28 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
     if (!file) return;
     
     setLoading(true);
+    const toastId = toast.loading('A processar documento...');
     
     try {
       const arrayBuffer = await file.arrayBuffer();
       let textoCompleto = '';
       
-      // LEITURA DE PDF
       if (file.name.toLowerCase().endsWith('.pdf')) {
         const typedArray = new Uint8Array(arrayBuffer);
         const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const content = await page.getTextContent();
-          const strings = content.items.map((item: any) => item.str);
+          const strings = content.items.map((item: unknown) => (item as { str: string }).str || "");
           textoCompleto += strings.join(" ") + "\n";
         }
-      } 
-      // LEITURA DE WORD (DOCX)
-      else if (file.name.toLowerCase().endsWith('.docx')) {
+      } else if (file.name.toLowerCase().endsWith('.docx')) {
         const result = await mammoth.extractRawText({ arrayBuffer });
         textoCompleto = result.value;
       }
 
       const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
-      
-      if (textoLimpo.trim().length < 50) {
-         throw new Error("Não foi possível extrair texto legível deste documento.");
-      }
+      if (textoLimpo.trim().length < 50) throw new Error("Texto ilegível.");
 
       const dadosIA = await extrairDadosContratoComIA(textoLimpo);
       
@@ -106,7 +103,8 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       }));
 
       if (dadosIA.itens && Array.isArray(dadosIA.itens) && dadosIA.itens.length > 0) {
-        const itensTratados = dadosIA.itens.map((i: any, index: number) => ({
+        const itensTratados: Item[] = dadosIA.itens.map((i: Record<string, unknown>, index: number) => ({
+           contratoId: '',
            numeroLote: String(i.numeroLote || 'Único'),
            numeroItem: String(i.numeroItem || (index + 1)),
            discriminacao: String(i.discriminacao || ''),
@@ -114,17 +112,17 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
            quantidade: Number(i.quantidade || 0),
            valorUnitario: Number(i.valorUnitario || 0),
            valorTotalItem: Number(i.valorTotalItem || (Number(i.quantidade || 0) * Number(i.valorUnitario || 0)))
-        })).filter((i: any) => i.discriminacao && i.quantidade > 0);
+        })).filter((i: Item) => i.discriminacao && i.quantidade > 0);
 
         setItensPrevia(itensTratados);
-        alert(`Contrato processado com sucesso! ${itensTratados.length} itens encontrados.`);
+        toast.success(`Contrato processado! ${itensTratados.length} itens encontrados.`, { id: toastId });
       } else {
-        alert("Contrato processado. Os dados gerais foram preenchidos, mas não foram encontrados itens no texto.");
+        toast.success("Dados preenchidos. Sem itens.", { id: toastId, duration: 5000 });
       }
 
-    } catch (error: any) {
-      console.error(error);
-      alert(error.message || "Erro ao processar o documento.");
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Erro ao processar o documento.";
+      toast.error(msg, { id: toastId });
     } finally {
       setLoading(false);
       if (docInputRef.current) docInputRef.current.value = '';
@@ -134,8 +132,12 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
   const adicionarItemPrevia = () => {
     const qtd = parseMoeda(formItem.quantidade);
     const vUnit = parseMoeda(formItem.valorUnitario);
-    if (!formItem.discriminacao || qtd <= 0 || vUnit <= 0) return alert("Preencha descrição, quantidade e valor corretamente.");
-    const novoItem = {
+    if (!formItem.discriminacao || qtd <= 0 || vUnit <= 0) {
+      toast.error("Preencha descrição, quantidade e valor.");
+      return;
+    }
+    const novoItem: Item = {
+      contratoId: '',
       numeroLote: formItem.numeroLote || 'Único',
       numeroItem: formItem.numeroItem || String(itensPrevia.length + 1),
       discriminacao: formItem.discriminacao,
@@ -144,14 +146,14 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
     };
     setItensPrevia([...itensPrevia, novoItem]);
     const novoTotal = parseMoeda(formData.valorTotal) + novoItem.valorTotalItem;
-    setFormData({ ...formData, valorTotal: novoTotal.toFixed(2).replace('.', ',') });
+    setFormData(prev => ({ ...prev, valorTotal: novoTotal.toFixed(2).replace('.', ',') }));
     setFormItem({ numeroLote: '', numeroItem: '', discriminacao: '', unidade: '', quantidade: '', valorUnitario: '' });
   };
 
   const removerItemPrevia = (index: number) => {
     const itemRemovido = itensPrevia[index];
     const novoTotal = parseMoeda(formData.valorTotal) - itemRemovido.valorTotalItem;
-    setFormData({ ...formData, valorTotal: novoTotal > 0 ? novoTotal.toFixed(2).replace('.', ',') : '' });
+    setFormData(prev => ({ ...prev, valorTotal: novoTotal > 0 ? novoTotal.toFixed(2).replace('.', ',') : '' }));
     setItensPrevia(itensPrevia.filter((_, i) => i !== index));
   };
 
@@ -163,31 +165,43 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       try {
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
-        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        const data = XLSX.utils.sheet_to_json<Record<string, string | number>>(wb.Sheets[wb.SheetNames[0]]);
         let somaImportacao = 0;
-        const novosItens: any[] = [];
-        data.forEach((row: any) => {
-          const linha: any = {};
+        const novosItens: Item[] = [];
+        data.forEach((row) => {
+          const linha: Record<string, string | number> = {};
           for (const key in row) linha[key.trim().toUpperCase()] = row[key];
-          const numeroLote = String(linha['LOTE'] || 'Único'); 
-          const numeroItem = String(linha['ITEM'] || '');
+          
           const discriminacao = String(linha['DESCRIÇÃO'] || linha['DESCRICAO'] || '');
-          const unidade = String(linha['UNIDADE'] || 'UND');
           const quantidade = extrairNumeroPlanilha(linha['QUANTIDADE'] || 0);
           const valorUnitario = extrairNumeroPlanilha(linha['VALOR UNITÁRIO'] || 0);
           const valorTotalItem = quantidade * valorUnitario;
+          
           if (discriminacao && quantidade > 0) {
-            novosItens.push({ numeroLote, numeroItem, discriminacao, unidade, quantidade, valorUnitario, valorTotalItem });
+            novosItens.push({ 
+              contratoId: '',
+              numeroLote: String(linha['LOTE'] || 'Único'), 
+              numeroItem: String(linha['ITEM'] || ''), 
+              discriminacao, 
+              unidade: String(linha['UNIDADE'] || 'UND'), 
+              quantidade, 
+              valorUnitario, 
+              valorTotalItem 
+            });
             somaImportacao += valorTotalItem;
           }
         });
         if (novosItens.length > 0) {
           setItensPrevia([...itensPrevia, ...novosItens]);
           const novoTotal = parseMoeda(formData.valorTotal) + somaImportacao;
-          setFormData({ ...formData, valorTotal: novoTotal.toFixed(2).replace('.', ',') });
-          alert(`${novosItens.length} itens carregados no catálogo!`);
+          setFormData(prev => ({ ...prev, valorTotal: novoTotal.toFixed(2).replace('.', ',') }));
+          toast.success(`${novosItens.length} itens carregados!`);
         }
-      } catch (error) { alert("Erro ao ler planilha."); } finally { if (fileInputRef.current) fileInputRef.current.value = ''; }
+      } catch (error) { 
+        toast.error("Erro ao ler planilha."); 
+      } finally { 
+        if (fileInputRef.current) fileInputRef.current.value = ''; 
+      }
     };
     reader.readAsBinaryString(file);
   };
@@ -195,6 +209,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
   const salvarContratoCompleto = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const toastId = toast.loading('A guardar contrato...');
     try {
       const valorGlobalNum = parseMoeda(formData.valorTotal);
       const dataAtual = new Date().toLocaleString('pt-BR');
@@ -213,12 +228,16 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
         });
         await batch.commit();
       }
-      alert('Contrato e catálogo salvos com sucesso!');
+      toast.success('Contrato e catálogo salvos!', { id: toastId });
       
       setFormData({ numeroContrato: '', numeroProcesso: '', modalidade: '', numeroModalidade: '', numeroAta: '', fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
       setItensPrevia([]);
       onClose();
-    } catch (error) { alert('Erro ao salvar.'); } finally { setLoading(false); }
+    } catch (error) { 
+      toast.error('Erro ao guardar contrato.', { id: toastId }); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   return (
@@ -236,7 +255,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
           <h3 style={{ color: '#555', marginTop: 0 }}>1. Dados Gerais</h3>
           <div className="form-grid">
             <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formData.numeroContrato} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
-            <div className="form-group"><label>Nº/Ano Processo</label><input type="text" name="numeroProcesso" required value={formData.numeroProcesso} onChange={lidarComMudanca} placeholder="000/0000" /></div>
+            <div className="form-group"><label>Nº/Ano Processo</label><input type="text" name="numeroProcesso" value={formData.numeroProcesso} onChange={lidarComMudanca} placeholder="000/0000" /></div>
             <div className="form-group">
               <label>Modalidade</label>
               <select name="modalidade" value={formData.modalidade} onChange={lidarComMudanca} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
@@ -246,10 +265,11 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
                 <option value="Dispensa">Dispensa</option>
                 <option value="Inexigibilidade">Inexigibilidade</option>
                 <option value="Credenciamento">Credenciamento</option>
+                <option value="Contratação Direta">Contratação Direta</option>
               </select>
             </div>
             <div className="form-group"><label>Nº/Ano Modalidade</label><input type="text" name="numeroModalidade" value={formData.numeroModalidade} onChange={lidarComMudanca} placeholder="000/0000" /></div>
-            <div className="form-group"><label>Nº/Ano da Ata (Se houver)</label><input type="text" name="numeroAta" value={formData.numeroAta} onChange={lidarComMudanca} placeholder="000/0000" /></div>
+            <div className="form-group"><label>Nº/Ano da Ata</label><input type="text" name="numeroAta" value={formData.numeroAta} onChange={lidarComMudanca} placeholder="000/0000" /></div>
             <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formData.fornecedor} onChange={lidarComMudanca} /></div>
             <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formData.objetoResumido} onChange={lidarComMudanca} /></div>
             <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formData.objetoCompleto} onChange={lidarComMudanca}></textarea></div>
