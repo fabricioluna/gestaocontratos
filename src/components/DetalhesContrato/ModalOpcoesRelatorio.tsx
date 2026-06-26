@@ -5,14 +5,11 @@ interface Props {
   onClose: () => void;
   opcIncluirAditivos: boolean;
   setOpcIncluirAditivos: (val: boolean) => void;
-  opcIncluirEmpenhos: boolean;
-  setOpcIncluirEmpenhos: (val: boolean) => void;
   gerarRelatorioPDF: () => void;
 }
 
 export default function ModalOpcoesRelatorio({
-  isOpen, onClose, opcIncluirAditivos, setOpcIncluirAditivos,
-  opcIncluirEmpenhos, setOpcIncluirEmpenhos, gerarRelatorioPDF
+  isOpen, onClose, opcIncluirAditivos, setOpcIncluirAditivos, gerarRelatorioPDF
 }: Props) {
   if (!isOpen) return null;
 
@@ -33,16 +30,6 @@ export default function ModalOpcoesRelatorio({
               style={{ width: '18px', height: '18px' }}
             />
             Considerar Termos Aditivos no cálculo financeiro e histórico
-          </label>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#334155', cursor: 'pointer' }}>
-            <input 
-              type="checkbox" 
-              checked={opcIncluirEmpenhos} 
-              onChange={e => setOpcIncluirEmpenhos(e.target.checked)} 
-              style={{ width: '18px', height: '18px' }}
-            />
-            Incluir tabela de Histórico de Lançamentos (Empenhos)
           </label>
         </div>
 

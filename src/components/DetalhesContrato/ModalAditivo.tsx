@@ -1,26 +1,37 @@
 // src/components/DetalhesContrato/ModalAditivo.tsx
 import React from 'react';
-import type { Aditivo, ItemAditivo } from '../../types/types';
+import type { Aditivo, ItemAditivo, Item } from '../../types/types';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   aditivoEmEdicao: Aditivo | null;
-  aditivoDescricao: string; setAditivoDescricao: (v: string) => void;
-  aditivoDataAditivo: string; setAditivoDataAditivo: (v: string) => void;
-  aditivoTipo: 'prazo' | 'valor' | 'ambos'; setAditivoTipo: (v: any) => void;
-  aditivoNovaData: string; setAditivoNovaData: (v: string) => void;
-  aditivoOperacao: 'acrescimo' | 'supressao'; setAditivoOperacao: (v: any) => void;
-  aditivoValor: number | ''; setAditivoValor: (v: number | '') => void;
+  aditivoDescricao: string; 
+  setAditivoDescricao: (v: string) => void;
+  aditivoDataAditivo: string; 
+  setAditivoDataAditivo: (v: string) => void;
+  aditivoTipo: 'prazo' | 'valor' | 'ambos'; 
+  setAditivoTipo: (v: 'prazo' | 'valor' | 'ambos') => void;
+  aditivoNovaData: string; 
+  setAditivoNovaData: (v: string) => void;
+  aditivoOperacao: 'acrescimo' | 'supressao'; 
+  setAditivoOperacao: (v: 'acrescimo' | 'supressao') => void;
+  aditivoValor: number | ''; 
+  setAditivoValor: (v: number | '') => void;
+  arquivoPdfAditivo: File | null; // CORREÇÃO: Propriedade adicionada
   setArquivoPdfAditivo: (f: File | null) => void;
-  processandoPdfIA: boolean; lidarProcessamentoIA: () => void;
-  itemManualSel: string; setItemManualSel: (v: string) => void;
-  itemManualQtd: number | ''; setItemManualQtd: (v: number | '') => void;
-  itemManualVlUnit: number | ''; setItemManualVlUnit: (v: number | '') => void;
+  processandoPdfIA: boolean; 
+  lidarProcessamentoIA: () => void;
+  itemManualSel: string; 
+  setItemManualSel: (v: string) => void;
+  itemManualQtd: number | ''; 
+  setItemManualQtd: (v: number | '') => void;
+  itemManualVlUnit: number | ''; 
+  setItemManualVlUnit: (v: number | '') => void;
   lidarAdicionarItemManual: () => void;
   itensDoAditivo: ItemAditivo[];
   removerItemAditivo: (idx: number) => void;
-  itensCatalogo: any[];
+  itensCatalogo: Item[]; 
   salvarAditivo: (e: React.FormEvent, onSuccess: () => void) => void;
   loading: boolean;
 }
@@ -29,8 +40,8 @@ export default function ModalAditivo({
   isOpen, onClose, aditivoEmEdicao, aditivoDescricao, setAditivoDescricao,
   aditivoDataAditivo, setAditivoDataAditivo, aditivoTipo, setAditivoTipo,
   aditivoNovaData, setAditivoNovaData, aditivoOperacao, setAditivoOperacao,
-  aditivoValor, setAditivoValor, setArquivoPdfAditivo, processandoPdfIA,
-  lidarProcessamentoIA, itemManualSel, setItemManualSel, itemManualQtd,
+  aditivoValor, setAditivoValor, arquivoPdfAditivo, setArquivoPdfAditivo,
+  processandoPdfIA, lidarProcessamentoIA, itemManualSel, setItemManualSel, itemManualQtd,
   setItemManualQtd, itemManualVlUnit, setItemManualVlUnit, lidarAdicionarItemManual,
   itensDoAditivo, removerItemAditivo, itensCatalogo, salvarAditivo, loading
 }: Props) {
@@ -57,7 +68,7 @@ export default function ModalAditivo({
             </div>
             <div className="form-group">
               <label>Tipo de Aditivo:</label>
-              <select value={aditivoTipo} onChange={e => setAditivoTipo(e.target.value as any)}>
+              <select value={aditivoTipo} onChange={e => setAditivoTipo(e.target.value as 'prazo' | 'valor' | 'ambos')}>
                 <option value="prazo">Apenas Prazo</option>
                 <option value="valor">Apenas Valor</option>
                 <option value="ambos">Prazo e Valor</option>
@@ -144,7 +155,7 @@ export default function ModalAditivo({
               <div className="form-grid" style={{ marginTop: '16px', marginBottom: '0' }}>
                 <div className="form-group">
                   <label>Operação Global:</label>
-                  <select value={aditivoOperacao} onChange={e => setAditivoOperacao(e.target.value as any)}>
+                  <select value={aditivoOperacao} onChange={e => setAditivoOperacao(e.target.value as 'acrescimo' | 'supressao')}>
                     <option value="acrescimo">Acréscimo (+)</option>
                     <option value="supressao">Supressão (-)</option>
                   </select>
