@@ -1,5 +1,5 @@
 // src/components/DetalhesContrato/ModalAditivo.tsx
-import React from 'react';
+import type { FormEvent } from 'react';
 import type { Aditivo, ItemAditivo, Item } from '../../types/types';
 
 interface Props {
@@ -18,7 +18,7 @@ interface Props {
   setAditivoOperacao: (v: 'acrescimo' | 'supressao') => void;
   aditivoValor: number | ''; 
   setAditivoValor: (v: number | '') => void;
-  arquivoPdfAditivo: File | null; // CORREÇÃO: Propriedade adicionada
+  arquivoPdfAditivo: File | null; 
   setArquivoPdfAditivo: (f: File | null) => void;
   processandoPdfIA: boolean; 
   lidarProcessamentoIA: () => void;
@@ -31,8 +31,8 @@ interface Props {
   lidarAdicionarItemManual: () => void;
   itensDoAditivo: ItemAditivo[];
   removerItemAditivo: (idx: number) => void;
-  itensCatalogo: Item[]; 
-  salvarAditivo: (e: React.FormEvent, onSuccess: () => void) => void;
+  itensCatalogo: Item[];
+  salvarAditivo: (e: FormEvent, onSuccess: () => void) => void;
   loading: boolean;
 }
 
@@ -95,6 +95,13 @@ export default function ModalAditivo({
                     {processandoPdfIA ? '🤖 A ler...' : '🤖 Extrair IA'}
                   </button>
                 </div>
+                
+                {/* ESTA É A CORREÇÃO QUE RESOLVE O ERRO DA VERCEL E MELHORA A UX! */}
+                {arquivoPdfAditivo && (
+                  <div style={{ marginTop: '8px', fontSize: '12px', color: '#10b981', fontWeight: 'bold' }}>
+                    ✓ Arquivo selecionado: {arquivoPdfAditivo.name}
+                  </div>
+                )}
               </div>
 
               <div style={{ textAlign: 'center', margin: '16px 0', color: '#94a3b8', fontSize: '12px', fontWeight: 'bold' }}>OU</div>
