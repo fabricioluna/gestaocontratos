@@ -1,5 +1,4 @@
 // src/components/DetalhesContrato/ModalOpcoesRelatorio.tsx
-import React from 'react';
 
 interface Props {
   isOpen: boolean;

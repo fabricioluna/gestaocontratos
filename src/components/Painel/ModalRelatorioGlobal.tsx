@@ -1,5 +1,4 @@
 // src/components/Painel/ModalRelatorioGlobal.tsx
-import React from 'react';
 
 interface Props {
   isOpen: boolean;
