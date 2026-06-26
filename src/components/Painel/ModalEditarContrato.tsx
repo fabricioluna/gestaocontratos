@@ -22,7 +22,9 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
         ...contratoOriginal, 
         valorTotal: contratoOriginal.valorTotal.toFixed(2).replace('.', ','),
         modalidade: contratoOriginal.modalidade || '',
-        numeroModalidade: contratoOriginal.numeroModalidade || contratoOriginal.numeroPregao || ''
+        numeroModalidade: contratoOriginal.numeroModalidade || contratoOriginal.numeroPregao || '',
+        cnpjFornecedor: contratoOriginal.cnpjFornecedor || '',
+        emailSecretaria: contratoOriginal.emailSecretaria || ''
       });
     }
   }, [isOpen, contratoOriginal]);
@@ -40,6 +42,16 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
     }
   };
 
+  const formatarCNPJEdit = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let valor = e.target.value.replace(/\D/g, '');
+    if (valor.length > 14) valor = valor.slice(0, 14);
+    valor = valor.replace(/^(\d{2})(\d)/, '$1.$2');
+    valor = valor.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+    valor = valor.replace(/\.(\d{3})(\d)/, '.$1/$2');
+    valor = valor.replace(/(\d{4})(\d)/, '$1-$2');
+    setFormEdit(prev => ({ ...prev, cnpjFornecedor: valor }));
+  };
+
   const salvarEdicaoContrato = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -47,13 +59,11 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
     
     try {
       const novoValorGlobal = parseMoeda(formEdit.valorTotal || '0');
-      const valorJaConsumido = contratoOriginal.valorTotal - contratoOriginal.saldoContrato;
-      const novoSaldo = novoValorGlobal - valorJaConsumido;
 
+      // Removida a lógica de Saldo. Apenas guardamos os dados e o novo valor.
       await updateDoc(doc(db, 'contratos', contratoOriginal.id!), {
         ...formEdit, 
         valorTotal: novoValorGlobal, 
-        saldoContrato: novoSaldo, 
         dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
       });
       toast.success('Contrato atualizado com sucesso!', { id: toastId });
@@ -89,7 +99,12 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
             
             <div className="form-group"><label>Nº/Ano Modalidade</label><input type="text" name="numeroModalidade" value={formEdit.numeroModalidade || ''} onChange={lidarComMudancaEdit} placeholder="000/0000" /></div>
             <div className="form-group"><label>Nº/Ano da Ata</label><input type="text" name="numeroAta" value={formEdit.numeroAta || ''} onChange={lidarComMudancaEdit} placeholder="000/0000" /></div>
-            <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formEdit.fornecedor || ''} onChange={lidarComMudancaEdit} /></div>
+            
+            {/* NOVOS CAMPOS */}
+            <div className="form-group"><label>CNPJ do Fornecedor</label><input type="text" name="cnpjFornecedor" value={formEdit.cnpjFornecedor || ''} onChange={formatarCNPJEdit} placeholder="00.000.000/0000-00" maxLength={18} /></div>
+            <div className="form-group"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formEdit.fornecedor || ''} onChange={lidarComMudancaEdit} /></div>
+            <div className="form-group full-width"><label>E-mail da Secretaria</label><input type="email" name="emailSecretaria" value={formEdit.emailSecretaria || ''} onChange={lidarComMudancaEdit} placeholder="exemplo@pesqueira.pe.gov.br" /></div>
+            
             <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formEdit.objetoResumido || ''} onChange={lidarComMudancaEdit} /></div>
             <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formEdit.objetoCompleto || ''} onChange={lidarComMudancaEdit}></textarea></div>
             <div className="form-group"><label>Data Início</label><input type="date" name="dataInicio" required value={formEdit.dataInicio || ''} onChange={lidarComMudancaEdit} /></div>

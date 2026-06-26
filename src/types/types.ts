@@ -32,12 +32,13 @@ export interface Contrato {
   numeroPregao?: string; 
   numeroAta?: string;
   fornecedor: string;
+  cnpjFornecedor?: string; // NOVO CAMPO
+  emailSecretaria?: string; // NOVO CAMPO
   objetoResumido: string;
   objetoCompleto?: string;
   dataInicio: string;
   dataFim: string;
   valorTotal: number;
-  saldoContrato: number;
   fiscalContrato?: string;
   observacao?: string;
   dataUltimaAtualizacao?: string;
@@ -60,7 +61,6 @@ export interface Item {
   dataAdicao?: string;
 }
 
-// NOVO: Tipagem estrita para os formulários de edição e criação
 export type FormContratoState = {
   numeroContrato: string;
   numeroProcesso: string;
@@ -68,11 +68,13 @@ export type FormContratoState = {
   numeroModalidade: string;
   numeroAta: string;
   fornecedor: string;
+  cnpjFornecedor: string; // NOVO CAMPO
+  emailSecretaria: string; // NOVO CAMPO
   objetoCompleto: string;
   objetoResumido: string;
   dataInicio: string;
   dataFim: string;
-  valorTotal: string; // No form usamos string por causa da máscara de moeda
+  valorTotal: string; 
   fiscalContrato: string;
   observacao: string;
 };

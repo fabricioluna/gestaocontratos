@@ -28,8 +28,8 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
 
   const [formData, setFormData] = useState<FormContratoState>({
     numeroContrato: '', numeroProcesso: '', modalidade: '', numeroModalidade: '', numeroAta: '',
-    fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '',
-    dataFim: '', valorTotal: '', fiscalContrato: '', observacao: ''
+    fornecedor: '', cnpjFornecedor: '', emailSecretaria: '', objetoCompleto: '', objetoResumido: '', 
+    dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: ''
   });
 
   if (!isOpen) return null;
@@ -47,6 +47,16 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
     if (value && /^\d+$/.test(value)) {
       setFormData(prev => ({ ...prev, [name]: value.padStart(3, '0') }));
     }
+  };
+
+  const formatarCNPJ = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let valor = e.target.value.replace(/\D/g, '');
+    if (valor.length > 14) valor = valor.slice(0, 14);
+    valor = valor.replace(/^(\d{2})(\d)/, '$1.$2');
+    valor = valor.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+    valor = valor.replace(/\.(\d{3})(\d)/, '.$1/$2');
+    valor = valor.replace(/(\d{4})(\d)/, '$1-$2');
+    setFormData(prev => ({ ...prev, cnpjFornecedor: valor }));
   };
 
   const tratarValorIA = (valor: unknown): string => {
@@ -119,7 +129,6 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       } else {
         toast.success("Dados preenchidos. Sem itens.", { id: toastId, duration: 5000 });
       }
-
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Erro ao processar o documento.";
       toast.error(msg, { id: toastId });
@@ -179,14 +188,8 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
           
           if (discriminacao && quantidade > 0) {
             novosItens.push({ 
-              contratoId: '',
-              numeroLote: String(linha['LOTE'] || 'Único'), 
-              numeroItem: String(linha['ITEM'] || ''), 
-              discriminacao, 
-              unidade: String(linha['UNIDADE'] || 'UND'), 
-              quantidade, 
-              valorUnitario, 
-              valorTotalItem 
+              contratoId: '', numeroLote: String(linha['LOTE'] || 'Único'), numeroItem: String(linha['ITEM'] || ''), 
+              discriminacao, unidade: String(linha['UNIDADE'] || 'UND'), quantidade, valorUnitario, valorTotalItem 
             });
             somaImportacao += valorTotalItem;
           }
@@ -197,11 +200,8 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
           setFormData(prev => ({ ...prev, valorTotal: novoTotal.toFixed(2).replace('.', ',') }));
           toast.success(`${novosItens.length} itens carregados!`);
         }
-      } catch (error) { 
-        toast.error("Erro ao ler planilha."); 
-      } finally { 
-        if (fileInputRef.current) fileInputRef.current.value = ''; 
-      }
+      } catch (error) { toast.error("Erro ao ler planilha."); } 
+      finally { if (fileInputRef.current) fileInputRef.current.value = ''; }
     };
     reader.readAsBinaryString(file);
   };
@@ -213,13 +213,14 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
     try {
       const valorGlobalNum = parseMoeda(formData.valorTotal);
       const dataAtual = new Date().toLocaleString('pt-BR');
+      
       const contratoRef = await addDoc(collection(db, 'contratos'), {
         ...formData,
         orgaoId: orgaoLogado,
         valorTotal: valorGlobalNum,
-        saldoContrato: valorGlobalNum,
         dataUltimaAtualizacao: dataAtual
       });
+
       if (itensPrevia.length > 0) {
         const batch = writeBatch(db);
         itensPrevia.forEach(item => {
@@ -230,14 +231,11 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       }
       toast.success('Contrato e catálogo salvos!', { id: toastId });
       
-      setFormData({ numeroContrato: '', numeroProcesso: '', modalidade: '', numeroModalidade: '', numeroAta: '', fornecedor: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
+      setFormData({ numeroContrato: '', numeroProcesso: '', modalidade: '', numeroModalidade: '', numeroAta: '', fornecedor: '', cnpjFornecedor: '', emailSecretaria: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
       setItensPrevia([]);
       onClose();
-    } catch (error) { 
-      toast.error('Erro ao guardar contrato.', { id: toastId }); 
-    } finally { 
-      setLoading(false); 
-    }
+    } catch (error) { toast.error('Erro ao guardar contrato.', { id: toastId }); } 
+    finally { setLoading(false); }
   };
 
   return (
@@ -256,6 +254,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
           <div className="form-grid">
             <div className="form-group"><label>Nº do Contrato</label><input type="text" name="numeroContrato" required value={formData.numeroContrato} onChange={lidarComMudanca} onBlur={formatarTresDigitos} /></div>
             <div className="form-group"><label>Nº/Ano Processo</label><input type="text" name="numeroProcesso" value={formData.numeroProcesso} onChange={lidarComMudanca} placeholder="000/0000" /></div>
+            
             <div className="form-group">
               <label>Modalidade</label>
               <select name="modalidade" value={formData.modalidade} onChange={lidarComMudanca} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
@@ -268,9 +267,15 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
                 <option value="Contratação Direta">Contratação Direta</option>
               </select>
             </div>
+            
             <div className="form-group"><label>Nº/Ano Modalidade</label><input type="text" name="numeroModalidade" value={formData.numeroModalidade} onChange={lidarComMudanca} placeholder="000/0000" /></div>
             <div className="form-group"><label>Nº/Ano da Ata</label><input type="text" name="numeroAta" value={formData.numeroAta} onChange={lidarComMudanca} placeholder="000/0000" /></div>
-            <div className="form-group full-width"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formData.fornecedor} onChange={lidarComMudanca} /></div>
+            
+            {/* NOVOS CAMPOS */}
+            <div className="form-group"><label>CNPJ do Fornecedor</label><input type="text" name="cnpjFornecedor" value={formData.cnpjFornecedor} onChange={formatarCNPJ} placeholder="00.000.000/0000-00" maxLength={18} /></div>
+            <div className="form-group"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formData.fornecedor} onChange={lidarComMudanca} /></div>
+            <div className="form-group full-width"><label>E-mail da Secretaria (Para alertas de vencimento)</label><input type="email" name="emailSecretaria" value={formData.emailSecretaria} onChange={lidarComMudanca} placeholder="exemplo@pesqueira.pe.gov.br" /></div>
+            
             <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formData.objetoResumido} onChange={lidarComMudanca} /></div>
             <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formData.objetoCompleto} onChange={lidarComMudanca}></textarea></div>
             <div className="form-group"><label>Data Início</label><input type="date" name="dataInicio" required value={formData.dataInicio} onChange={lidarComMudanca} /></div>
@@ -279,6 +284,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
             <div className="form-group"><label>Observação</label><input type="text" name="observacao" value={formData.observacao} onChange={lidarComMudanca} /></div>
             <div className="form-group full-width"><label style={{ color: '#004a99', fontSize: '15px' }}>Valor Global do Contrato (R$)</label><input type="text" name="valorTotal" required value={formData.valorTotal} onChange={lidarComMudanca} style={{ border: '2px solid #004a99', fontWeight: 'bold' }} /></div>
           </div>
+
           <h3 style={{ borderBottom: '1px solid #ddd', paddingBottom: '5px', marginTop: '30px' }}>2. Catálogo de Itens do Contrato (Opcional)</h3>
           <div className="secao-itens-modal">
             <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr 2fr 1fr 1fr 1fr', gap: '5px' }}>
