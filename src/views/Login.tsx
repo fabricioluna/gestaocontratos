@@ -2,90 +2,94 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase'; // Importação do auth seguro
+import { auth } from '../firebase'; // Importa a autenticação oficial do seu Firebase
 import logo from '../assets/logopmp.png';
 import './Login.css';
 
 export default function Login() {
-  const [orgao, setOrgao] = useState('prefeitura');
-  const [loginUsuario, setLoginUsuario] = useState(''); // Renomeado para não conflitar
+  const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
-  const [erro, setErro] = useState(false);
+  const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(false);
-  
   const navigate = useNavigate();
 
-  const fazerLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErro(false);
+    setErro('');
     setLoading(true);
 
     try {
-      // Cria o email fake baseado no login digitado para enviar pro Firebase
-      const emailFirebase = `${loginUsuario.trim().toLowerCase()}@pesqueira.pe.gov.br`;
-      
-      // AUTENTICAÇÃO REAL NO SERVIDOR DO GOOGLE
-      await signInWithEmailAndPassword(auth, emailFirebase, senha);
+      // 1. Conexão real com o seu Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(auth, email, senha);
+      const userEmail = userCredential.user.email || '';
+      const emailLower = userEmail.toLowerCase();
 
-      // Se passou da linha acima, a senha e o utilizador existem e estão corretos!
+      // 2. Inteligência de Roteamento de Órgão
+      let orgao = 'prefeitura'; 
+      if (emailLower.includes('fmas')) orgao = 'fmas';
+      else if (emailLower.includes('fme')) orgao = 'fme';
+      else if (emailLower.includes('fms')) orgao = 'fms';
+
+      // 3. Inteligência de Perfil (Admin vs Fiscal)
+      let perfil = 'admin';
+      // Se o e-mail cadastrado no Firebase tiver a palavra 'fiscal' ou 'leitura', ele vira visualizador
+      if (emailLower.includes('fiscal') || emailLower.includes('leitura')) {
+        perfil = 'viewer';
+      }
+
+      // 4. Salva a sessão de forma segura e entra
       sessionStorage.setItem('orgaoLogado', orgao);
+      sessionStorage.setItem('perfilLogado', perfil);
+      
       navigate('/painel');
-
-    } catch (error) {
-      console.error("Erro na autenticação:", error);
-      setErro(true); // Mostra erro se as credenciais estiverem erradas
+    } catch (error: any) {
+      console.error("Erro no login Firebase:", error);
+      setErro('E-mail ou senha incorretos. Verifique os dados cadastrados no Firebase.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="login-wrapper">
-      <div className="login-container">
-        <img src={logo} alt="Logo Prefeitura de Pesqueira" className="logo" />
-        <h2>Gestão de Contratos</h2>
-
-        <form onSubmit={fazerLogin}>
+    <div className="login-container">
+      <div className="login-box">
+        <img src={logo} alt="Logo PMP" className="login-logo" />
+        <h2>Sistema de Gestão de Contratos</h2>
+        <p className="login-subtitle">Prefeitura Municipal de Pesqueira</p>
+        
+        <form onSubmit={handleLogin} className="login-form">
           <div className="form-group">
-            <label htmlFor="orgao">Selecione o Órgão/Fundo:</label>
-            <select id="orgao" value={orgao} onChange={(e) => setOrgao(e.target.value)}>
-              <option value="prefeitura">Prefeitura Municipal</option>
-              <option value="fmas">Fundo Mun. de Assistência Social (FMAS)</option>
-              <option value="fme">Fundo Mun. de Educação (FME)</option>
-              <option value="fms">Fundo Mun. de Saúde (FMS)</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="login">Login:</label>
+            <label>E-mail de Acesso</label>
             <input 
-              type="text" 
-              id="login" 
-              placeholder="Digite seu login (ex: prefeitura)" 
-              value={loginUsuario}
-              onChange={(e) => setLoginUsuario(e.target.value)}
-              required
+              type="email" 
+              value={email} 
+              onChange={(e) => setEmail(e.target.value)} 
+              placeholder="ex: admin@pesqueira.pe.gov.br"
+              required 
             />
           </div>
-
+          
           <div className="form-group">
-            <label htmlFor="senha">Senha:</label>
+            <label>Palavra-passe</label>
             <input 
               type="password" 
-              id="senha" 
-              placeholder="Digite sua senha" 
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              required
+              value={senha} 
+              onChange={(e) => setSenha(e.target.value)} 
+              placeholder="Introduza a sua senha"
+              required 
             />
           </div>
 
-          <button type="submit" disabled={loading}>
-            {loading ? 'A autenticar...' : 'Entrar'}
+          {erro && <div className="login-erro">{erro}</div>}
+          
+          <button type="submit" className="btn-login" disabled={loading}>
+            {loading ? 'A autenticar no Firebase...' : 'Entrar no Sistema'}
           </button>
-
-          {erro && <p className="error-message">Login ou senha incorretos!</p>}
         </form>
+        
+        <div className="login-footer">
+          <p>Dúvidas sobre o acesso? Contacte o Setor de Licitações.</p>
+        </div>
       </div>
     </div>
   );

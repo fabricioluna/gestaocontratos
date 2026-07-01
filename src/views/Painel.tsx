@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx'; // Biblioteca de Excel
 import type { Contrato } from '../types/types';
 import logo from '../assets/logopmp.png';
 import './Painel.css';
@@ -16,6 +17,10 @@ import { useContratos } from '../hooks/useContratos';
 export default function Painel() {
   const navigate = useNavigate();
   const orgaoLogado = sessionStorage.getItem('orgaoLogado');
+  
+  // VERIFICAÇÃO DE SEGURANÇA (RBAC)
+  const perfilLogado = sessionStorage.getItem('perfilLogado') || 'viewer';
+  const isAdmin = perfilLogado === 'admin';
 
   const { 
     contratosFiltrados, loading, termoBusca, setTermoBusca, 
@@ -50,12 +55,8 @@ export default function Painel() {
 
   const getRowStyle = (dataFim: string) => {
     if (!dataFim) return {};
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0); 
-    
-    const vencimento = new Date(dataFim);
-    vencimento.setHours(0, 0, 0, 0);
-    
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0); 
+    const vencimento = new Date(dataFim); vencimento.setHours(0, 0, 0, 0);
     const diffEmDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
 
     if (diffEmDias < 0) return { backgroundColor: '#64748b', color: '#ffffff' }; 
@@ -65,19 +66,15 @@ export default function Painel() {
   };
 
   const getRowTitle = (dataFim: string) => {
-    if (!dataFim) return "";
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    
-    const vencimento = new Date(dataFim);
-    vencimento.setHours(0, 0, 0, 0);
-    
+    if (!dataFim) return "Status Desconhecido";
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const vencimento = new Date(dataFim); vencimento.setHours(0, 0, 0, 0);
     const diffEmDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
     
     if (diffEmDias < 0) return "Contrato Vencido";
     if (diffEmDias <= 30) return "Atenção: Vencimento em menos de 30 dias";
     if (diffEmDias <= 90) return "Aviso: Vencimento em menos de 3 meses";
-    return "";
+    return "Vigente";
   };
 
   const renderSeta = (campo: string) => {
@@ -85,10 +82,37 @@ export default function Painel() {
     return <span style={{ marginLeft: '5px' }}>{ordenacao.direcao === 'asc' ? '▲' : '▼'}</span>;
   };
 
-  // --- GERAÇÃO DE PDF AJUSTADA ---
+  // --- NOVA FUNÇÃO: EXPORTAR PARA EXCEL ---
+  const exportarParaExcel = () => {
+    // Transforma os dados numa tabela simplificada
+    const dadosPlanilha = contratosFiltrados.map(c => {
+      const vTotal = Number(c.valorTotal) || 0;
+      return {
+        'Nº Contrato': c.numeroContrato || '-',
+        'Processo': c.numeroProcesso || '-',
+        'Modalidade': `${c.modalidade || ''} ${c.numeroModalidade || ''}`.trim(),
+        'Fornecedor': c.fornecedor || '-',
+        'CNPJ': c.cnpjFornecedor || '-',
+        'Objeto': c.objetoResumido || '-',
+        'Valor Global (R$)': vTotal,
+        'Data Início': formatarDataBr(c.dataInicio),
+        'Data Fim (Validade)': formatarDataBr(c.dataFim),
+        'Fiscal do Contrato': c.fiscalContrato || '-',
+        'Status Atual': getRowTitle(c.dataFim),
+        'Qtd Aditivos': c.aditivos?.length || 0
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(dadosPlanilha);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Contratos");
+    
+    const nomeFundo = orgaoLogado ? orgaoLogado.toUpperCase() : 'GERAL';
+    XLSX.writeFile(workbook, `Relatorio_Contratos_${nomeFundo}.xlsx`);
+  };
+
   const gerarRelatorioPDF = () => {
     setIsModalRelatorioOpen(false); 
-
     const docPdf = new jsPDF('landscape'); 
     
     const gerarTabela = () => {
@@ -98,16 +122,13 @@ export default function Painel() {
       const textoFiltro = termoBusca ? ` (Filtro aplicado: "${termoBusca}")` : '';
       docPdf.text(`Listagem Geral de Contratos${textoFiltro} - Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 28);
       
-      // Cabeçalho claro e objetivo
       const headRow = ['Nº Contrato', 'Objeto', 'Fornecedor', 'CNPJ', 'Validade', 'Valor Global\n/ Aditivo', 'Fiscal'];
-
       type TableCell = string | { content: string, colSpan?: number, styles?: any };
       const tableData: TableCell[][] = [];
 
       contratosFiltrados.forEach(c => {
         const vTotal = Number(c.valorTotal) || 0;
-
-        const rowData: TableCell[] = [
+        tableData.push([
           c.numeroContrato || '-',
           c.objetoCompleto || c.objetoResumido || '-',
           c.fornecedor || '-',
@@ -115,60 +136,34 @@ export default function Painel() {
           formatarDataBr(c.dataFim),
           vTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
           c.fiscalContrato || '-'
-        ];
-
-        tableData.push(rowData);
+        ]);
 
         if (opcIncluirAditivos && c.aditivos && c.aditivos.length > 0) {
           c.aditivos.forEach(ad => {
             const strValidade = ad.novaDataFim ? formatarDataBr(ad.novaDataFim) : '-';
             const strValor = ad.valorAditivado ? ad.valorAditivado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-';
-
             const estiloAditivo = { fillColor: [248, 250, 252], textColor: [100, 100, 100], fontStyle: 'italic' };
 
-            // REESTRUTURAÇÃO COMPLETA DA LINHA DO ADITIVO
-            const aditivoRow: TableCell[] = [
-              // Retirado o caractere especial. Usado texto claro:
+            tableData.push([
               { content: '+ ADITIVO', styles: { ...estiloAditivo, fontStyle: 'bold', halign: 'center' } },
-              // Fundimos Objeto, Fornecedor e CNPJ para o texto respirar
-              { 
-                content: `${ad.descricao}\n(Tipo: ${ad.tipo.toUpperCase()})`, 
-                colSpan: 3, 
-                styles: { ...estiloAditivo, halign: 'left' } 
-              },
-              // A coluna Validade agora foca apenas nas datas
+              { content: `${ad.descricao}\n(Tipo: ${ad.tipo.toUpperCase()})`, colSpan: 3, styles: { ...estiloAditivo, halign: 'left' } },
               { content: `Assinado:\n${formatarDataBr(ad.dataAditivo)}\n\nNova Valid:\n${strValidade}`, styles: { ...estiloAditivo, halign: 'center' } },
-              // Coluna Valor Global mostra o valor
               { content: strValor, styles: { ...estiloAditivo, halign: 'right', fontStyle: 'bold' } },
-              // Coluna Fiscal fica vazia
               { content: '-', styles: { ...estiloAditivo, halign: 'center' } }
-            ];
-
-            tableData.push(aditivoRow);
+            ]);
           });
         }
       });
 
-      // LARGURAS RECALCULADAS:
-      // O Nº do contrato passou de 24 para 30 para evitar quebras de linha!
-      // O Valor Global passou de 28 para 32 para suportar o título novo
       const colStyles: any = { 
-        0: { halign: 'center', cellWidth: 30 }, 
-        1: { cellWidth: 'auto' },               
-        2: { cellWidth: 40 },                   
-        3: { halign: 'center', cellWidth: 26 }, 
-        4: { halign: 'center', cellWidth: 26 }, 
-        5: { halign: 'right', cellWidth: 32 },  
-        6: { halign: 'center', cellWidth: 24 }  
+        0: { halign: 'center', cellWidth: 30 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 40 },                   
+        3: { halign: 'center', cellWidth: 26 }, 4: { halign: 'center', cellWidth: 26 }, 
+        5: { halign: 'right', cellWidth: 32 },  6: { halign: 'center', cellWidth: 24 }  
       };
 
       autoTable(docPdf, {
-        startY: 40,
-        head: [headRow],
-        body: tableData,
-        theme: 'striped',
-        headStyles: { fillColor: [0, 74, 153] },
-        styles: { fontSize: 8, cellPadding: 3 },
+        startY: 40, head: [headRow], body: tableData, theme: 'striped',
+        headStyles: { fillColor: [0, 74, 153] }, styles: { fontSize: 8, cellPadding: 3 },
         columnStyles: colStyles
       });
 
@@ -176,8 +171,7 @@ export default function Painel() {
       window.open(URL.createObjectURL(pdfBlob), '_blank');
     };
 
-    const img = new Image();
-    img.src = logo;
+    const img = new Image(); img.src = logo;
     img.onload = () => { docPdf.addImage(img, 'PNG', 14, 10, 25, 25); gerarTabela(); };
     img.onerror = () => { gerarTabela(); };
   };
@@ -194,10 +188,15 @@ export default function Painel() {
           <img src={logo} alt="Logo PMP" className="logo-pequena" />
           <h2 title={orgaoLogado ? nomesOrgaos[orgaoLogado] : ''}>{orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Carregando...'}</h2>
         </div>
-        <button className="btn-sair" onClick={() => { sessionStorage.clear(); navigate('/'); }}>
-          Sair
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <span style={{ fontSize: '12px', color: isAdmin ? '#28a745' : '#64748b', fontWeight: 'bold', backgroundColor: 'white', padding: '5px 10px', borderRadius: '4px' }}>
+            {isAdmin ? '🛡️ Admin' : '👁️ Visualizador'}
+          </span>
+          <button className="btn-sair" onClick={() => { sessionStorage.clear(); navigate('/'); }}>
+            Sair
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          </button>
+        </div>
       </header>
 
       <main className="conteudo">
@@ -208,8 +207,13 @@ export default function Painel() {
             <input type="text" placeholder="Buscar por Nº, CNPJ, Fornecedor, Objeto ou Fiscal..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} style={{ width: '100%', padding: '10px 14px 10px 40px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button onClick={() => setIsModalRelatorioOpen(true)} className="btn-cancelar">📄 Relatório Geral</button>
-            <button onClick={() => setIsModalOpen(true)} className="btn-salvar">Novo Contrato</button>
+            <button onClick={exportarParaExcel} className="btn-acao primario" style={{ backgroundColor: '#28a745', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+              📊 Excel
+            </button>
+            <button onClick={() => setIsModalRelatorioOpen(true)} className="btn-cancelar">📄 PDF</button>
+            
+            {/* Esconde botão Novo Contrato se não for Admin */}
+            {isAdmin && <button onClick={() => setIsModalOpen(true)} className="btn-salvar">Novo Contrato</button>}
           </div>
         </div>
 
@@ -229,13 +233,12 @@ export default function Painel() {
               <th onClick={() => lidarComOrdenacao('dataFim')} style={{ cursor: 'pointer' }}>Validade {renderSeta('dataFim')}</th>
               <th onClick={() => lidarComOrdenacao('valorTotal')} style={{ cursor: 'pointer' }}>Valor Global {renderSeta('valorTotal')}</th>
               <th onClick={() => lidarComOrdenacao('fiscalContrato')} style={{ cursor: 'pointer' }}>Fiscal {renderSeta('fiscalContrato')}</th>
-              <th>Última Atualização</th>
               <th>Ações</th>
             </tr>
           </thead>
           <tbody>
             {contratosFiltrados.length === 0 ? (
-              <tr><td colSpan={9} style={{ textAlign: 'center' }}>{termoBusca ? 'Nenhum contrato encontrado.' : 'Nenhum contrato cadastrado.'}</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: 'center' }}>{termoBusca ? 'Nenhum contrato encontrado.' : 'Nenhum contrato cadastrado.'}</td></tr>
             ) : (
               contratosFiltrados.map((c) => {
                 const styleVencimento = getRowStyle(c.dataFim);
@@ -246,24 +249,21 @@ export default function Painel() {
                     <td>
                       <span style={{ fontWeight: 'bold' }}>{c.numeroContrato}</span>
                       {c.aditivos && c.aditivos.length > 0 && (
-                        <span style={{ marginLeft: '8px', fontSize: '10px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 6px', borderRadius: '12px', fontWeight: 'bold', whiteSpace: 'nowrap' }} title={`${c.aditivos.length} aditivo(s) registado(s)`}>
-                          📝 +{c.aditivos.length}
-                        </span>
+                        <span style={{ marginLeft: '8px', fontSize: '10px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 6px', borderRadius: '12px', fontWeight: 'bold', whiteSpace: 'nowrap' }} title={`${c.aditivos.length} aditivo(s) registado(s)`}>📝 +{c.aditivos.length}</span>
                       )}
                     </td>
                     <td>{c.objetoResumido}</td>
                     <td>{c.fornecedor}</td>
                     <td>{c.cnpjFornecedor || '-'}</td>
                     <td style={{ fontWeight: 'bold' }}>{formatarDataBr(c.dataFim)}</td>
-                    <td style={{ fontWeight: 'bold', color: isVencido ? '#ffffff' : '#004a99' }}>
-                      {Number(c.valorTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                    </td>
+                    <td style={{ fontWeight: 'bold', color: isVencido ? '#ffffff' : '#004a99' }}>{Number(c.valorTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                     <td>{c.fiscalContrato || '-'}</td>
-                    <td>{c.dataUltimaAtualizacao || 'N/A'}</td>
                     <td style={{ display: 'flex', gap: '5px' }}>
                       <button style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => navigate(`/contrato/${c.id}`)}>Detalhes</button>
-                      <button style={{ backgroundColor: '#ffc107', color: '#333', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => abrirEdicao(c)}>✏️</button>
-                      <button style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => excluirContrato(c.id!)} disabled={loading}>🗑️</button>
+                      
+                      {/* Esconde os botões sensíveis se não for Admin */}
+                      {isAdmin && <button style={{ backgroundColor: '#ffc107', color: '#333', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => abrirEdicao(c)}>✏️</button>}
+                      {isAdmin && <button style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => excluirContrato(c.id!)} disabled={loading}>🗑️</button>}
                     </td>
                   </tr>
                 );
@@ -273,8 +273,8 @@ export default function Painel() {
         </table>
       </main>
 
-      <ModalNovoContrato isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} orgaoLogado={orgaoLogado} />
-      <ModalEditarContrato isOpen={isModalEditOpen} onClose={() => setIsModalEditOpen(false)} contratoOriginal={contratoParaEditar} />
+      {isAdmin && <ModalNovoContrato isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} orgaoLogado={orgaoLogado} />}
+      {isAdmin && <ModalEditarContrato isOpen={isModalEditOpen} onClose={() => setIsModalEditOpen(false)} contratoOriginal={contratoParaEditar} />}
       
       <ModalRelatorioGlobal 
         isOpen={isModalRelatorioOpen} onClose={() => setIsModalRelatorioOpen(false)}
