@@ -1,350 +1,195 @@
 /* src/views/DetalhesContrato.css */
 
-.painel-container {
-  background-color: #f4f7f6;
+.detalhes-container {
+  background-color: #f0f4f8;
   min-height: 100vh;
+  font-family: 'Inter', 'Segoe UI', Roboto, sans-serif;
+  padding-bottom: 40px;
 }
 
 /* =========================================
-   CABEÇALHO (HEADER) - MODERNO E ALINHADO
+   CABEÇALHO PREMIUM (IDÊNTICO AO PAINEL)
 ========================================= */
-.header {
-  background: linear-gradient(135deg, #0a2540 0%, #144066 100%); 
+.detalhes-header {
+  background: linear-gradient(135deg, #0a2540 0%, #144066 100%);
   color: white;
   padding: 12px 24px;
   display: flex;
-  justify-content: space-between; 
+  justify-content: space-between;
   align-items: center;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-  gap: 20px; 
+  margin-bottom: 30px;
 }
 
-.header-logo {
+.header-logo-detalhes {
   display: flex;
   align-items: center;
   gap: 16px;
-  flex: 1; 
-  min-width: 0; 
 }
 
 .logo-pequena {
-  height: 40px; 
+  height: 40px;
   width: auto;
   background-color: white;
   padding: 6px;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  flex-shrink: 0; 
 }
 
-.header-logo h2 {
+.header-logo-detalhes h2 {
   margin: 0;
-  font-size: 18px; 
+  font-size: 20px;
   font-weight: 600;
-  white-space: nowrap; 
-  overflow: hidden;
-  text-overflow: ellipsis; 
-  letter-spacing: -0.3px;
-}
-
-.btn-sair {
-  background-color: rgba(255, 255, 255, 0.1); 
-  color: white; 
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  width: auto; 
-  padding: 0 16px; 
-  height: 42px; 
-  border-radius: 10px; 
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px; 
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-  flex-shrink: 0; 
-  transition: all 0.2s ease;
-  margin-left: auto; 
-}
-
-.btn-sair:hover {
-  background-color: rgba(255, 255, 255, 0.2); 
   color: white;
-  border-color: transparent;
-  transform: translateY(-2px); 
-}
-
-/* =========================================
-   CONTEÚDO PRINCIPAL
-========================================= */
-
-.detalhes-container {
-  max-width: 1200px;
-  margin: 30px auto;
-  padding: 0 20px;
-}
-
-/* =========================================
-   BOTÕES MODERNOS (AÇÕES DO RELATÓRIO)
-========================================= */
-.acoes-relatorio {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 24px;
-  padding: 12px 16px;
-  background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
-.acoes-relatorio::-webkit-scrollbar {
-  height: 6px;
-}
-.acoes-relatorio::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 8px;
-}
-.acoes-relatorio::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 8px;
-}
-
-.btn-acao {
-  padding: 6px 12px; 
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 13px; 
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  transition: all 0.2s ease-in-out;
-  white-space: nowrap; 
-}
-
-.btn-acao:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 3px 6px rgba(0,0,0,0.08);
-}
-
-.btn-acao:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.btn-gerar { background-color: #f8fafc; color: #0f172a; border: 1px solid #cbd5e1; }
-.btn-aditivo { background-color: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
-.btn-distrato { background-color: #fef2f2; color: #ef4444; border: 1px solid #fecaca; }
-.btn-editar { background-color: #fefce8; color: #ca8a04; border: 1px solid #fef08a; }
-.btn-excluir { background-color: #fff1f2; color: #be123c; border: 1px solid #ffe4e6; }
-.btn-lancar { background-color: #10b981; color: white; border: none; margin-left: auto; }
-.btn-lancar:hover:not(:disabled) { background-color: #059669; }
-
-.painel-relatorio {
-  display: grid;
-  grid-template-columns: 2.5fr 1fr;
-  gap: 20px;
-  margin-bottom: 30px;
-}
-
-.card-relatorio, .card-financeiro {
-  background-color: white;
-  padding: 24px;
+.badge-aditivo-header {
+  font-size: 11px;
+  background-color: rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 4px 10px;
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-  border: none;
+  margin-left: 12px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.status-badge {
+  color: white;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* BOTÃO VOLTAR (PADRÃO SQUIRCLE) */
+.btn-voltar {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 0 16px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-voltar:hover {
+  background-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-2px);
 }
 
 /* =========================================
-   NOVOS CARDS DE INFORMAÇÃO (DASHBOARD)
+   CARTÕES DE CONTEÚDO
 ========================================= */
-.fornecedor-destaque {
-  font-size: 18px;
-  color: #3b82f6;
-  margin: 0 0 5px 0;
+.detalhes-conteudo {
+  max-width: 1250px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
-.objeto-destaque {
-  font-size: 14px;
+.card-detalhe {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+  border: 1px solid #f1f5f9;
+}
+
+.card-detalhe h3 {
+  margin-top: 0;
+  color: #0f172a;
+  font-size: 18px;
+  border-bottom: 2px solid #f1f5f9;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* GRID DE INFORMAÇÕES */
+.grid-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-item span {
+  font-size: 11px;
   color: #64748b;
-  margin: 0 0 20px 0;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.info-item strong {
+  font-size: 15px;
+  color: #1e293b;
+  font-weight: 500;
   line-height: 1.4;
 }
 
-.dashboard-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 16px;
-}
-
-.info-card {
-  background-color: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 16px;
-  display: flex;
+.valor-destaque {
+  background: #f8fafc;
+  border-left: 4px solid #004a99;
+  padding: 16px 20px;
+  border-radius: 0 8px 8px 0;
+  margin-top: 24px;
+  display: inline-flex;
   flex-direction: column;
-  justify-content: center;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.info-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+.valor-destaque span { font-size: 13px; color: #64748b; font-weight: 600; }
+.valor-destaque strong { font-size: 28px; color: #004a99; margin-top: 4px; }
+
+/* BOTÕES DE AÇÃO INTERNOS */
+.acoes-execucao { display: flex; gap: 12px; margin-top: 20px; }
+.btn-acao {
+  padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer;
+  border: none; transition: all 0.2s; display: flex; align-items: center; gap: 8px; font-size: 14px;
 }
 
-.card-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  color: #94a3b8;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-}
+.btn-acao.primario { background: #004a99; color: white; }
+.btn-acao.primario:hover { background: #003366; transform: translateY(-1px); }
+.btn-acao.secundario { background: #10b981; color: white; }
+.btn-acao.secundario:hover { background: #059669; transform: translateY(-1px); }
+.btn-acao.alerta { background: #f59e0b; color: white; }
+.btn-acao.alerta:hover { background: #d97706; }
+.btn-acao.perigo { background: #ef4444; color: white; }
+.btn-acao.perigo:hover { background: #dc2626; }
 
-.card-value {
-  font-size: 15px;
-  color: #334155;
-  font-weight: 600;
-  word-break: break-word;
-}
-
-.card-value.small {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.observacao-bloco {
-  margin-top: 20px;
-  padding-top: 15px;
-  border-top: 1px dashed #cbd5e1;
-}
-
-/* =========================================
-   BLOCO FINANCEIRO
-========================================= */
-.bloco-saldo {
-  text-align: center; padding: 15px; background-color: #f8f9fa; border-radius: 8px; margin-bottom: 15px; border: 1px solid #eee;
-}
-
-.valor-saldo { font-size: 26px; font-weight: bold; margin: 10px 0; }
-.saldo-positivo { color: #28a745; }
-.saldo-negativo { color: #dc3545; }
-
-.metricas-itens {
-  display: flex; justify-content: space-around; background-color: #e9ecef; padding: 10px; border-radius: 8px; text-align: center; font-size: 13px; color: #555;
-}
-
-.metricas-itens strong { display: block; font-size: 18px; color: #004a99; }
-
-/* =========================================
-   TABELAS DE ITENS E SALDOS
-========================================= */
-.secao-itens {
-  background-color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 30px; overflow-x: auto;
-}
-
-.secao-itens h3 { margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; }
-
-.tabela-saldos, .tabela-itens {
-  width: 100%; border-collapse: collapse; font-size: 13px;
-}
-
-.tabela-saldos { min-width: 1000px; }
-
-.tabela-saldos th, .tabela-saldos td, .tabela-itens th, .tabela-itens td {
-  border: 1px solid #eee; padding: 10px; text-align: left;
-}
-
-.tabela-saldos td { text-align: center; }
-.tabela-saldos td.desc-esquerda { text-align: left; }
-
-.tabela-saldos th, .tabela-itens th { background-color: #f8f9fa; color: #333; font-weight: bold; }
-.tabela-saldos th.th-saldo { background-color: #e2f0d9; color: #2e7d32; }
-.tabela-saldos tr:hover, .tabela-itens tr:hover { background-color: #fcfcfc; }
-
-/* =========================================
-   MODAIS E FORMULÁRIOS
-========================================= */
-.modal-overlay {
-  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px);
-}
-
-.modal-content {
-  background-color: white; padding: 30px; border-radius: 16px; width: 100%; max-width: 900px; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.2); position: relative;
-}
-
-.btn-fechar {
-  position: absolute; top: 15px; right: 15px; background: none; border: none; font-size: 24px; cursor: pointer; color: #94a3b8; transition: color 0.2s;
-}
-
-.btn-fechar:hover { color: #0f172a; }
-
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-.form-group.full-width { grid-column: span 2; }
-.form-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 13px; color: #555; }
-.form-group input, .form-group textarea, .form-group select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box; }
-.form-group textarea { resize: vertical; }
-
-.modal-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px; }
-.btn-cancelar { background-color: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; }
-.btn-salvar { background-color: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: background-color 0.2s; }
-.btn-salvar:hover:not(:disabled) { background-color: #2563eb; }
-
-/* =========================================
-   ELEMENTOS DO ADITIVO (IA E MANUAL) - CORRIGIDO
-========================================= */
-.ia-upload-section {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: stretch;
-}
-
-.file-upload-box {
-  flex: 1 1 200px;
-  border: 1px solid #cbd5e1;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: #fff;
-  font-size: 13px;
-  min-height: 38px;
-  box-sizing: border-box;
-  color: #475569;
-}
-
-.btn-ia {
-  background-color: #8b5cf6;
-  color: white;
-  padding: 8px 16px;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: background-color 0.2s;
-  white-space: nowrap;
-  flex: 0 0 auto;
-}
-
-.btn-ia:hover:not(:disabled) {
-  background-color: #7c3aed;
-}
-
-.manual-item-section {
-  background-color: #fff;
-  padding: 16px;
-  border-radius: 8px;
+/* ADITIVOS */
+.card-aditivo {
   border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 16px;
+  background: #f8fafc;
+  position: relative;
+  transition: all 0.2s;
+}
+
+.card-aditivo:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.03);
 }
