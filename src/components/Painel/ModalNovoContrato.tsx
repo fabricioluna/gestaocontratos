@@ -83,7 +83,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const content = await page.getTextContent();
-          const strings = content.items.map((item: unknown) => (item as { str: string }).str || "");
+          const strings = content.items.map((item: any) => item.str || "");
           textoCompleto += strings.join(" ") + "\n";
         }
       } else if (file.name.toLowerCase().endsWith('.docx')) {
@@ -113,7 +113,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       }));
 
       if (dadosIA.itens && Array.isArray(dadosIA.itens) && dadosIA.itens.length > 0) {
-        const itensTratados: Item[] = dadosIA.itens.map((i: Record<string, unknown>, index: number) => ({
+        const itensTratados: Item[] = dadosIA.itens.map((i: any, index: number) => ({
            contratoId: '',
            numeroLote: String(i.numeroLote || 'Único'),
            numeroItem: String(i.numeroItem || (index + 1)),
@@ -129,9 +129,8 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       } else {
         toast.success("Dados preenchidos. Sem itens.", { id: toastId, duration: 5000 });
       }
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Erro ao processar o documento.";
-      toast.error(msg, { id: toastId });
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao processar o documento.", { id: toastId });
     } finally {
       setLoading(false);
       if (docInputRef.current) docInputRef.current.value = '';
@@ -174,7 +173,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       try {
         const bstr = evt.target?.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
-        const data = XLSX.utils.sheet_to_json<Record<string, string | number>>(wb.Sheets[wb.SheetNames[0]]);
+        const data = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[wb.SheetNames[0]]);
         let somaImportacao = 0;
         const novosItens: Item[] = [];
         data.forEach((row) => {
@@ -271,10 +270,11 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
             <div className="form-group"><label>Nº/Ano Modalidade</label><input type="text" name="numeroModalidade" value={formData.numeroModalidade} onChange={lidarComMudanca} placeholder="000/0000" /></div>
             <div className="form-group"><label>Nº/Ano da Ata</label><input type="text" name="numeroAta" value={formData.numeroAta} onChange={lidarComMudanca} placeholder="000/0000" /></div>
             
-            {/* NOVOS CAMPOS */}
             <div className="form-group"><label>CNPJ do Fornecedor</label><input type="text" name="cnpjFornecedor" value={formData.cnpjFornecedor} onChange={formatarCNPJ} placeholder="00.000.000/0000-00" maxLength={18} /></div>
             <div className="form-group"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formData.fornecedor} onChange={lidarComMudanca} /></div>
-            <div className="form-group full-width"><label>E-mail da Secretaria (Para alertas de vencimento)</label><input type="email" name="emailSecretaria" value={formData.emailSecretaria} onChange={lidarComMudanca} placeholder="exemplo@pesqueira.pe.gov.br" /></div>
+            
+            {/* NOVO RÓTULO APLICADO AQUI */}
+            <div className="form-group full-width"><label>E-mail da Sec. Demandante/Fiscal (Para envio de alertas automáticos)</label><input type="email" name="emailSecretaria" value={formData.emailSecretaria} onChange={lidarComMudanca} placeholder="exemplo@pesqueira.pe.gov.br" /></div>
             
             <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formData.objetoResumido} onChange={lidarComMudanca} /></div>
             <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formData.objetoCompleto} onChange={lidarComMudanca}></textarea></div>
