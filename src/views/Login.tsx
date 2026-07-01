@@ -2,12 +2,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase'; // Importa a autenticação oficial do seu Firebase
+import { auth } from '../firebase';
 import logo from '../assets/logopmp.png';
 import './Login.css';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [identificacao, setIdentificacao] = useState('');
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,32 +19,44 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // 1. Conexão real com o seu Firebase Auth
-      const userCredential = await signInWithEmailAndPassword(auth, email, senha);
+      const inputLower = identificacao.toLowerCase().trim();
+      
+      // Mapeamento inteligente: converte a palavra curta no e-mail real do Firebase
+      const adminMap: { [key: string]: string } = {
+        'prefeitura': 'prefeitura@pesqueira.pe.gov.br',
+        'saude': 'saude@pesqueira.pe.gov.br',
+        'educacao': 'educacao@pesqueira.pe.gov.br',
+        'assistencia': 'assistencia@pesqueira.pe.gov.br'
+      };
+
+      // Se a palavra estiver no mapa, usa o e-mail completo. Se não, usa o que foi digitado.
+      const emailToUse = adminMap[inputLower] || inputLower;
+
+      // 1. Conexão real com o Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(auth, emailToUse, senha);
       const userEmail = userCredential.user.email || '';
-      const emailLower = userEmail.toLowerCase();
+      const emailLogado = userEmail.toLowerCase();
 
       // 2. Inteligência de Roteamento de Órgão
       let orgao = 'prefeitura'; 
-      if (emailLower.includes('fmas')) orgao = 'fmas';
-      else if (emailLower.includes('fme')) orgao = 'fme';
-      else if (emailLower.includes('fms')) orgao = 'fms';
+      if (emailLogado.includes('assistencia')) orgao = 'fmas';
+      else if (emailLogado.includes('educacao')) orgao = 'fme';
+      else if (emailLogado.includes('saude')) orgao = 'fms';
 
       // 3. Inteligência de Perfil (Admin vs Fiscal)
       let perfil = 'admin';
-      // Se o e-mail cadastrado no Firebase tiver a palavra 'fiscal' ou 'leitura', ele vira visualizador
-      if (emailLower.includes('fiscal') || emailLower.includes('leitura')) {
+      if (emailLogado.includes('fiscal') || emailLogado.includes('leitura')) {
         perfil = 'viewer';
       }
 
-      // 4. Salva a sessão de forma segura e entra
+      // 4. Salva a sessão e entra
       sessionStorage.setItem('orgaoLogado', orgao);
       sessionStorage.setItem('perfilLogado', perfil);
       
       navigate('/painel');
     } catch (error: any) {
       console.error("Erro no login Firebase:", error);
-      setErro('E-mail ou senha incorretos. Verifique os dados cadastrados no Firebase.');
+      setErro('Usuário ou senha incorretos. Verifique os dados.');
     } finally {
       setLoading(false);
     }
@@ -59,12 +71,12 @@ export default function Login() {
         
         <form onSubmit={handleLogin} className="login-form">
           <div className="form-group">
-            <label>E-mail de Acesso</label>
+            <label>Usuário ou E-mail</label>
             <input 
-              type="email" 
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)} 
-              placeholder="ex: admin@pesqueira.pe.gov.br"
+              type="text" 
+              value={identificacao} 
+              onChange={(e) => setIdentificacao(e.target.value)} 
+              placeholder="ex: saude ou fiscal@pesqueira..."
               required 
             />
           </div>
@@ -83,7 +95,7 @@ export default function Login() {
           {erro && <div className="login-erro">{erro}</div>}
           
           <button type="submit" className="btn-login" disabled={loading}>
-            {loading ? 'A autenticar no Firebase...' : 'Entrar no Sistema'}
+            {loading ? 'A autenticar...' : 'Entrar no Sistema'}
           </button>
         </form>
         
