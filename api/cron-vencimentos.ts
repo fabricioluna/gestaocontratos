@@ -62,14 +62,15 @@ export default async function handler(req: any, res: any) {
       // Se faltarem exatos 90 dias, 30 dias ou se vencer HOJE (0 dias)
       if (diferencaDias === 90 || diferencaDias === 30 || diferencaDias === 0) {
         
-        const textoUrgencia = diferencaDias === 0 ? 'VENCE HOJE' : `vence em ${diferencaDias} dias`;
+        const textoUrgencia = diferencaDias === 0 ? 'vence HOJE' : `vence em ${diferencaDias} dias`;
         const dataBr = c.dataFim.split('-').reverse().join('/');
 
+        // HTML do E-mail atualizado com os novos textos
         const htmlEmail = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-top: 5px solid #004a99; border-radius: 8px;">
             <h2 style="color: #004a99;">Alerta de Vencimento de Contrato</h2>
             <p>Olá,</p>
-            <p>O Sistema de Gestão da PMP identificou que o seguinte contrato requer a sua atenção:</p>
+            <p>O Sistema de Gestão de Contratos da Prefeitura Municipal de Pesqueira identificou que o seguinte contrato requer a sua atenção:</p>
             
             <div style="background-color: #f8fafc; padding: 15px; border-radius: 5px; margin: 20px 0;">
               <p style="margin: 5px 0;"><strong>Nº do Contrato:</strong> ${c.numeroContrato}</p>
@@ -79,7 +80,7 @@ export default async function handler(req: any, res: any) {
               <p style="margin: 5px 0; color: #dc3545; font-weight: bold;"><strong>Status:</strong> ${textoUrgencia}</p>
             </div>
             
-            <p>Por favor, providencie as medidas administrativas necessárias (Aditivo ou encerramento).</p>
+            <p>Por favor, providencie as medidas administrativas necessárias (Aditivo, encerramento ou novo processo).</p>
             <br>
             <p style="font-size: 12px; color: #666; text-align: center;"><em>Esta é uma mensagem automática gerada pelo Sistema de Gestão de Contratos da Prefeitura Municipal de Pesqueira. Não responda a este e-mail.</em></p>
           </div>
