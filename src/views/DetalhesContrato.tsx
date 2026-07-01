@@ -34,13 +34,20 @@ export default function DetalhesContrato() {
     fecharModalAditivoState, lidarProcessamentoIA, lidarAdicionarItemManual, removerItemAditivo, abrirEdicaoAditivo, excluirAditivo, salvarAditivo,
     
     distratoData, setDistratoData, distratoMotivo, setDistratoMotivo, salvarDistrato, excluirContrato
-  } = useDetalhesContrato(id);
+  } = useDetalhesContrato(id || '');
 
   const [isModalAditivoOpen, setIsModalAditivoOpen] = useState(false);
   const [isModalDistratoOpen, setIsModalDistratoOpen] = useState(false);
   
   const [isModalRelatorioOpen, setIsModalRelatorioOpen] = useState(false);
   const [opcIncluirAditivos, setOpcIncluirAditivos] = useState(true);
+
+  const nomesOrgaos: { [key: string]: string } = {
+    'prefeitura': 'Prefeitura Municipal de Pesqueira',
+    'fmas': 'Fundo Municipal de Inclusão Social e Cidadania de Pesqueira',
+    'fme': 'Fundo Municipal de Educação de Pesqueira',
+    'fms': 'Fundo Municipal de Saúde de Pesqueira'
+  };
 
   if (!contrato) {
     return <div className="loading">A carregar detalhes do contrato...</div>;
@@ -50,54 +57,90 @@ export default function DetalhesContrato() {
     if (contrato.dataDistrato) return { texto: 'Distratado', cor: '#dc3545' };
     
     const hoje = new Date();
-    const vencimento = new Date(contrato.dataFim);
-    if (hoje > vencimento) return { texto: 'Vencido', cor: '#dc3545' };
+    hoje.setHours(0, 0, 0, 0);
+    const vencimento = new Date(contrato.dataFim || '');
+    vencimento.setHours(0, 0, 0, 0);
+    
+    if (hoje > vencimento) return { texto: 'Vencido', cor: '#64748b' }; 
     
     return { texto: 'Vigente', cor: '#28a745' };
   };
   
   const status = getStatus();
 
+  // --- GERAÇÃO DO PDF INDIVIDUAL REFINADO ---
   const gerarRelatorioPDF = () => {
     setIsModalRelatorioOpen(false);
     const doc = new jsPDF();
     
     const gerarConteudoPDF = () => {
-      doc.setFontSize(16); 
+      const nomeOrgao = contrato.orgaoId && nomesOrgaos[contrato.orgaoId] 
+        ? nomesOrgaos[contrato.orgaoId] 
+        : 'Prefeitura Municipal de Pesqueira';
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14); 
       doc.setTextColor(0, 74, 153);
-      doc.text('Relatório Analítico de Contrato', 45, 20);
+      doc.text(nomeOrgao.toUpperCase(), 45, 20);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(12); 
+      doc.setTextColor(100, 100, 100);
+      doc.text('Relatório Analítico de Contrato', 45, 28);
+      
+      let currentY = 48; 
       
       doc.setFontSize(11); 
       doc.setTextColor(50, 50, 50);
-      let currentY = 35;
       
-      // Correção 1: 'helvetica' em vez de undefined
       doc.setFont('helvetica', 'bold'); doc.text('1. DADOS GERAIS', 14, currentY); currentY += 8;
       
-      // Correção 2: 'helvetica' em vez de undefined
       doc.setFont('helvetica', 'normal');
       doc.text(`Nº Contrato: ${contrato.numeroContrato || 'Não informado'}`, 14, currentY); currentY += 6;
       doc.text(`Processo: ${contrato.numeroProcesso || 'Não informado'}`, 14, currentY); currentY += 6;
-      doc.text(`Fornecedor: ${contrato.fornecedor || 'Não informado'}`, 14, currentY); currentY += 6;
-      doc.text(`CNPJ do Fornecedor: ${contrato.cnpjFornecedor || 'Não informado'}`, 14, currentY); currentY += 6;
-      doc.text(`E-mail (Secretaria): ${contrato.emailSecretaria || 'Não informado'}`, 14, currentY); currentY += 6;
-      doc.text(`Objeto: ${contrato.objetoResumido || 'Não informado'}`, 14, currentY); currentY += 6;
-      doc.text(`Fiscal: ${contrato.fiscalContrato || 'Não informado'}`, 14, currentY); currentY += 6;
-      doc.text(`Período Vigência: ${formatarDataBr(contrato.dataInicio)} a ${formatarDataBr(contrato.dataFim)}`, 14, currentY); currentY += 8;
       
+      // Quebra automática de linha: Fornecedor
+      const txtFornecedor = `Fornecedor: ${contrato.fornecedor || 'Não informado'}`;
+      const linhasFornecedor = doc.splitTextToSize(txtFornecedor, 182);
+      doc.text(linhasFornecedor, 14, currentY); currentY += (linhasFornecedor.length * 6);
+      
+      doc.text(`CNPJ do Fornecedor: ${contrato.cnpjFornecedor || 'Não informado'}`, 14, currentY); currentY += 6;
+      
+      // Quebra automática de linha: Objeto
+      const txtObjeto = `Objeto: ${contrato.objetoCompleto || contrato.objetoResumido || 'Não informado'}`;
+      const linhasObjeto = doc.splitTextToSize(txtObjeto, 182);
+      doc.text(linhasObjeto, 14, currentY); currentY += (linhasObjeto.length * 6);
+      
+      // Quebra automática de linha: Fiscal
+      const txtFiscal = `Fiscal: ${contrato.fiscalContrato || 'Não informado'}`;
+      const linhasFiscal = doc.splitTextToSize(txtFiscal, 182);
+      doc.text(linhasFiscal, 14, currentY); currentY += (linhasFiscal.length * 6);
+
+      doc.text(`Período Vigência: ${formatarDataBr(contrato.dataInicio || '')} a ${formatarDataBr(contrato.dataFim || '')}`, 14, currentY); currentY += 8;
+      
+      doc.setFont('helvetica', 'bold');
+      if (status.texto === 'Vigente') doc.setTextColor(40, 167, 69); 
+      else if (status.texto === 'Distratado') doc.setTextColor(220, 53, 69); 
+      else doc.setTextColor(100, 116, 139); 
+      
+      doc.text(`STATUS ATUAL: ${status.texto.toUpperCase()}`, 14, currentY); currentY += 8;
+      doc.setTextColor(50, 50, 50); 
+
       if (contrato.dataDistrato) {
         doc.setTextColor(220, 53, 69);
-        doc.text(`⚠️ CONTRATO DISTRATADO EM: ${formatarDataBr(contrato.dataDistrato)}`, 14, currentY); currentY += 6;
-        doc.text(`Motivo: ${contrato.motivoDistrato || 'Não informado'}`, 14, currentY); currentY += 8;
+        doc.text(`Distratado em: ${formatarDataBr(contrato.dataDistrato || '')}`, 14, currentY); currentY += 6;
+        
+        const txtMotivo = `Motivo: ${contrato.motivoDistrato || 'Não informado'}`;
+        const linhasMotivo = doc.splitTextToSize(txtMotivo, 182);
+        doc.text(linhasMotivo, 14, currentY); currentY += (linhasMotivo.length * 6) + 2;
+        
         doc.setTextColor(50, 50, 50);
       }
       
       currentY += 5;
-      // Correção 3: 'helvetica' em vez de undefined
       doc.setFont('helvetica', 'bold'); doc.text('2. RESUMO FINANCEIRO', 14, currentY); currentY += 8;
-      
-      // Correção 4: 'helvetica' em vez de undefined
       doc.setFont('helvetica', 'normal');
+      
       const vOriginal = (opcIncluirAditivos) ? valorOriginal : valorGlobalAtualizado;
       doc.text(`Valor Inicial do Contrato: ${vOriginal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 14, currentY); currentY += 6;
       
@@ -106,13 +149,38 @@ export default function DetalhesContrato() {
         doc.text(`${textoAdit}: ${Math.abs(totalAditivosAplicados).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 14, currentY); currentY += 6;
       }
       
-      // Correção 5: 'helvetica' em vez de undefined
       doc.setFont('helvetica', 'bold');
       doc.text(`Valor Global Atualizado: ${valorGlobalAtualizado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 14, currentY); currentY += 12;
       
-      if (itensCatalogo.length > 0 || (opcIncluirAditivos && contrato.aditivos && contrato.aditivos.length > 0)) {
-        // Correção 6: 'helvetica' em vez de undefined
-        doc.setFont('helvetica', 'bold'); doc.text('3. ITENS CONTRATADOS (E ADITIVOS)', 14, currentY); currentY += 6;
+      let secNumber = 3;
+
+      if (opcIncluirAditivos && contrato.aditivos && contrato.aditivos.length > 0) {
+        doc.setFont('helvetica', 'bold'); doc.text(`${secNumber}. HISTÓRICO DE TERMOS ADITIVOS`, 14, currentY); currentY += 6;
+        
+        const headAditivos = [['Descrição', 'Tipo', 'Assinatura', 'Nova Validade', 'Valor Alterado']];
+        const bodyAditivos = contrato.aditivos.map(ad => [
+          ad.descricao,
+          ad.tipo.toUpperCase(),
+          formatarDataBr(ad.dataAditivo || ''),
+          ad.novaDataFim ? formatarDataBr(ad.novaDataFim) : '-',
+          ad.valorAditivado ? ad.valorAditivado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'
+        ]);
+
+        autoTable(doc, {
+          startY: currentY, 
+          head: headAditivos, 
+          body: bodyAditivos, 
+          theme: 'grid',
+          headStyles: { fillColor: [100, 116, 139] }, 
+          styles: { fontSize: 8 }
+        });
+        
+        currentY = (doc as any).lastAutoTable.finalY + 10;
+        secNumber++;
+      }
+      
+      if (itensCatalogo.length > 0 || (opcIncluirAditivos && contrato.aditivos && contrato.aditivos.some(a => a.itensAditivados && a.itensAditivados.length > 0))) {
+        doc.setFont('helvetica', 'bold'); doc.text(`${secNumber}. ITENS CONTRATADOS (E ADITIVOS)`, 14, currentY); currentY += 6;
         
         const headSaldos = [['Lote', 'Item', 'Descrição', 'Qtd', 'Unitário', 'Total']];
         const bodySaldos: any[] = [];
@@ -132,7 +200,7 @@ export default function DetalhesContrato() {
                 bodySaldos.push([
                   { content: ia.numeroLote || '-', styles: { fillColor: [240,240,240] } },
                   { content: ia.numeroItem || '-', styles: { fillColor: [240,240,240] } },
-                  { content: `${ia.discriminacao} (Aditivo)`, styles: { fillColor: [240,240,240], fontStyle: 'italic' } },
+                  { content: `${ia.discriminacao} (Ref: ${aditivo.descricao})`, styles: { fillColor: [240,240,240], fontStyle: 'italic' } },
                   { content: ia.quantidade, styles: { fillColor: [240,240,240] } },
                   { content: Number(ia.valorUnitario).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), styles: { fillColor: [240,240,240] } },
                   { content: Number(ia.valorTotalItem).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), styles: { fillColor: [240,240,240] } }
@@ -162,7 +230,16 @@ export default function DetalhesContrato() {
       <header className="detalhes-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <button className="btn-voltar" onClick={() => navigate('/painel')}>← Voltar</button>
-          <h2>Contrato: {contrato.numeroContrato}</h2>
+          
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            Contrato: {contrato.numeroContrato}
+            {contrato.aditivos && contrato.aditivos.length > 0 && (
+              <span style={{ fontSize: '12px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold' }}>
+                📝 +{contrato.aditivos.length} Aditivo(s)
+              </span>
+            )}
+          </h2>
+          
           <span className="status-badge" style={{ backgroundColor: status.cor }}>{status.texto}</span>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
@@ -178,11 +255,11 @@ export default function DetalhesContrato() {
             <div className="info-item"><span>Modalidade:</span> {contrato.modalidade || 'Não informada'} {contrato.numeroModalidade || ''}</div>
             <div className="info-item"><span>Fornecedor:</span> {contrato.fornecedor || 'Não informado'}</div>
             <div className="info-item"><span>CNPJ do Fornecedor:</span> {contrato.cnpjFornecedor || 'Não informado'}</div>
-            <div className="info-item"><span>E-mail (Secretaria):</span> {contrato.emailSecretaria || 'Não informado'}</div>
+            <div className="info-item"><span>E-mail da Sec. Demandante/Fiscal:</span> {contrato.emailSecretaria || 'Não informado'}</div>
             <div className="info-item" style={{ gridColumn: '1 / -1' }}><span>Objeto:</span> {contrato.objetoCompleto || contrato.objetoResumido}</div>
             
-            <div className="info-item"><span>Data Início:</span> {formatarDataBr(contrato.dataInicio)}</div>
-            <div className="info-item"><span>Validade:</span> {formatarDataBr(contrato.dataFim)}</div>
+            <div className="info-item"><span>Data Início:</span> {formatarDataBr(contrato.dataInicio || '')}</div>
+            <div className="info-item"><span>Validade:</span> {formatarDataBr(contrato.dataFim || '')}</div>
             <div className="info-item"><span>Fiscal:</span> {contrato.fiscalContrato || 'Não informado'}</div>
           </div>
           
@@ -204,8 +281,8 @@ export default function DetalhesContrato() {
         {contrato.dataDistrato && (
           <div style={{ backgroundColor: '#fff3f3', border: '1px solid #ffcaca', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
             <h3 style={{ color: '#dc3545', margin: '0 0 10px 0' }}>⚠️ Contrato Distratado</h3>
-            <p style={{ margin: 0 }}><strong>Data:</strong> {formatarDataBr(contrato.dataDistrato)}</p>
-            <p style={{ margin: '5px 0 0 0' }}><strong>Motivo:</strong> {contrato.motivoDistrato}</p>
+            <p style={{ margin: 0 }}><strong>Data:</strong> {formatarDataBr(contrato.dataDistrato || '')}</p>
+            <p style={{ margin: '5px 0 0 0' }}><strong>Motivo:</strong> {contrato.motivoDistrato || ''}</p>
           </div>
         )}
 
@@ -278,9 +355,9 @@ export default function DetalhesContrato() {
                   <h4 style={{ margin: '0 0 10px 0', color: '#333' }}>{aditivo.descricao}</h4>
                   
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', fontSize: '13px' }}>
-                    <div><strong>Assinatura:</strong> {formatarDataBr(aditivo.dataAditivo)}</div>
+                    <div><strong>Assinatura:</strong> {formatarDataBr(aditivo.dataAditivo || '')}</div>
                     <div><strong>Tipo:</strong> {aditivo.tipo.toUpperCase()}</div>
-                    {aditivo.novaDataFim && <div><strong>Nova Validade:</strong> {formatarDataBr(aditivo.novaDataFim)}</div>}
+                    {aditivo.novaDataFim && <div><strong>Nova Validade:</strong> {formatarDataBr(aditivo.novaDataFim || '')}</div>}
                     {aditivo.valorAditivado !== 0 && (
                       <div>
                         <strong>Valor:</strong> 

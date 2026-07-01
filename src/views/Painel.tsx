@@ -51,9 +51,14 @@ export default function Painel() {
   const getRowStyle = (dataFim: string) => {
     if (!dataFim) return {};
     const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0); 
+    
     const vencimento = new Date(dataFim);
+    vencimento.setHours(0, 0, 0, 0);
+    
     const diffEmDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
 
+    if (diffEmDias < 0) return { backgroundColor: '#64748b', color: '#ffffff' }; 
     if (diffEmDias <= 30) return { backgroundColor: '#ffd5d5', color: '#900' }; 
     if (diffEmDias <= 90) return { backgroundColor: '#fff9c4', color: '#856404' }; 
     return {};
@@ -62,7 +67,11 @@ export default function Painel() {
   const getRowTitle = (dataFim: string) => {
     if (!dataFim) return "";
     const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    
     const vencimento = new Date(dataFim);
+    vencimento.setHours(0, 0, 0, 0);
+    
     const diffEmDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
     
     if (diffEmDias < 0) return "Contrato Vencido";
@@ -76,6 +85,7 @@ export default function Painel() {
     return <span style={{ marginLeft: '5px' }}>{ordenacao.direcao === 'asc' ? '▲' : '▼'}</span>;
   };
 
+  // --- GERAÇÃO DE PDF AJUSTADA ---
   const gerarRelatorioPDF = () => {
     setIsModalRelatorioOpen(false); 
 
@@ -88,7 +98,8 @@ export default function Painel() {
       const textoFiltro = termoBusca ? ` (Filtro aplicado: "${termoBusca}")` : '';
       docPdf.text(`Listagem Geral de Contratos${textoFiltro} - Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 28);
       
-      const headRow = ['Nº Contrato', 'Objeto', 'Fornecedor', 'CNPJ', 'Validade', 'Valor Global'];
+      // Cabeçalho claro e objetivo
+      const headRow = ['Nº Contrato', 'Objeto', 'Fornecedor', 'CNPJ', 'Validade', 'Valor Global\n/ Aditivo', 'Fiscal'];
 
       type TableCell = string | { content: string, colSpan?: number, styles?: any };
       const tableData: TableCell[][] = [];
@@ -102,7 +113,8 @@ export default function Painel() {
           c.fornecedor || '-',
           c.cnpjFornecedor || 'Não inf.',
           formatarDataBr(c.dataFim),
-          vTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+          vTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+          c.fiscalContrato || '-'
         ];
 
         tableData.push(rowData);
@@ -114,13 +126,22 @@ export default function Painel() {
 
             const estiloAditivo = { fillColor: [248, 250, 252], textColor: [100, 100, 100], fontStyle: 'italic' };
 
+            // REESTRUTURAÇÃO COMPLETA DA LINHA DO ADITIVO
             const aditivoRow: TableCell[] = [
-              { content: '↳ ADITIVO', styles: { ...estiloAditivo, fontStyle: 'bold', halign: 'right' } },
-              { content: `${ad.descricao}\n(Tipo: ${ad.tipo.toUpperCase()})`, styles: estiloAditivo },
-              { content: '-', styles: { ...estiloAditivo, halign: 'center' } }, // Fornecedor
-              { content: '-', styles: { ...estiloAditivo, halign: 'center' } }, // CNPJ
-              { content: `Assinado: ${formatarDataBr(ad.dataAditivo)}\nNova Valid: ${strValidade}`, styles: { ...estiloAditivo, halign: 'center' } },
-              { content: strValor, styles: { ...estiloAditivo, halign: 'right', fontStyle: 'bold' } }
+              // Retirado o caractere especial. Usado texto claro:
+              { content: '+ ADITIVO', styles: { ...estiloAditivo, fontStyle: 'bold', halign: 'center' } },
+              // Fundimos Objeto, Fornecedor e CNPJ para o texto respirar
+              { 
+                content: `${ad.descricao}\n(Tipo: ${ad.tipo.toUpperCase()})`, 
+                colSpan: 3, 
+                styles: { ...estiloAditivo, halign: 'left' } 
+              },
+              // A coluna Validade agora foca apenas nas datas
+              { content: `Assinado:\n${formatarDataBr(ad.dataAditivo)}\n\nNova Valid:\n${strValidade}`, styles: { ...estiloAditivo, halign: 'center' } },
+              // Coluna Valor Global mostra o valor
+              { content: strValor, styles: { ...estiloAditivo, halign: 'right', fontStyle: 'bold' } },
+              // Coluna Fiscal fica vazia
+              { content: '-', styles: { ...estiloAditivo, halign: 'center' } }
             ];
 
             tableData.push(aditivoRow);
@@ -128,11 +149,17 @@ export default function Painel() {
         }
       });
 
+      // LARGURAS RECALCULADAS:
+      // O Nº do contrato passou de 24 para 30 para evitar quebras de linha!
+      // O Valor Global passou de 28 para 32 para suportar o título novo
       const colStyles: any = { 
-        0: { halign: 'center', cellWidth: 25 }, 
-        3: { halign: 'center', cellWidth: 32 }, 
+        0: { halign: 'center', cellWidth: 30 }, 
+        1: { cellWidth: 'auto' },               
+        2: { cellWidth: 40 },                   
+        3: { halign: 'center', cellWidth: 26 }, 
         4: { halign: 'center', cellWidth: 26 }, 
-        5: { halign: 'right', cellWidth: 32 } 
+        5: { halign: 'right', cellWidth: 32 },  
+        6: { halign: 'center', cellWidth: 24 }  
       };
 
       autoTable(docPdf, {
@@ -189,6 +216,7 @@ export default function Painel() {
         <div className="legenda-container" style={{ display: 'flex', gap: '20px', marginBottom: '15px', fontSize: '12px', color: '#666' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', backgroundColor: '#ffd5d5', border: '1px solid #ff000033' }}></div> Vencimento em menos de 1 mês</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', backgroundColor: '#fff9c4', border: '1px solid #ffc10733' }}></div> Vencimento em menos de 3 meses</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', backgroundColor: '#64748b', border: '1px solid #475569' }}></div> Contrato Vencido</div>
         </div>
 
         <table className="tabela-contratos">
@@ -199,23 +227,38 @@ export default function Painel() {
               <th onClick={() => lidarComOrdenacao('fornecedor')} style={{ cursor: 'pointer' }}>Fornecedor {renderSeta('fornecedor')}</th>
               <th onClick={() => lidarComOrdenacao('cnpjFornecedor')} style={{ cursor: 'pointer' }}>CNPJ {renderSeta('cnpjFornecedor')}</th>
               <th onClick={() => lidarComOrdenacao('dataFim')} style={{ cursor: 'pointer' }}>Validade {renderSeta('dataFim')}</th>
+              <th onClick={() => lidarComOrdenacao('valorTotal')} style={{ cursor: 'pointer' }}>Valor Global {renderSeta('valorTotal')}</th>
+              <th onClick={() => lidarComOrdenacao('fiscalContrato')} style={{ cursor: 'pointer' }}>Fiscal {renderSeta('fiscalContrato')}</th>
               <th>Última Atualização</th>
               <th>Ações</th>
             </tr>
           </thead>
           <tbody>
             {contratosFiltrados.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: 'center' }}>{termoBusca ? 'Nenhum contrato encontrado.' : 'Nenhum contrato cadastrado.'}</td></tr>
+              <tr><td colSpan={9} style={{ textAlign: 'center' }}>{termoBusca ? 'Nenhum contrato encontrado.' : 'Nenhum contrato cadastrado.'}</td></tr>
             ) : (
               contratosFiltrados.map((c) => {
                 const styleVencimento = getRowStyle(c.dataFim);
+                const isVencido = styleVencimento.backgroundColor === '#64748b'; 
+                
                 return (
                   <tr key={c.id} style={styleVencimento} title={getRowTitle(c.dataFim)}>
-                    <td style={{ fontWeight: 'bold' }}>{c.numeroContrato}</td>
+                    <td>
+                      <span style={{ fontWeight: 'bold' }}>{c.numeroContrato}</span>
+                      {c.aditivos && c.aditivos.length > 0 && (
+                        <span style={{ marginLeft: '8px', fontSize: '10px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 6px', borderRadius: '12px', fontWeight: 'bold', whiteSpace: 'nowrap' }} title={`${c.aditivos.length} aditivo(s) registado(s)`}>
+                          📝 +{c.aditivos.length}
+                        </span>
+                      )}
+                    </td>
                     <td>{c.objetoResumido}</td>
                     <td>{c.fornecedor}</td>
                     <td>{c.cnpjFornecedor || '-'}</td>
                     <td style={{ fontWeight: 'bold' }}>{formatarDataBr(c.dataFim)}</td>
+                    <td style={{ fontWeight: 'bold', color: isVencido ? '#ffffff' : '#004a99' }}>
+                      {Number(c.valorTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </td>
+                    <td>{c.fiscalContrato || '-'}</td>
                     <td>{c.dataUltimaAtualizacao || 'N/A'}</td>
                     <td style={{ display: 'flex', gap: '5px' }}>
                       <button style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => navigate(`/contrato/${c.id}`)}>Detalhes</button>
