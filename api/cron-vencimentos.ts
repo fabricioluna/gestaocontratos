@@ -20,8 +20,13 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 
 export default async function handler(req: any, res: any) {
+  // 1. USO DA VARIÁVEL REQ (Resolve o Erro do TypeScript e aumenta a segurança)
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return res.status(405).json({ success: false, message: 'Método não permitido.' });
+  }
+
   try {
-    // 1. O robô faz login no Firebase para ter permissão de ler os dados
+    // 2. O robô faz login no Firebase para ter permissão de ler os dados
     const emailBot = process.env.BOT_EMAIL || '';
     const senhaBot = process.env.BOT_PASS || '';
     
@@ -30,11 +35,11 @@ export default async function handler(req: any, res: any) {
     }
     await signInWithEmailAndPassword(auth, emailBot, senhaBot);
 
-    // 2. Busca todos os contratos
+    // 3. Busca todos os contratos
     const snapshot = await getDocs(collection(db, 'contratos'));
     const contratos = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
 
-    // 3. Configura a sua conta do Gmail para enviar os alertas
+    // 4. Configura a sua conta do Gmail para enviar os alertas
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -47,7 +52,7 @@ export default async function handler(req: any, res: any) {
     hoje.setHours(0, 0, 0, 0); // Zera a hora para fazer conta de dias exatos
     let emailsEnviados = 0;
 
-    // 4. Analisa contrato a contrato
+    // 5. Analisa contrato a contrato
     for (const c of contratos) {
       // Ignora contratos que não têm data de fim, já distratados ou sem e-mail de secretaria
       if (!c.dataFim || c.dataDistrato || !c.emailSecretaria) continue;
@@ -89,7 +94,6 @@ export default async function handler(req: any, res: any) {
         // Prepara as cópias (CC)
         const emailPrincipal = process.env.EMAIL_USER || '';
         const emailExtra = process.env.EMAIL_CC || '';
-        // Junta os e-mails separados por vírgula. Se o emailExtra estiver vazio, ignora-o.
         const listaCopias = [emailPrincipal, emailExtra].filter(e => e !== '').join(', ');
 
         await transporter.sendMail({
