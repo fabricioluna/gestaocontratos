@@ -200,23 +200,23 @@ export default function Painel() {
       </header>
 
       <main className="conteudo">
-        <div className="acoes-topo">
+        <div className="acoes-topo" style={{ flexWrap: 'wrap', gap: '15px' }}>
           <h2>Contratos Cadastrados</h2>
-          <div style={{ position: 'relative', flex: 1, maxWidth: '600px', margin: '0 20px' }}>
+          
+          <div style={{ position: 'relative', flex: '1 1 250px', maxWidth: '600px', margin: '0' }}>
             <svg style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            <input type="text" placeholder="Buscar por Nº, CNPJ, Fornecedor, Objeto ou Fiscal..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} style={{ width: '100%', padding: '10px 14px 10px 40px', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
+            <input type="text" placeholder="Buscar por Nº, CNPJ, Fornecedor, Objeto ou Fiscal..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} style={{ width: '100%', padding: '10px 14px 10px 40px', borderRadius: '8px', border: '1px solid #cbd5e1', minWidth: '220px' }} />
           </div>
-          <div style={{ display: 'flex', gap: '12px' }}>
+          
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             <button onClick={exportarParaExcel} className="btn-acao primario" style={{ backgroundColor: '#28a745', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
               📊 Excel
             </button>
-            <button onClick={() => setIsModalRelatorioOpen(true)} className="btn-cancelar">📄 PDF</button>
+            <button onClick={() => setIsModalRelatorioOpen(true)} className="btn-cancelar" style={{ backgroundColor: 'white' }}>📄 PDF</button>
             
-            {/* Esconde botão Novo Contrato se não for Admin */}
             {isAdmin && <button onClick={() => setIsModalOpen(true)} className="btn-salvar">Novo Contrato</button>}
           </div>
         </div>
-
         <div className="legenda-container" style={{ display: 'flex', gap: '20px', marginBottom: '15px', fontSize: '12px', color: '#666' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', backgroundColor: '#ffd5d5', border: '1px solid #ff000033' }}></div> Vencimento em menos de 1 mês</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', backgroundColor: '#fff9c4', border: '1px solid #ffc10733' }}></div> Vencimento em menos de 3 meses</div>

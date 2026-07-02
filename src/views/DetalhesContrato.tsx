@@ -1,8 +1,11 @@
+
 // src/views/DetalhesContrato.tsx
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import toast from 'react-hot-toast';
 import logo from '../assets/logopmp.png';
 import './DetalhesContrato.css';
 
@@ -189,7 +192,56 @@ export default function DetalhesContrato() {
     img.onload = () => { doc.addImage(img, 'PNG', 14, 10, 25, 25); gerarConteudoPDF(); };
     img.onerror = () => { gerarConteudoPDF(); };
   };
+// --- NOVA GERAÇÃO DE EXCEL INDIVIDUAL ---
+  const gerarRelatorioExcel = () => {
+    setIsModalRelatorioOpen(false);
+    
+    if (itensCatalogo.length === 0 && (!contrato.aditivos || contrato.aditivos.length === 0)) {
+      toast.error("Este contrato não possui itens no catálogo para exportar.");
+      return;
+    }
 
+    const dadosPlanilha: any[] = [];
+
+    // Adiciona os itens originais
+    itensCatalogo.forEach(i => {
+      dadosPlanilha.push({
+        'ITEM': i.numeroItem || '-',
+        'DESCRIÇÃO': i.discriminacao,
+        'UNID': i.unidade || 'UND',
+        'QTDE': i.quantidade,
+        'VALOR UNIT': i.valorUnitario,
+        'VALOR TOTAL': i.valorTotalItem,
+        'LOTE': i.numeroLote || '-',
+        'ORIGEM': 'Catálogo Original'
+      });
+    });
+
+    // Se marcado, adiciona os itens afetados por aditivos
+    if (opcIncluirAditivos && contrato.aditivos) {
+      contrato.aditivos.forEach(aditivo => {
+        if (aditivo.itensAditivados) {
+          aditivo.itensAditivados.forEach(ia => {
+            dadosPlanilha.push({
+              'ITEM': ia.numeroItem || '-',
+              'DESCRIÇÃO': ia.discriminacao,
+              'UNID': ia.unidade || 'UND',
+              'QTDE': ia.quantidade,
+              'VALOR UNIT': ia.valorUnitario,
+              'VALOR TOTAL': ia.valorTotalItem,
+              'LOTE': ia.numeroLote || '-',
+              'ORIGEM': `Aditivo: ${aditivo.descricao}`
+            });
+          });
+        }
+      });
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(dadosPlanilha);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Itens do Contrato");
+    XLSX.writeFile(workbook, `Itens_Contrato_${contrato.numeroContrato}.xlsx`);
+  };
   return (
     <div className="detalhes-container">
       {/* CABEÇALHO COM A LOGO E O PADRÃO PREMIUM */}
@@ -208,7 +260,7 @@ export default function DetalhesContrato() {
           <span className="status-badge" style={{ backgroundColor: status.cor }}>{status.texto}</span>
           
           <button className="btn-acao primario" onClick={() => setIsModalRelatorioOpen(true)} style={{ backgroundColor: 'white', color: '#0a2540', border: 'none' }}>
-            📄 Imprimir Relatório
+            📤 Exportar
           </button>
           
           <button className="btn-voltar" onClick={() => navigate('/painel')}>
@@ -354,7 +406,14 @@ export default function DetalhesContrato() {
       {isAdmin && <ModalAditivo isOpen={isModalAditivoOpen} onClose={() => { setIsModalAditivoOpen(false); fecharModalAditivoState(); }} aditivoEmEdicao={aditivoEmEdicao} aditivoDataAditivo={aditivoDataAditivo} setAditivoDataAditivo={setAditivoDataAditivo} aditivoDescricao={aditivoDescricao} setAditivoDescricao={setAditivoDescricao} aditivoTipo={aditivoTipo} setAditivoTipo={setAditivoTipo} aditivoOperacao={aditivoOperacao} setAditivoOperacao={setAditivoOperacao} aditivoValor={aditivoValor} setAditivoValor={setAditivoValor} aditivoNovaData={aditivoNovaData} setAditivoNovaData={setAditivoNovaData} itensDoAditivo={itensDoAditivo} arquivoPdfAditivo={arquivoPdfAditivo} setArquivoPdfAditivo={setArquivoPdfAditivo} processandoPdfIA={processandoPdfIA} lidarProcessamentoIA={lidarProcessamentoIA} itensCatalogo={itensCatalogo} itemManualSel={itemManualSel} setItemManualSel={setItemManualSel} itemManualQtd={itemManualQtd} setItemManualQtd={setItemManualQtd} itemManualVlUnit={itemManualVlUnit} setItemManualVlUnit={setItemManualVlUnit} lidarAdicionarItemManual={lidarAdicionarItemManual} removerItemAditivo={removerItemAditivo} salvarAditivo={salvarAditivo} loading={loading} />}
       {isAdmin && <ModalDistrato isOpen={isModalDistratoOpen} onClose={() => setIsModalDistratoOpen(false)} distratoData={distratoData} setDistratoData={setDistratoData} distratoMotivo={distratoMotivo} setDistratoMotivo={setDistratoMotivo} salvarDistrato={salvarDistrato} loading={loading} />}
       
-      <ModalOpcoesRelatorio isOpen={isModalRelatorioOpen} onClose={() => setIsModalRelatorioOpen(false)} opcIncluirAditivos={opcIncluirAditivos} setOpcIncluirAditivos={setOpcIncluirAditivos} gerarRelatorioPDF={gerarRelatorioPDF} />
+      <ModalOpcoesRelatorio 
+        isOpen={isModalRelatorioOpen} 
+        onClose={() => setIsModalRelatorioOpen(false)} 
+        opcIncluirAditivos={opcIncluirAditivos} 
+        setOpcIncluirAditivos={setOpcIncluirAditivos} 
+        gerarRelatorioPDF={gerarRelatorioPDF}
+        gerarRelatorioExcel={gerarRelatorioExcel} 
+      />
     </div>
   );
 }
