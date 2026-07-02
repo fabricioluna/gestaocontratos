@@ -1,6 +1,6 @@
 // src/components/DetalhesContrato/ModalAditivo.tsx
 import type { FormEvent } from 'react';
-import type { Aditivo, ItemAditivo, Item } from '../../types/types';
+import type { Aditivo, ItemAditivado, Item } from '../../types/types';
 
 interface Props {
   isOpen: boolean;
@@ -29,7 +29,7 @@ interface Props {
   itemManualVlUnit: number | ''; 
   setItemManualVlUnit: (v: number | '') => void;
   lidarAdicionarItemManual: () => void;
-  itensDoAditivo: ItemAditivo[];
+  itensDoAditivo: ItemAditivado[];
   removerItemAditivo: (idx: number) => void;
   itensCatalogo: Item[];
   salvarAditivo: (e: FormEvent, onSuccess: () => void) => void;
