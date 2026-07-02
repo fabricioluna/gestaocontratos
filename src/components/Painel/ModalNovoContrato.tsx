@@ -23,6 +23,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(false);
+  const [verificandoEmail, setVerificandoEmail] = useState(false); // NOVO: Estado para o botão de e-mail
   const [itensPrevia, setItensPrevia] = useState<Item[]>([]);
   const [formItem, setFormItem] = useState({ numeroLote: '', numeroItem: '', discriminacao: '', unidade: '', quantidade: '', valorUnitario: '' });
 
@@ -57,6 +58,45 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
     valor = valor.replace(/\.(\d{3})(\d)/, '.$1/$2');
     valor = valor.replace(/(\d{4})(\d)/, '$1-$2');
     setFormData(prev => ({ ...prev, cnpjFornecedor: valor }));
+  };
+
+  // --- NOVA FUNÇÃO: VERIFICAR E CRIAR ACESSO NO FIREBASE ---
+  const verificarOuCadastrarEmail = async () => {
+    if (!formData.emailSecretaria) {
+      toast.error("Por favor, digite um e-mail no campo antes de validar.");
+      return;
+    }
+    
+    setVerificandoEmail(true);
+    const toastId = toast.loading('A verificar permissões no sistema...');
+    
+    try {
+      const response = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.emailSecretaria,
+          nomeOrgao: orgaoLogado
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+         if (data.isNewUser) {
+            toast.success("Sucesso! Novo acesso criado e credenciais enviadas ao fiscal.", { id: toastId });
+         } else {
+            toast.success("Este fiscal já possui acesso autorizado no sistema.", { id: toastId });
+         }
+      } else {
+         toast.error(data.message || "Erro ao tentar validar o utilizador.", { id: toastId });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro de comunicação com o servidor. Tente novamente.", { id: toastId });
+    } finally {
+      setVerificandoEmail(false);
+    }
   };
 
   const tratarValorIA = (valor: unknown): string => {
@@ -273,8 +313,24 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
             <div className="form-group"><label>CNPJ do Fornecedor</label><input type="text" name="cnpjFornecedor" value={formData.cnpjFornecedor} onChange={formatarCNPJ} placeholder="00.000.000/0000-00" maxLength={18} /></div>
             <div className="form-group"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formData.fornecedor} onChange={lidarComMudanca} /></div>
             
-            {/* NOVO RÓTULO APLICADO AQUI */}
-            <div className="form-group full-width"><label>E-mail da Sec. Demandante/Fiscal (Para envio de alertas automáticos)</label><input type="email" name="emailSecretaria" value={formData.emailSecretaria} onChange={lidarComMudanca} placeholder="exemplo@pesqueira.pe.gov.br" /></div>
+            {/* O NOVO CAMPO MÁGICO DE E-MAIL COM O BOTÃO DE VALIDAÇÃO */}
+            <div className="form-group full-width">
+              <label>E-mail da Sec. Demandante/Fiscal (Para envio de alertas e permissão de acesso)</label>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <input type="email" name="emailSecretaria" value={formData.emailSecretaria} onChange={lidarComMudanca} placeholder="exemplo.fiscal@pesqueira.pe.gov.br" style={{ flex: 1 }} />
+                <button 
+                  type="button" 
+                  onClick={verificarOuCadastrarEmail} 
+                  disabled={verificandoEmail} 
+                  style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '0 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s', width: '220px' }}
+                >
+                  {verificandoEmail ? '⏳ A verificar...' : '🔍 Validar / Criar Acesso'}
+                </button>
+              </div>
+              <small style={{ color: '#64748b', fontSize: '11px', marginTop: '6px', display: 'block' }}>
+                * Clique no botão verde para garantir que este e-mail tem um perfil criado no sistema. Se não tiver, será criado automaticamente.
+              </small>
+            </div>
             
             <div className="form-group full-width"><label>Objeto Resumido</label><input type="text" name="objetoResumido" required value={formData.objetoResumido} onChange={lidarComMudanca} /></div>
             <div className="form-group full-width"><label>Objeto Completo</label><textarea name="objetoCompleto" rows={2} value={formData.objetoCompleto} onChange={lidarComMudanca}></textarea></div>
