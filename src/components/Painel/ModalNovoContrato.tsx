@@ -61,6 +61,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
   };
 
   // --- NOVA FUNÇÃO: VERIFICAR E CRIAR ACESSO NO FIREBASE ---
+  // --- NOVA FUNÇÃO: VERIFICAR E CRIAR ACESSO NO FIREBASE ---
   const verificarOuCadastrarEmail = async () => {
     if (!formData.emailSecretaria) {
       toast.error("Por favor, digite um e-mail no campo antes de validar.");
@@ -74,26 +75,24 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       const response = await fetch('/api/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: formData.emailSecretaria,
-          nomeOrgao: orgaoLogado
-        })
+        body: JSON.stringify({ email: formData.emailSecretaria, nomeOrgao: orgaoLogado })
       });
       
-      const data = await response.json();
+      let data;
+      try {
+         data = await response.json();
+      } catch (err) {
+         throw new Error("O servidor da Vercel retornou um erro crítico (Erro 500).");
+      }
       
-      if (data.success) {
-         if (data.isNewUser) {
-            toast.success("Sucesso! Novo acesso criado e credenciais enviadas ao fiscal.", { id: toastId });
-         } else {
-            toast.success("Este fiscal já possui acesso autorizado no sistema.", { id: toastId });
-         }
+      if (response.ok && data.success) {
+         toast.success(data.message, { id: toastId });
       } else {
          toast.error(data.message || "Erro ao tentar validar o utilizador.", { id: toastId });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Erro de comunicação com o servidor. Tente novamente.", { id: toastId });
+      toast.error(error.message || "Erro de comunicação. Tente novamente.", { id: toastId });
     } finally {
       setVerificandoEmail(false);
     }
