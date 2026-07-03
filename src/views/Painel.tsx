@@ -202,21 +202,20 @@ export default function Painel() {
       </header>
 
       <main className="conteudo">
-        <div className="acoes-topo" style={{ flexWrap: 'wrap', gap: '15px' }}>
-          <h2>Contratos Cadastrados</h2>
+        <div className="acoes-topo" style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '10px' }}>
+          <h2 style={{ margin: 0, whiteSpace: 'nowrap' }}>Contratos Cadastrados</h2>
           
-          <div style={{ position: 'relative', flex: '1 1 250px', maxWidth: '600px', margin: '0' }}>
+          <div style={{ position: 'relative', flex: '1 1 300px', minWidth: '250px' }}>
             <svg style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            <input type="text" placeholder="Buscar por Nº, CNPJ, Fornecedor, Objeto ou Fiscal..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} style={{ width: '100%', padding: '10px 14px 10px 40px', borderRadius: '8px', border: '1px solid #cbd5e1', minWidth: '220px' }} />
+            <input type="text" placeholder="Buscar por Nº, CNPJ, Fornecedor, Objeto ou Fiscal..." value={termoBusca} onChange={(e) => setTermoBusca(e.target.value)} style={{ width: '100%', padding: '10px 14px 10px 40px', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
           </div>
           
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button onClick={exportarParaExcel} className="btn-acao primario" style={{ backgroundColor: '#28a745', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
               📊 Excel
             </button>
             <button onClick={() => setIsModalRelatorioOpen(true)} className="btn-cancelar" style={{ backgroundColor: 'white' }}>📄 PDF</button>
             
-            {/* NOVO BOTÃO DE USUÁRIOS AQUI */}
             {isAdmin && (
               <button onClick={() => setIsModalUsuariosOpen(true)} style={{ backgroundColor: '#0f172a', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
                 👥 Usuários

@@ -1,6 +1,7 @@
 // src/hooks/useContratos.ts
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import toast from 'react-hot-toast';
 import { db } from '../firebase';
 import type { Contrato } from '../types/types';
@@ -12,26 +13,26 @@ export const useContratos = (orgaoLogado: string | null) => {
   const [termoBusca, setTermoBusca] = useState('');
   const [ordenacao, setOrdenacao] = useState<{ campo: string, direcao: 'asc' | 'desc' }>({ campo: 'numeroContrato', direcao: 'desc' });
 
-  // 1. CARREGAR DADOS DO FIREBASE (COM ISOLAMENTO DE SEGURANÇA)
+  // 1. CARREGAR DADOS DO FIREBASE (CORRIGIDO PARA SESSIONSTORAGE)
   useEffect(() => {
-    // 1.1. Identifica quem é o utilizador logado diretamente no hook
-    const isAdmin = localStorage.getItem('userRole') === 'admin';
-    const userEmail = localStorage.getItem('userEmail');
-
-    // Segurança Base: Se for fiscal e não tiver email, aborta. Se for admin e não tiver órgão, aborta.
-    if (!isAdmin && !userEmail) return;
-    if (isAdmin && !orgaoLogado) return;
+    // Busca os dados da forma correta baseada no seu Painel.tsx
+    const perfil = sessionStorage.getItem('perfilLogado') || 'viewer';
+    const isAdmin = perfil === 'admin';
+    const auth = getAuth();
     
+    // Tenta pegar o email do Firebase, ou do SessionStorage como backup
+    const userEmail = auth.currentUser?.email || sessionStorage.getItem('emailUsuario') || sessionStorage.getItem('userEmail');
+
     const contratosRef = collection(db, 'contratos');
     let q;
 
-    // 1.2. A MÁGICA DA SEGURANÇA (RLS - Row Level Security)
     if (isAdmin) {
-      // O Administrador pode puxar todos os contratos do banco de dados
       q = query(contratosRef);
     } else {
-      // O Fiscal puxa EXCLUSIVAMENTE os contratos onde o e-mail dele está cadastrado.
-      // O Firebase bloqueia o envio de qualquer outro contrato pela rede!
+      if (!userEmail) {
+        console.warn("Aguardando email do fiscal...");
+        return; 
+      }
       q = query(contratosRef, where('emailSecretaria', '==', userEmail));
     }
     
@@ -42,21 +43,19 @@ export const useContratos = (orgaoLogado: string | null) => {
         const dados = docSnap.data();
         
         if (isAdmin) {
-          // O Admin continua com a filtragem visual do órgão logado (mantendo a sua lógica original)
           const identificadorOrgao = dados.orgaoId || dados.orgao || '';
-          if (orgaoLogado && identificadorOrgao.toLowerCase().includes(orgaoLogado.toLowerCase())) {
+          if (!orgaoLogado || identificadorOrgao.toLowerCase().includes(orgaoLogado.toLowerCase())) {
             lista.push({ id: docSnap.id, ...dados } as Contrato);
           }
         } else {
-          // Para o fiscal, a query segura do Firebase já fez todo o trabalho. É só injetar!
           lista.push({ id: docSnap.id, ...dados } as Contrato);
         }
       });
       
       setContratos(lista);
     }, (error) => {
-      console.error("[Firebase Debug] Erro ao ler a coleção 'contratos':", error);
-      toast.error('Erro de segurança ou falha ao conectar com a base de dados.'); 
+      console.error("[Firebase Debug] Erro ao ler contratos:", error);
+      toast.error('Erro ao conectar com a base de dados.'); 
     });
     
     return () => unsubscribe();
@@ -73,30 +72,18 @@ export const useContratos = (orgaoLogado: string | null) => {
       const extrairAnoNumero = (c: Contrato) => {
         const numStr = c.numeroContrato || '';
         const partes = numStr.split('/');
-        
-        let numero = 0;
-        let ano = 0;
-        
-        if (partes.length > 0) {
-          numero = parseInt(partes[0].replace(/\D/g, ''), 10) || 0;
-        }
-        
+        let numero = 0; let ano = 0;
+        if (partes.length > 0) numero = parseInt(partes[0].replace(/\D/g, ''), 10) || 0;
         if (partes.length > 1 && partes[1].replace(/\D/g, '').length >= 4) {
           ano = parseInt(partes[1].replace(/\D/g, '').substring(0, 4), 10) || 0;
         } else {
-          if (c.dataInicio) {
-            ano = parseInt(c.dataInicio.substring(0, 4), 10) || 0;
-          }
+          if (c.dataInicio) ano = parseInt(c.dataInicio.substring(0, 4), 10) || 0;
         }
         return { ano, numero };
       };
-
       const valA = extrairAnoNumero(a);
       const valB = extrairAnoNumero(b);
-
-      if (valA.ano !== valB.ano) {
-        return ordenacao.direcao === 'asc' ? valA.ano - valB.ano : valB.ano - valA.ano;
-      }
+      if (valA.ano !== valB.ano) return ordenacao.direcao === 'asc' ? valA.ano - valB.ano : valB.ano - valA.ano;
       return ordenacao.direcao === 'asc' ? valA.numero - valB.numero : valB.numero - valA.numero;
     }
 
@@ -137,7 +124,6 @@ export const useContratos = (orgaoLogado: string | null) => {
         }
         setLoading(false);
       };
-
       toast.promise(exclusaoPromise(), {
         loading: 'A excluir contrato e itens...',
         success: 'Contrato excluído com sucesso!',
@@ -147,12 +133,7 @@ export const useContratos = (orgaoLogado: string | null) => {
   };
 
   return {
-    contratosFiltrados,
-    loading,
-    termoBusca,
-    setTermoBusca,
-    ordenacao,
-    lidarComOrdenacao,
-    excluirContrato
+    contratosFiltrados, loading, termoBusca, setTermoBusca, 
+    ordenacao, lidarComOrdenacao, excluirContrato
   };
 };
