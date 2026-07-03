@@ -1,5 +1,5 @@
 // src/components/Painel/ModalNovoContrato.tsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { collection, addDoc, writeBatch, doc } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth'; 
@@ -23,15 +23,39 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(false);
-  const [verificandoEmail, setVerificandoEmail] = useState(false); // NOVO: Estado para o botão de e-mail
+  const [verificandoEmail, setVerificandoEmail] = useState(false); 
   const [itensPrevia, setItensPrevia] = useState<Item[]>([]);
   const [formItem, setFormItem] = useState({ numeroLote: '', numeroItem: '', discriminacao: '', unidade: '', quantidade: '', valorUnitario: '' });
+
+  const [sugestoesEmails, setSugestoesEmails] = useState<string[]>([]); // NOVO: Guarda os e-mails para o Autocomplete
 
   const [formData, setFormData] = useState<FormContratoState>({
     numeroContrato: '', numeroProcesso: '', modalidade: '', numeroModalidade: '', numeroAta: '',
     fornecedor: '', cnpjFornecedor: '', emailSecretaria: '', objetoCompleto: '', objetoResumido: '', 
     dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: ''
   });
+
+  // NOVO MOTOR: Busca a lista de e-mails sempre que o Modal abrir
+  useEffect(() => {
+    if (isOpen) {
+      const carregarEmailsDoSistema = async () => {
+        try {
+          const res = await fetch('/api/list-users');
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.emails) {
+              setSugestoesEmails(data.emails);
+            }
+          }
+        } catch (error) {
+          console.error("Aviso: Falha ao carregar as sugestões de e-mail.", error);
+        }
+      };
+      carregarEmailsDoSistema();
+    } else {
+      setSugestoesEmails([]); // Limpa a memória ao fechar
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -60,11 +84,9 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
     setFormData(prev => ({ ...prev, cnpjFornecedor: valor }));
   };
 
-  // --- NOVA FUNÇÃO: VERIFICAR E CRIAR ACESSO NO FIREBASE ---
-  // --- NOVA FUNÇÃO: VERIFICAR E CRIAR ACESSO NO FIREBASE ---
   const verificarOuCadastrarEmail = async () => {
     if (!formData.emailSecretaria) {
-      toast.error("Por favor, digite um e-mail no campo antes de validar.");
+      toast.error("Por favor, digite ou selecione um e-mail no campo antes de validar.");
       return;
     }
     
@@ -143,6 +165,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
         numeroModalidade: dadosIA.numeroPregao || dadosIA.numeroModalidade || prev.numeroModalidade,
         numeroAta: dadosIA.numeroAta || prev.numeroAta,
         fornecedor: dadosIA.fornecedor || prev.fornecedor,
+        cnpjFornecedor: dadosIA.cnpjFornecedor || prev.cnpjFornecedor,
         objetoCompleto: dadosIA.objetoCompleto || prev.objetoCompleto,
         objetoResumido: dadosIA.objetoResumido || prev.objetoResumido,
         valorTotal: dadosIA.valorTotal ? tratarValorIA(dadosIA.valorTotal) : prev.valorTotal,
@@ -312,11 +335,28 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
             <div className="form-group"><label>CNPJ do Fornecedor</label><input type="text" name="cnpjFornecedor" value={formData.cnpjFornecedor} onChange={formatarCNPJ} placeholder="00.000.000/0000-00" maxLength={18} /></div>
             <div className="form-group"><label>Fornecedor</label><input type="text" name="fornecedor" required value={formData.fornecedor} onChange={lidarComMudanca} /></div>
             
-            {/* O NOVO CAMPO MÁGICO DE E-MAIL COM O BOTÃO DE VALIDAÇÃO */}
+            {/* O NOVO CAMPO MÁGICO COM AUTOCOMPLETE */}
             <div className="form-group full-width">
               <label>E-mail da Sec. Demandante/Fiscal (Para envio de alertas e permissão de acesso)</label>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <input type="email" name="emailSecretaria" value={formData.emailSecretaria} onChange={lidarComMudanca} placeholder="exemplo.fiscal@pesqueira.pe.gov.br" style={{ flex: 1 }} />
+                <input 
+                  type="email" 
+                  name="emailSecretaria" 
+                  value={formData.emailSecretaria} 
+                  onChange={lidarComMudanca} 
+                  placeholder="Comece a digitar para ver os e-mails registados..." 
+                  style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }} 
+                  list="lista-emails-sugestoes"
+                  autoComplete="off"
+                />
+                
+                {/* A Datalist que gera o menu suspenso nativo */}
+                <datalist id="lista-emails-sugestoes">
+                  {sugestoesEmails.map((email, idx) => (
+                    <option key={idx} value={email} />
+                  ))}
+                </datalist>
+
                 <button 
                   type="button" 
                   onClick={verificarOuCadastrarEmail} 
@@ -327,7 +367,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
                 </button>
               </div>
               <small style={{ color: '#64748b', fontSize: '11px', marginTop: '6px', display: 'block' }}>
-                * Clique no botão verde para garantir que este e-mail tem um perfil criado no sistema. Se não tiver, será criado automaticamente.
+                * Selecione um e-mail da lista suspensa ou digite um novo manualmente. Depois, clique no botão verde.
               </small>
             </div>
             
