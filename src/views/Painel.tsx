@@ -237,7 +237,7 @@ export default function Painel() {
               <th onClick={() => lidarComOrdenacao('numeroContrato')} style={{ cursor: 'pointer' }}>Nº Contrato {renderSeta('numeroContrato')}</th>
               <th onClick={() => lidarComOrdenacao('objetoResumido')} style={{ cursor: 'pointer' }}>Objeto Resumido {renderSeta('objetoResumido')}</th>
               <th onClick={() => lidarComOrdenacao('fornecedor')} style={{ cursor: 'pointer' }}>Fornecedor {renderSeta('fornecedor')}</th>
-              <th onClick={() => lidarComOrdenacao('cnpjFornecedor')} style={{ cursor: 'pointer' }}>CNPJ {renderSeta('cnpjFornecedor')}</th>
+              <th onClick={() => lidarComOrdenacao('cnpjFornecedor')} style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>CPF / CNPJ {renderSeta('cnpjFornecedor')}</th>
               <th onClick={() => lidarComOrdenacao('dataFim')} style={{ cursor: 'pointer' }}>Validade {renderSeta('dataFim')}</th>
               <th onClick={() => lidarComOrdenacao('valorTotal')} style={{ cursor: 'pointer' }}>Valor Global {renderSeta('valorTotal')}</th>
               <th onClick={() => lidarComOrdenacao('fiscalContrato')} style={{ cursor: 'pointer' }}>Fiscal {renderSeta('fiscalContrato')}</th>
@@ -262,7 +262,7 @@ export default function Painel() {
                     </td>
                     <td>{c.objetoResumido}</td>
                     <td>{c.fornecedor}</td>
-                    <td>{c.cnpjFornecedor || '-'}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{c.cnpjFornecedor || '-'}</td>
                     <td style={{ fontWeight: 'bold' }}>{formatarDataBr(c.dataFim)}</td>
                     <td style={{ fontWeight: 'bold', color: isVencido ? '#ffffff' : '#004a99' }}>{Number(c.valorTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                     <td>{c.fiscalContrato || '-'}</td>
