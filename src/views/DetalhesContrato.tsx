@@ -1,5 +1,4 @@
 // src/views/DetalhesContrato.tsx
-import ModalEmitirOS from '../components/DetalhesContrato/ModalEmitirOS';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import jsPDF from 'jspdf';
@@ -11,10 +10,13 @@ import './DetalhesContrato.css';
 
 import { formatarDataBr } from '../utils/formatters';
 import { useDetalhesContrato } from '../hooks/useDetalhesContrato';
+import type { Item } from '../types/types';
 
 import ModalAditivo from '../components/DetalhesContrato/ModalAditivo';
 import ModalDistrato from '../components/DetalhesContrato/ModalDistrato';
 import ModalOpcoesRelatorio from '../components/DetalhesContrato/ModalOpcoesRelatorio';
+import ModalEmitirOS from '../components/DetalhesContrato/ModalEmitirOS';
+import ModalEditarItemCatalogo from '../components/DetalhesContrato/ModalEditarItemCatalogo'; // NOVO MODAL
 
 export default function DetalhesContrato() {
   const { id } = useParams<{ id: string }>();
@@ -32,23 +34,25 @@ export default function DetalhesContrato() {
     processandoPdfIA, itemManualSel, setItemManualSel, itemManualQtd, setItemManualQtd, itemManualVlUnit, 
     setItemManualVlUnit, fecharModalAditivoState, lidarProcessamentoIA, lidarAdicionarItemManual, 
     removerItemAditivo, abrirEdicaoAditivo, excluirAditivo, salvarAditivo,
-    distratoData, setDistratoData, distratoMotivo, setDistratoMotivo, salvarDistrato, excluirContrato
+    distratoData, setDistratoData, distratoMotivo, setDistratoMotivo, salvarDistrato, excluirContrato,
+    salvarEdicaoItem // NOVA FUNÇÃO DO HOOK
   } = useDetalhesContrato(id || '');
 
   const [isModalAditivoOpen, setIsModalAditivoOpen] = useState(false);
   const [isModalDistratoOpen, setIsModalDistratoOpen] = useState(false);
   const [isModalRelatorioOpen, setIsModalRelatorioOpen] = useState(false);
-  
-  // --- ESTADO DO NOVO MODAL DA O.S. ---
   const [isModalOSOpen, setIsModalOSOpen] = useState(false); 
-  
   const [opcIncluirAditivos, setOpcIncluirAditivos] = useState(true);
+
+  // NOVOS ESTADOS PARA O MODAL DE EDIÇÃO DO CATÁLOGO
+  const [isModalEditarItemOpen, setIsModalEditarItemOpen] = useState(false);
+  const [itemParaEditar, setItemParaEditar] = useState<Item | null>(null);
 
   const nomesOrgaos: { [key: string]: string } = {
     'prefeitura': 'Prefeitura Municipal de Pesqueira',
-    'fmas': 'Fundo Municipal de Inclusão Social e Cidadania de Pesqueira',
-    'fme': 'Fundo Municipal de Educação de Pesqueira',
-    'fms': 'Fundo Municipal de Saúde de Pesqueira'
+    'fmas': 'Fundo Municipal de Assistência Social',
+    'fme': 'Fundo Municipal de Educação',
+    'fms': 'Fundo Municipal de Saúde'
   };
 
   if (!contrato) return <div className="loading">A carregar detalhes do contrato...</div>;
@@ -208,7 +212,6 @@ export default function DetalhesContrato() {
 
     const dadosPlanilha: any[] = [];
 
-    // Adiciona os itens originais
     itensCatalogo.forEach(i => {
       dadosPlanilha.push({
         'ITEM': i.numeroItem || '-',
@@ -222,7 +225,6 @@ export default function DetalhesContrato() {
       });
     });
 
-    // Se marcado, adiciona os itens afetados por aditivos
     if (opcIncluirAditivos && contrato.aditivos) {
       contrato.aditivos.forEach(aditivo => {
         if (aditivo.itensAditivados) {
@@ -250,7 +252,6 @@ export default function DetalhesContrato() {
 
   return (
     <div className="detalhes-container">
-      {/* CABEÇALHO COM A LOGO E O PADRÃO PREMIUM */}
       <header className="detalhes-header">
         <div className="header-logo-detalhes">
           <img src={logo} alt="Logo PMP" className="logo-pequena" />
@@ -265,7 +266,6 @@ export default function DetalhesContrato() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <span className="status-badge" style={{ backgroundColor: status.cor }}>{status.texto}</span>
           
-          {/* BOTÃO DA ORDEM DE SERVIÇO (Só aparece se houver itens no catálogo) */}
           {itensCatalogo.length > 0 && (
             <button 
               className="btn-acao primario" 
@@ -293,7 +293,6 @@ export default function DetalhesContrato() {
         <section className="card-detalhe">
           <h3>
             Dados Gerais
-            {/* SEGURANÇA: Botões bloqueados para os fiscais */}
             {isAdmin && (
                <div style={{ display: 'flex', gap: '8px' }}>
                  {!contrato.dataDistrato && <button className="btn-acao alerta" onClick={() => setIsModalDistratoOpen(true)}>Distratar Contrato</button>}
@@ -343,6 +342,8 @@ export default function DetalhesContrato() {
                 <thead>
                   <tr>
                     <th>Lote</th><th>Item</th><th>Descrição</th><th>Unid.</th><th>Qtd</th><th>Valor Unit.</th><th>Valor Total</th>
+                    {/* COLUNA AÇÕES SÓ APARECE PARA ADMIN E SE NÃO ESTIVER DISTRATADO */}
+                    {isAdmin && !contrato.dataDistrato && <th>Ações</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -352,6 +353,19 @@ export default function DetalhesContrato() {
                       <td>{i.quantidade}</td>
                       <td>{Number(i.valorUnitario).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                       <td style={{ color: '#004a99', fontWeight: 'bold' }}>{Number(i.valorTotalItem).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                      
+                      {/* BOTAO PARA EDITAR ITEM DO CATÁLOGO */}
+                      {isAdmin && !contrato.dataDistrato && (
+                        <td style={{ textAlign: 'center' }}>
+                          <button 
+                            onClick={() => { setItemParaEditar(i); setIsModalEditarItemOpen(true); }} 
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }} 
+                            title="Editar Item"
+                          >
+                            ✏️
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -364,7 +378,6 @@ export default function DetalhesContrato() {
         <section className="card-detalhe">
           <h3>
             Histórico de Termos Aditivos
-            {/* SEGURANÇA: Bloqueado para os fiscais */}
             {isAdmin && !contrato.dataDistrato && (
               <button className="btn-acao secundario" onClick={() => setIsModalAditivoOpen(true)}>+ Registrar Aditivo</button>
             )}
@@ -377,7 +390,6 @@ export default function DetalhesContrato() {
               {contrato.aditivos.map((aditivo, index) => (
                 <div key={aditivo.id || index} className="card-aditivo">
                   
-                  {/* SEGURANÇA: Bloqueado para os fiscais */}
                   {isAdmin && (
                     <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '8px' }}>
                        <button onClick={() => { abrirEdicaoAditivo(aditivo); setIsModalAditivoOpen(true); }} style={{ background: 'white', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '6px', color: '#004a99', cursor: 'pointer' }} title="Editar">✏️</button>
@@ -432,12 +444,19 @@ export default function DetalhesContrato() {
         gerarRelatorioExcel={gerarRelatorioExcel} 
       />
 
-      {/* RENDERIZAÇÃO DO NOVO MODAL DA ORDEM DE SERVIÇO */}
       <ModalEmitirOS 
         isOpen={isModalOSOpen} 
         onClose={() => setIsModalOSOpen(false)} 
         contrato={contrato} 
         itensCatalogo={itensCatalogo} 
+      />
+
+      {/* RENDERIZAÇÃO DO NOVO MODAL DE EDIÇÃO DE ITENS DO CATÁLOGO */}
+      <ModalEditarItemCatalogo
+        isOpen={isModalEditarItemOpen}
+        onClose={() => setIsModalEditarItemOpen(false)}
+        itemOriginal={itemParaEditar}
+        salvarEdicao={salvarEdicaoItem}
       />
     </div>
   );
