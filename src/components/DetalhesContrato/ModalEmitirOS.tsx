@@ -1,5 +1,5 @@
 // src/components/DetalhesContrato/ModalEmitirOS.tsx
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -19,28 +19,25 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
   const [tipoDocumento, setTipoDocumento] = useState<'Ordem de Serviço' | 'Solicitação de Compra'>('Ordem de Serviço');
   const [localData, setLocalData] = useState('');
 
-  // Estados do Formulário (Justificativa, Secretaria e Assinatura)
-  const [secretaria, setSecretaria] = useState('');
+  // Estados do Formulário
+  const [orgao, setOrgao] = useState('');
   const [justificativa, setJustificativa] = useState('');
   const [nomeSolicitante, setNomeSolicitante] = useState('');
   const [documentoSolicitante, setDocumentoSolicitante] = useState('');
   const [cargoSolicitante, setCargoSolicitante] = useState('');
 
-  // Define a data por extenso dinamicamente ao abrir o modal
+  // Data dinâmica formatada nativamente em português (Pesqueira-PE, 03 de julho de 2026)
   useEffect(() => {
     if (isOpen) {
-      const meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
       const hoje = new Date();
-      const dia = String(hoje.getDate()).padStart(2, '0');
-      const mes = meses[hoje.getMonth()];
-      const ano = hoje.getFullYear();
-      setLocalData(`Pesqueira-PE, ${dia} de ${mes} de ${ano}`);
+      const formatador = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+      setLocalData(`Pesqueira-PE, ${formatador.format(hoje)}`);
     }
   }, [isOpen]);
 
   if (!isOpen || !contrato) return null;
 
-  // Dicionário Oficial de Qualificações dos Órgãos
+  // Dicionário Oficial de Qualificações
   const orgaosQualificacao: Record<string, { nome: string, cnpj: string }> = {
     'prefeitura': { nome: 'Prefeitura Municipal de Pesqueira', cnpj: '10.264.406/0001-35' },
     'fme': { nome: 'Fundo Municipal de Educação', cnpj: '06.074.663/0001-37' },
@@ -75,7 +72,6 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
       .replace(/(-\d{2})\d+?$/, '$1');
   };
 
-  // Motor Independente de PDF
   const gerarDocumentoPDF = () => {
     const itensParaPedir = itensCatalogo.filter(item => Number(quantidadesPedidas[item.id!] || 0) > 0);
 
@@ -84,20 +80,19 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
       return;
     }
 
-    if (!secretaria || !nomeSolicitante || !cargoSolicitante) {
-      toast.error("Por favor, preencha a Secretaria, Nome e Cargo do solicitante.");
+    if (!orgao || !nomeSolicitante || !cargoSolicitante || !justificativa) {
+      toast.error("Por favor, preencha o Órgão, Justificativa e os Dados do Assinante.");
       return;
     }
 
     const docPdf = new jsPDF('portrait');
 
     const construirPDF = () => {
-      // Identifica o órgão selecionado no contrato (Fallback para a Prefeitura Geral)
       const qualificador = contrato.orgaoId && orgaosQualificacao[contrato.orgaoId] 
         ? orgaosQualificacao[contrato.orgaoId] 
         : orgaosQualificacao['prefeitura'];
 
-      // --- Cabeçalho Timbrado com CNPJ Dinâmico ---
+      // --- Cabeçalho Timbrado ---
       docPdf.setFontSize(14);
       docPdf.setTextColor(0, 74, 153);
       docPdf.setFont("helvetica", "bold");
@@ -113,78 +108,61 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
       docPdf.setFont("helvetica", "bold");
       docPdf.text(tipoDocumento.toUpperCase(), 105, 42, { align: 'center' });
 
-      // --- Dados Básicos do Contrato e Solicitação ---
+      // --- Dados Básicos ---
       let currentY = 52;
       docPdf.setFontSize(10);
 
-      docPdf.setFont("helvetica", "bold"); docPdf.text(`Contrato Nº:`, 14, currentY);
-      docPdf.setFont("helvetica", "normal"); docPdf.text(`${contrato.numeroContrato || 'N/I'}`, 38, currentY);
+      const adicionarCampo = (titulo: string, valor: string, offset: number) => {
+        docPdf.setFont("helvetica", "bold"); 
+        docPdf.text(titulo, 14, currentY);
+        docPdf.setFont("helvetica", "normal"); 
+        const linhas = docPdf.splitTextToSize(valor || 'Não informado', 190 - offset);
+        docPdf.text(linhas, offset, currentY);
+        currentY += (linhas.length * 5) + 1;
+      };
 
-      currentY += 6;
-      docPdf.setFont("helvetica", "bold"); docPdf.text(`Fornecedor:`, 14, currentY);
-      docPdf.setFont("helvetica", "normal"); docPdf.text(`${contrato.fornecedor}`, 38, currentY);
+      adicionarCampo("Contrato Nº:", contrato.numeroContrato || 'N/I', 38);
+      adicionarCampo("Fornecedor:", contrato.fornecedor || 'N/I', 38);
+      adicionarCampo("CNPJ:", contrato.cnpjFornecedor || 'Não informado', 26);
+      adicionarCampo("Órgão:", orgao, 28);
+      adicionarCampo("Objeto:", contrato.objetoResumido || 'N/I', 28);
+      adicionarCampo("Justificativa:", justificativa, 38);
 
-      currentY += 6;
-      docPdf.setFont("helvetica", "bold"); docPdf.text(`CNPJ:`, 14, currentY);
-      docPdf.setFont("helvetica", "normal"); docPdf.text(`${contrato.cnpjFornecedor || 'Não informado'}`, 26, currentY);
-
-      currentY += 6;
-      docPdf.setFont("helvetica", "bold"); docPdf.text(`Órgão:`, 14, currentY);
-      docPdf.setFont("helvetica", "normal"); docPdf.text(`${secretaria}`, 35, currentY);
-
-      // Objeto com quebra de linha inteligente
-      currentY += 6;
-      docPdf.setFont("helvetica", "bold"); docPdf.text(`Objeto:`, 14, currentY);
-      docPdf.setFont("helvetica", "normal");
-      const objetoLinhas = docPdf.splitTextToSize(contrato.objetoResumido || '', 165);
-      docPdf.text(objetoLinhas, 28, currentY);
-      currentY += (objetoLinhas.length * 5);
-
-      // Justificativa com quebra de linha inteligente
-      currentY += 1;
-      docPdf.setFont("helvetica", "bold"); docPdf.text(`Justificativa:`, 14, currentY);
-      docPdf.setFont("helvetica", "normal");
-      const justifLinhas = docPdf.splitTextToSize(justificativa || 'Não informada.', 155);
-      docPdf.text(justifLinhas, 38, currentY);
-      currentY += (justifLinhas.length * 5) + 3;
-
-      // --- Tabela de Itens Solicitados Autoajustável ---
-      
-      // Inteligência para verificar se exibe o Lote
+      // --- Construção da Tabela com Blindagem de Tipos (TypeScript fix) ---
       const exibirLote = itensParaPedir.some(i => i.numeroLote && i.numeroLote !== 'Único' && i.numeroLote !== '-');
       const tituloPrimeiraColuna = exibirLote ? 'Lote / Item' : 'Item';
 
       const headRow = [tituloPrimeiraColuna, 'Descrição', 'Unid.', 'Qtd. Pedida', 'V. Unitário', 'V. Total'];
       
-      const tableData = itensParaPedir.map(item => {
-        const qtd = Number(quantidadesPedidas[item.id!]);
+      // Mapeamento garantindo que retornamos um Array de Strings (solução do erro TypeScript)
+      const tableData: string[][] = itensParaPedir.map(item => {
+        const qtd = Number(quantidadesPedidas[item.id!] || 0);
         const total = qtd * item.valorUnitario;
         
-        // Formata a exibição da primeira coluna
-        const textoPrimeiraColuna = exibirLote 
+        const numeroExibicao = exibirLote 
           ? `${item.numeroLote || '-'}/${item.numeroItem || '-'}` 
-          : (item.numeroItem || '-');
+          : String(item.numeroItem || '-');
 
         return [
-          textoPrimeiraColuna,
-          item.discriminacao,
-          item.unidade || 'UND',
-          qtd.toString(),
+          numeroExibicao,
+          String(item.discriminacao || '-'),
+          String(item.unidade || 'UND'),
+          String(qtd),
           item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
           total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
         ];
       });
 
       autoTable(docPdf, {
-        startY: currentY,
+        startY: currentY + 3,
         head: [headRow],
         body: tableData,
         theme: 'grid',
         headStyles: { fillColor: [0, 74, 153], halign: 'center' },
         styles: { fontSize: 9, cellPadding: 3 },
         columnStyles: {
-          0: { halign: 'center', cellWidth: 'wrap' }, // Ajusta-se exatamente ao tamanho do título ou conteúdo
-          1: { cellWidth: 'auto' }, // Descrição cresce o máximo que der
+          0: { halign: 'center', cellWidth: 'wrap' }, 
+          1: { cellWidth: 'auto' },
           2: { halign: 'center', cellWidth: 'wrap' },
           3: { halign: 'center', cellWidth: 'wrap' },
           4: { halign: 'right', cellWidth: 'wrap' },
@@ -192,7 +170,7 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
         }
       });
 
-      // --- Rodapé (Totais e Assinaturas) ---
+      // --- Rodapé ---
       const finalY = (docPdf as any).lastAutoTable.finalY || currentY;
       const valorTotalPedido = calcularTotalPedido();
 
@@ -204,7 +182,7 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
       docPdf.setFontSize(10);
       docPdf.text(localData, 105, finalY + 30, { align: 'center' });
 
-      // Assinatura Centralizada Exclusiva do Solicitante
+      // Assinatura
       docPdf.line(60, finalY + 60, 150, finalY + 60); 
       docPdf.setFont("helvetica", "bold");
       docPdf.text(nomeSolicitante.toUpperCase(), 105, finalY + 65, { align: 'center' });
@@ -213,11 +191,7 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
       const docStr = documentoSolicitante ? ` - CPF: ${documentoSolicitante}` : '';
       docPdf.text(`${cargoSolicitante}${docStr}`, 105, finalY + 70, { align: 'center' });
 
-      // Gerar e Abrir no Navegador
-      const pdfBlob = docPdf.output('blob');
-      window.open(URL.createObjectURL(pdfBlob), '_blank');
-      
-      // Fecha o modal e limpa a tabela de quantidades
+      window.open(URL.createObjectURL(docPdf.output('blob')), '_blank');
       setQuantidadesPedidas({});
       onClose(); 
     };
@@ -255,8 +229,8 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
             </div>
 
             <div>
-              <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px', color: '#334155', fontSize: '13px' }}>Órgão / Secretaria Solicitante:</label>
-              <input type="text" value={secretaria} onChange={e => setSecretaria(e.target.value)} placeholder="Ex: Secretaria de Saúde" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
+              <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px', color: '#334155', fontSize: '13px' }}>Órgão Solicitante / Setor:</label>
+              <input type="text" value={orgao} onChange={e => setOrgao(e.target.value)} placeholder="Ex: Setor de Compras da Saúde" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
             </div>
             
             <div>
@@ -265,8 +239,8 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
             </div>
 
             <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px', color: '#334155', fontSize: '13px' }}>Descrição / Justificativa da Solicitação (Opcional):</label>
-              <textarea value={justificativa} onChange={e => setJustificativa(e.target.value)} rows={2} placeholder="Descreva de forma concisa a finalidade deste pedido." style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', resize: 'vertical' }}></textarea>
+              <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px', color: '#334155', fontSize: '13px' }}>Justificativa Detalhada da Solicitação:</label>
+              <textarea value={justificativa} onChange={e => setJustificativa(e.target.value)} rows={3} placeholder="Descreva pormenorizadamente a motivação e finalidade deste pedido." style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', resize: 'vertical' }}></textarea>
             </div>
 
             <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #cbd5e1', marginTop: '5px', paddingTop: '15px' }}>
@@ -304,7 +278,6 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
             <tbody>
               {itensCatalogo.map(item => {
                 const pedida = quantidadesPedidas[item.id!] ?? '';
-                // Exibição condicional no formulário
                 const numeroExibicao = (item.numeroLote && item.numeroLote !== 'Único' && item.numeroLote !== '-') 
                   ? `${item.numeroLote}/${item.numeroItem}` 
                   : item.numeroItem;
