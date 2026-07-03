@@ -8,6 +8,7 @@ export const extrairDadosContratoComIA = async (textoDoContrato: string) => {
 
   try {
     const genAI = new GoogleGenerativeAI(API_KEY);
+    // Usamos o modelo Flash que é extremamente rápido e garantimos que a saída seja sempre um JSON estruturado
     const model = genAI.getGenerativeModel({ 
       model: 'gemini-2.5-flash',
       generationConfig: { temperature: 0.1, responseMimeType: "application/json" }
@@ -15,36 +16,58 @@ export const extrairDadosContratoComIA = async (textoDoContrato: string) => {
 
     const prompt = `
       Você é um auditor especialista em licitações e contratos públicos.
-      Extraia os dados EXATAMENTE no formato JSON.
-      REGRAS:
-      1. Vazio se não achar ("").
-      2. Datas "YYYY-MM-DD".
-      3. Valores decimais em número puro (Ex: 1500.50).
-      4. "modalidade": Pregão Eletrônico, Presencial, Concorrência Eletrônica, Dispensa, Inexigibilidade, Credenciamento ou Chamamento.
+      Sua missão é extrair os dados do documento fornecido EXATAMENTE no formato JSON solicitado.
       
-      ESTRUTURA:
+      REGRAS CRÍTICAS DE EXTRAÇÃO:
+      1. Retorne VAZIO ("") se não encontrar a informação. NUNCA invente ou adivinhe dados (Zero Alucinação).
+      2. Datas DEVEM estar no formato "YYYY-MM-DD".
+      3. Valores financeiros DEVEM ser números puros (Ex: 1500.50), sem símbolo de "R$".
+      4. "modalidade": Pregão Eletrônico, Pregão Presencial, Concorrência, Dispensa, Inexigibilidade, Credenciamento, etc.
+      5. "cnpjFornecedor": Extraia o número completo do CNPJ ou CPF do fornecedor.
+      6. "fiscalContrato": Extraia apenas o NOME da pessoa. NUNCA tente adivinhar o e-mail do fiscal ou o Fundo/Secretaria. Deixe para o humano preencher esses dados sistêmicos.
+      
+      ESTRUTURA JSON ESPERADA:
       {
-        "numeroContrato": "string", "numeroProcesso": "string", "modalidade": "string",
-        "numeroPregao": "string", "numeroAta": "string", "fornecedor": "string",
-        "objetoCompleto": "string", "objetoResumido": "string",
-        "dataInicio": "YYYY-MM-DD", "dataFim": "YYYY-MM-DD", "fiscalContrato": "string",
+        "numeroContrato": "string",
+        "numeroProcesso": "string",
+        "modalidade": "string",
+        "numeroModalidade": "string",
+        "numeroAta": "string",
+        "fornecedor": "string",
+        "cnpjFornecedor": "string",
+        "objetoCompleto": "string",
+        "objetoResumido": "string (versão curta do objeto com no máximo 100 caracteres)",
+        "dataInicio": "YYYY-MM-DD",
+        "dataFim": "YYYY-MM-DD",
+        "fiscalContrato": "string",
         "valorTotal": 0.0,
-        "itens": [{ "numeroLote": "string", "numeroItem": "string", "discriminacao": "string", "unidade": "string", "quantidade": 0, "valorUnitario": 0, "valorTotalItem": 0 }]
+        "itens": [
+          { 
+            "numeroLote": "string", 
+            "numeroItem": "string", 
+            "discriminacao": "string", 
+            "unidade": "string", 
+            "quantidade": 0, 
+            "valorUnitario": 0, 
+            "valorTotalItem": 0 
+          }
+        ]
       }
-      TEXTO: ${textoDoContrato}
+      
+      TEXTO DO CONTRATO: 
+      ${textoDoContrato}
     `;
 
     const result = await model.generateContent(prompt);
     let text = result.response.text();
-    const startIndex = text.indexOf('{');
-    const endIndex = text.lastIndexOf('}');
-    if (startIndex !== -1 && endIndex !== -1) {
-        text = text.substring(startIndex, endIndex + 1);
-    }
+    
+    // Limpeza de segurança caso a IA retorne blocos de código Markdown
+    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    
     return JSON.parse(text);
 
   } catch (error: unknown) {
-    console.error("Erro no Gemini:", error);
+    console.error("Erro no Gemini Contrato:", error);
     throw new Error("Falha ao analisar documento com IA.");
   }
 };
@@ -60,28 +83,44 @@ export const extrairDadosAditivoComIA = async (textoDoAditivo: string) => {
     });
 
     const prompt = `
-      Analise o Termo Aditivo e extraia no formato JSON.
-      REGRAS:
-      1. Vazio se não achar ("").
-      2. "novaDataFim" "YYYY-MM-DD" ou "".
-      3. Valores em número puro.
-      4. "tipo": "prazo", "valor" ou "ambos".
+      Você é um auditor especialista em licitações e contratos públicos.
+      Analise o Termo Aditivo fornecido e extraia os dados EXATAMENTE no formato JSON solicitado.
       
-      ESTRUTURA:
+      REGRAS CRÍTICAS DE EXTRAÇÃO:
+      1. Retorne VAZIO ("") se não encontrar a informação. NUNCA invente ou adivinhe dados.
+      2. "novaDataFim" DEVE ser no formato "YYYY-MM-DD" (apenas se o aditivo for de prorrogação de prazo).
+      3. "valorAditivado" DEVE ser número puro (Ex: 1500.50). Refere-se ao valor acrescido ou suprimido do contrato original.
+      4. "tipo": DEVE ser exatamente a palavra "prazo", "valor" ou "ambos".
+      
+      ESTRUTURA JSON ESPERADA:
       {
-        "descricao": "string", "tipo": "string", "novaDataFim": "YYYY-MM-DD", "valorAditivado": 0.0,
-        "itens": [{ "numeroLote": "string", "numeroItem": "string", "discriminacao": "string", "unidade": "string", "quantidade": 0, "valorUnitario": 0, "valorTotalItem": 0 }]
+        "descricao": "string (ex: 1º Termo Aditivo de Prazo e Valor)", 
+        "tipo": "string", 
+        "novaDataFim": "YYYY-MM-DD", 
+        "valorAditivado": 0.0,
+        "itens": [
+          { 
+            "numeroLote": "string", 
+            "numeroItem": "string", 
+            "discriminacao": "string", 
+            "unidade": "string", 
+            "quantidade": 0, 
+            "valorUnitario": 0, 
+            "valorTotalItem": 0 
+          }
+        ]
       }
-      TEXTO: ${textoDoAditivo}
+      
+      TEXTO DO ADITIVO: 
+      ${textoDoAditivo}
     `;
 
     const result = await model.generateContent(prompt);
     let text = result.response.text();
-    const startIndex = text.indexOf('{');
-    const endIndex = text.lastIndexOf('}');
-    if (startIndex !== -1 && endIndex !== -1) {
-        text = text.substring(startIndex, endIndex + 1);
-    }
+    
+    // Limpeza de segurança
+    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    
     return JSON.parse(text);
 
   } catch (error: unknown) {
