@@ -60,6 +60,7 @@ export interface Item {
   valorTotalItem: number;
   tipoRegistro?: 'catalogo' | 'consumo';
   dataAdicao?: string;
+  quantidadeConsumida?: number;
 }
 
 export interface FormContratoState {

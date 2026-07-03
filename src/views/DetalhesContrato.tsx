@@ -1,5 +1,5 @@
-
 // src/views/DetalhesContrato.tsx
+import ModalEmitirOS from '../components/DetalhesContrato/ModalEmitirOS';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import jsPDF from 'jspdf';
@@ -38,6 +38,10 @@ export default function DetalhesContrato() {
   const [isModalAditivoOpen, setIsModalAditivoOpen] = useState(false);
   const [isModalDistratoOpen, setIsModalDistratoOpen] = useState(false);
   const [isModalRelatorioOpen, setIsModalRelatorioOpen] = useState(false);
+  
+  // --- ESTADO DO NOVO MODAL DA O.S. ---
+  const [isModalOSOpen, setIsModalOSOpen] = useState(false); 
+  
   const [opcIncluirAditivos, setOpcIncluirAditivos] = useState(true);
 
   const nomesOrgaos: { [key: string]: string } = {
@@ -192,7 +196,8 @@ export default function DetalhesContrato() {
     img.onload = () => { doc.addImage(img, 'PNG', 14, 10, 25, 25); gerarConteudoPDF(); };
     img.onerror = () => { gerarConteudoPDF(); };
   };
-// --- NOVA GERAÇÃO DE EXCEL INDIVIDUAL ---
+
+  // --- NOVA GERAÇÃO DE EXCEL INDIVIDUAL ---
   const gerarRelatorioExcel = () => {
     setIsModalRelatorioOpen(false);
     
@@ -242,6 +247,7 @@ export default function DetalhesContrato() {
     XLSX.utils.book_append_sheet(workbook, worksheet, "Itens do Contrato");
     XLSX.writeFile(workbook, `Itens_Contrato_${contrato.numeroContrato}.xlsx`);
   };
+
   return (
     <div className="detalhes-container">
       {/* CABEÇALHO COM A LOGO E O PADRÃO PREMIUM */}
@@ -258,6 +264,17 @@ export default function DetalhesContrato() {
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <span className="status-badge" style={{ backgroundColor: status.cor }}>{status.texto}</span>
+          
+          {/* BOTÃO DA ORDEM DE SERVIÇO (Só aparece se houver itens no catálogo) */}
+          {itensCatalogo.length > 0 && (
+            <button 
+              className="btn-acao primario" 
+              onClick={() => setIsModalOSOpen(true)} 
+              style={{ backgroundColor: '#0f172a', color: 'white', border: 'none', fontWeight: 'bold' }}
+            >
+              📝 Emitir O.S. / Pedido
+            </button>
+          )}
           
           <button className="btn-acao primario" onClick={() => setIsModalRelatorioOpen(true)} style={{ backgroundColor: 'white', color: '#0a2540', border: 'none' }}>
             📤 Exportar
@@ -413,6 +430,14 @@ export default function DetalhesContrato() {
         setOpcIncluirAditivos={setOpcIncluirAditivos} 
         gerarRelatorioPDF={gerarRelatorioPDF}
         gerarRelatorioExcel={gerarRelatorioExcel} 
+      />
+
+      {/* RENDERIZAÇÃO DO NOVO MODAL DA ORDEM DE SERVIÇO */}
+      <ModalEmitirOS 
+        isOpen={isModalOSOpen} 
+        onClose={() => setIsModalOSOpen(false)} 
+        contrato={contrato} 
+        itensCatalogo={itensCatalogo} 
       />
     </div>
   );
