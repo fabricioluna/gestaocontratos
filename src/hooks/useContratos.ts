@@ -1,7 +1,7 @@
 // src/hooks/useContratos.ts
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
-import toast from 'react-hot-toast'; // IMPORTAÇÃO AQUI
+import toast from 'react-hot-toast';
 import { db } from '../firebase';
 import type { Contrato } from '../types/types';
 
@@ -12,20 +12,43 @@ export const useContratos = (orgaoLogado: string | null) => {
   const [termoBusca, setTermoBusca] = useState('');
   const [ordenacao, setOrdenacao] = useState<{ campo: string, direcao: 'asc' | 'desc' }>({ campo: 'numeroContrato', direcao: 'desc' });
 
-  // 1. CARREGAR DADOS DO FIREBASE
+  // 1. CARREGAR DADOS DO FIREBASE (COM ISOLAMENTO DE SEGURANÇA)
   useEffect(() => {
-    if (!orgaoLogado) return;
+    // 1.1. Identifica quem é o utilizador logado diretamente no hook
+    const isAdmin = localStorage.getItem('userRole') === 'admin';
+    const userEmail = localStorage.getItem('userEmail');
+
+    // Segurança Base: Se for fiscal e não tiver email, aborta. Se for admin e não tiver órgão, aborta.
+    if (!isAdmin && !userEmail) return;
+    if (isAdmin && !orgaoLogado) return;
     
-    const q = query(collection(db, 'contratos'));
+    const contratosRef = collection(db, 'contratos');
+    let q;
+
+    // 1.2. A MÁGICA DA SEGURANÇA (RLS - Row Level Security)
+    if (isAdmin) {
+      // O Administrador pode puxar todos os contratos do banco de dados
+      q = query(contratosRef);
+    } else {
+      // O Fiscal puxa EXCLUSIVAMENTE os contratos onde o e-mail dele está cadastrado.
+      // O Firebase bloqueia o envio de qualquer outro contrato pela rede!
+      q = query(contratosRef, where('emailSecretaria', '==', userEmail));
+    }
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const lista: Contrato[] = [];
       
       snapshot.forEach((docSnap) => {
         const dados = docSnap.data();
-        const identificadorOrgao = dados.orgaoId || dados.orgao || '';
         
-        if (identificadorOrgao.toLowerCase().includes(orgaoLogado.toLowerCase())) {
+        if (isAdmin) {
+          // O Admin continua com a filtragem visual do órgão logado (mantendo a sua lógica original)
+          const identificadorOrgao = dados.orgaoId || dados.orgao || '';
+          if (orgaoLogado && identificadorOrgao.toLowerCase().includes(orgaoLogado.toLowerCase())) {
+            lista.push({ id: docSnap.id, ...dados } as Contrato);
+          }
+        } else {
+          // Para o fiscal, a query segura do Firebase já fez todo o trabalho. É só injetar!
           lista.push({ id: docSnap.id, ...dados } as Contrato);
         }
       });
@@ -33,7 +56,7 @@ export const useContratos = (orgaoLogado: string | null) => {
       setContratos(lista);
     }, (error) => {
       console.error("[Firebase Debug] Erro ao ler a coleção 'contratos':", error);
-      toast.error('Erro ao conectar com a base de dados em tempo real.'); // TOAST DE ERRO
+      toast.error('Erro de segurança ou falha ao conectar com a base de dados.'); 
     });
     
     return () => unsubscribe();
@@ -102,7 +125,6 @@ export const useContratos = (orgaoLogado: string | null) => {
   // 5. EXCLUSÃO COM CASCADE (DELETA ITENS VINCULADOS)
   const excluirContrato = async (contratoId: string) => {
     if (window.confirm('Tem certeza que deseja excluir este contrato e todos os itens vinculados?')) {
-      // Usamos um Toast do tipo "Promise" para dar feedback de loading e sucesso ao mesmo tempo!
       const exclusaoPromise = async () => {
         setLoading(true);
         await deleteDoc(doc(db, 'contratos', contratoId));

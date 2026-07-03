@@ -12,6 +12,7 @@ import { formatarDataBr } from '../utils/formatters';
 import ModalNovoContrato from '../components/Painel/ModalNovoContrato';
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
 import ModalRelatorioGlobal from '../components/Painel/ModalRelatorioGlobal';
+import ModalGerenciarUsuarios from '../components/Painel/ModalGerenciarUsuarios'; // Importação do novo Modal
 import { useContratos } from '../hooks/useContratos';
 
 export default function Painel() {
@@ -29,6 +30,7 @@ export default function Painel() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isModalEditOpen, setIsModalEditOpen] = useState(false);
+  const [isModalUsuariosOpen, setIsModalUsuariosOpen] = useState(false); // Estado para controlar o modal de usuários
   const [contratoParaEditar, setContratoParaEditar] = useState<Contrato | null>(null);
 
   const [isModalRelatorioOpen, setIsModalRelatorioOpen] = useState(false);
@@ -47,6 +49,7 @@ export default function Painel() {
         setIsModalOpen(false);
         setIsModalEditOpen(false);
         setIsModalRelatorioOpen(false);
+        setIsModalUsuariosOpen(false); // Fecha o modal de usuários com ESC
       }
     };
     window.addEventListener('keydown', handleEsc);
@@ -82,9 +85,8 @@ export default function Painel() {
     return <span style={{ marginLeft: '5px' }}>{ordenacao.direcao === 'asc' ? '▲' : '▼'}</span>;
   };
 
-  // --- NOVA FUNÇÃO: EXPORTAR PARA EXCEL ---
+  // --- FUNÇÃO: EXPORTAR PARA EXCEL ---
   const exportarParaExcel = () => {
-    // Transforma os dados numa tabela simplificada
     const dadosPlanilha = contratosFiltrados.map(c => {
       const vTotal = Number(c.valorTotal) || 0;
       return {
@@ -156,7 +158,7 @@ export default function Painel() {
       });
 
       const colStyles: any = { 
-        0: { halign: 'center', cellWidth: 30 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 40 },                   
+        0: { halign: 'center', cellWidth: 30 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 40 },                  
         3: { halign: 'center', cellWidth: 26 }, 4: { halign: 'center', cellWidth: 26 }, 
         5: { halign: 'right', cellWidth: 32 },  6: { halign: 'center', cellWidth: 24 }  
       };
@@ -214,6 +216,13 @@ export default function Painel() {
             </button>
             <button onClick={() => setIsModalRelatorioOpen(true)} className="btn-cancelar" style={{ backgroundColor: 'white' }}>📄 PDF</button>
             
+            {/* NOVO BOTÃO DE USUÁRIOS AQUI */}
+            {isAdmin && (
+              <button onClick={() => setIsModalUsuariosOpen(true)} style={{ backgroundColor: '#0f172a', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                👥 Usuários
+              </button>
+            )}
+
             {isAdmin && <button onClick={() => setIsModalOpen(true)} className="btn-salvar">Novo Contrato</button>}
           </div>
         </div>
@@ -275,6 +284,9 @@ export default function Painel() {
 
       {isAdmin && <ModalNovoContrato isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} orgaoLogado={orgaoLogado} />}
       {isAdmin && <ModalEditarContrato isOpen={isModalEditOpen} onClose={() => setIsModalEditOpen(false)} contratoOriginal={contratoParaEditar} />}
+      
+      {/* RENDERIZAÇÃO DO NOVO MODAL DE USUÁRIOS */}
+      {isAdmin && <ModalGerenciarUsuarios isOpen={isModalUsuariosOpen} onClose={() => setIsModalUsuariosOpen(false)} />}
       
       <ModalRelatorioGlobal 
         isOpen={isModalRelatorioOpen} onClose={() => setIsModalRelatorioOpen(false)}
