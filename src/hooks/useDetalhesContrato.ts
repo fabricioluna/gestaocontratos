@@ -5,7 +5,7 @@ import * as mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist'; 
 import toast from 'react-hot-toast';
 import { db } from '../firebase';
-import type { Contrato, Aditivo, ItemAditivo, Item } from '../types/types';
+import type { Contrato, Aditivo, ItemAditivado, Item } from '../types/types';
 import { extrairDadosAditivoComIA } from '../services/geminiService';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
@@ -23,7 +23,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
   const [aditivoOperacao, setAditivoOperacao] = useState<'acrescimo' | 'supressao'>('acrescimo');
   const [aditivoValor, setAditivoValor] = useState<number | ''>('');
   const [aditivoNovaData, setAditivoNovaData] = useState('');
-  const [itensDoAditivo, setItensDoAditivo] = useState<ItemAditivo[]>([]);
+  const [itensDoAditivo, setItensDoAditivo] = useState<ItemAditivado[]>([]);
   const [arquivoPdfAditivo, setArquivoPdfAditivo] = useState<File | null>(null);
   const [processandoPdfIA, setProcessandoPdfIA] = useState(false);
 
@@ -192,7 +192,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
     const vlUnit = Number(itemManualVlUnit) || original.valorUnitario;
     const vlTotal = qtd * vlUnit;
     
-    const novoItem: ItemAditivo = {
+    const novoItem: ItemAditivado = {
       numeroLote: original.numeroLote, 
       numeroItem: original.numeroItem,
       discriminacao: original.discriminacao, 
@@ -312,7 +312,6 @@ export const useDetalhesContrato = (id: string | undefined) => {
         tipo: aditivoTipo,
         valorAditivado: valorAlteracao,
         novaDataFim: (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') && aditivoNovaData ? aditivoNovaData : "",
-        dataRegistro: aditivoEmEdicao ? aditivoEmEdicao.dataRegistro : new Date().toLocaleString('pt-BR'),
         itensAditivados: itensDoAditivo.length > 0 ? itensDoAditivo : [],
       };
 
