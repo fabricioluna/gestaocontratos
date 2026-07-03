@@ -12,7 +12,7 @@ import { formatarDataBr } from '../utils/formatters';
 import ModalNovoContrato from '../components/Painel/ModalNovoContrato';
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
 import ModalRelatorioGlobal from '../components/Painel/ModalRelatorioGlobal';
-import ModalGerenciarUsuarios from '../components/Painel/ModalGerenciarUsuarios'; // Importação do novo Modal
+import ModalGerenciarUsuarios from '../components/Painel/ModalGerenciarUsuarios';
 import { useContratos } from '../hooks/useContratos';
 
 export default function Painel() {
@@ -30,7 +30,7 @@ export default function Painel() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isModalEditOpen, setIsModalEditOpen] = useState(false);
-  const [isModalUsuariosOpen, setIsModalUsuariosOpen] = useState(false); // Estado para controlar o modal de usuários
+  const [isModalUsuariosOpen, setIsModalUsuariosOpen] = useState(false); 
   const [contratoParaEditar, setContratoParaEditar] = useState<Contrato | null>(null);
 
   const [isModalRelatorioOpen, setIsModalRelatorioOpen] = useState(false);
@@ -49,7 +49,7 @@ export default function Painel() {
         setIsModalOpen(false);
         setIsModalEditOpen(false);
         setIsModalRelatorioOpen(false);
-        setIsModalUsuariosOpen(false); // Fecha o modal de usuários com ESC
+        setIsModalUsuariosOpen(false);
       }
     };
     window.addEventListener('keydown', handleEsc);
@@ -85,16 +85,42 @@ export default function Painel() {
     return <span style={{ marginLeft: '5px' }}>{ordenacao.direcao === 'asc' ? '▲' : '▼'}</span>;
   };
 
-  // --- FUNÇÃO: EXPORTAR PARA EXCEL ---
-  const exportarParaExcel = () => {
-    const dadosPlanilha = contratosFiltrados.map(c => {
+  // --- MOTOR DE FILTRO DE DATAS PARA RELATÓRIOS ---
+  const filtrarContratosPorPeriodo = (lista: Contrato[], dataI: string, dataF: string) => {
+    if (!dataI && !dataF) return lista;
+    return lista.filter(c => {
+      if (!c.dataFim) return false;
+      const vencimento = new Date(c.dataFim); vencimento.setHours(0, 0, 0, 0);
+      let passaInicio = true; 
+      let passaFim = true;
+      
+      if (dataI) { 
+        const inicio = new Date(dataI); 
+        inicio.setHours(0, 0, 0, 0); 
+        if (vencimento < inicio) passaInicio = false; 
+      }
+      if (dataF) { 
+        const fim = new Date(dataF); 
+        fim.setHours(0, 0, 0, 0); 
+        if (vencimento > fim) passaFim = false; 
+      }
+      return passaInicio && passaFim;
+    });
+  };
+
+  // --- GERAÇÃO DE EXCEL COM FILTRO ---
+  const exportarParaExcel = (dataInicio: string, dataFim: string) => {
+    setIsModalRelatorioOpen(false);
+    const listaFiltrada = filtrarContratosPorPeriodo(contratosFiltrados, dataInicio, dataFim);
+    
+    const dadosPlanilha = listaFiltrada.map(c => {
       const vTotal = Number(c.valorTotal) || 0;
       return {
         'Nº Contrato': c.numeroContrato || '-',
         'Processo': c.numeroProcesso || '-',
         'Modalidade': `${c.modalidade || ''} ${c.numeroModalidade || ''}`.trim(),
         'Fornecedor': c.fornecedor || '-',
-        'CNPJ': c.cnpjFornecedor || '-',
+        'CPF/CNPJ': c.cnpjFornecedor || '-',
         'Objeto': c.objetoResumido || '-',
         'Valor Global (R$)': vTotal,
         'Data Início': formatarDataBr(c.dataInicio),
@@ -113,22 +139,31 @@ export default function Painel() {
     XLSX.writeFile(workbook, `Relatorio_Contratos_${nomeFundo}.xlsx`);
   };
 
-  const gerarRelatorioPDF = () => {
+  // --- GERAÇÃO DE PDF COM FILTRO ---
+  const gerarRelatorioPDF = (dataInicio: string, dataFim: string) => {
     setIsModalRelatorioOpen(false); 
+    const listaFiltrada = filtrarContratosPorPeriodo(contratosFiltrados, dataInicio, dataFim);
     const docPdf = new jsPDF('landscape'); 
     
     const gerarTabela = () => {
       docPdf.setFontSize(16); docPdf.setTextColor(0, 74, 153);
       docPdf.text(orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Relatório de Contratos', 45, 20);
       docPdf.setFontSize(11); docPdf.setTextColor(100, 100, 100);
-      const textoFiltro = termoBusca ? ` (Filtro aplicado: "${termoBusca}")` : '';
-      docPdf.text(`Listagem Geral de Contratos${textoFiltro} - Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 28);
       
-      const headRow = ['Nº Contrato', 'Objeto', 'Fornecedor', 'CNPJ', 'Validade', 'Valor Global\n/ Aditivo', 'Fiscal'];
+      let textoFiltro = termoBusca ? ` (Filtro: "${termoBusca}")` : '';
+      if (dataInicio || dataFim) {
+        const strInicio = dataInicio ? formatarDataBr(dataInicio) : 'Início';
+        const strFim = dataFim ? formatarDataBr(dataFim) : 'Fim';
+        textoFiltro += ` [Vencimentos de ${strInicio} a ${strFim}]`;
+      }
+
+      docPdf.text(`Listagem de Contratos${textoFiltro} - Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 28);
+      
+      const headRow = ['Nº Contrato', 'Objeto', 'Fornecedor', 'CPF/CNPJ', 'Validade', 'Valor Global\n/ Aditivo', 'Fiscal'];
       type TableCell = string | { content: string, colSpan?: number, styles?: any };
       const tableData: TableCell[][] = [];
 
-      contratosFiltrados.forEach(c => {
+      listaFiltrada.forEach(c => {
         const vTotal = Number(c.valorTotal) || 0;
         tableData.push([
           c.numeroContrato || '-',
@@ -211,10 +246,7 @@ export default function Painel() {
           </div>
           
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button onClick={exportarParaExcel} className="btn-acao primario" style={{ backgroundColor: '#28a745', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-              📊 Excel
-            </button>
-            <button onClick={() => setIsModalRelatorioOpen(true)} className="btn-cancelar" style={{ backgroundColor: 'white' }}>📄 PDF</button>
+            <button onClick={() => setIsModalRelatorioOpen(true)} className="btn-cancelar" style={{ backgroundColor: 'white' }}>📤 Exportar Relatório</button>
             
             {isAdmin && (
               <button onClick={() => setIsModalUsuariosOpen(true)} style={{ backgroundColor: '#0f172a', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
@@ -269,7 +301,6 @@ export default function Painel() {
                     <td style={{ display: 'flex', gap: '5px' }}>
                       <button style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => navigate(`/contrato/${c.id}`)}>Detalhes</button>
                       
-                      {/* Esconde os botões sensíveis se não for Admin */}
                       {isAdmin && <button style={{ backgroundColor: '#ffc107', color: '#333', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => abrirEdicao(c)}>✏️</button>}
                       {isAdmin && <button style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => excluirContrato(c.id!)} disabled={loading}>🗑️</button>}
                     </td>
@@ -284,13 +315,13 @@ export default function Painel() {
       {isAdmin && <ModalNovoContrato isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} orgaoLogado={orgaoLogado} />}
       {isAdmin && <ModalEditarContrato isOpen={isModalEditOpen} onClose={() => setIsModalEditOpen(false)} contratoOriginal={contratoParaEditar} />}
       
-      {/* RENDERIZAÇÃO DO NOVO MODAL DE USUÁRIOS */}
       {isAdmin && <ModalGerenciarUsuarios isOpen={isModalUsuariosOpen} onClose={() => setIsModalUsuariosOpen(false)} />}
       
       <ModalRelatorioGlobal 
         isOpen={isModalRelatorioOpen} onClose={() => setIsModalRelatorioOpen(false)}
         opcIncluirAditivos={opcIncluirAditivos} setOpcIncluirAditivos={setOpcIncluirAditivos}
         gerarRelatorioPDF={gerarRelatorioPDF}
+        gerarRelatorioExcel={exportarParaExcel}
       />
     </div>
   );
