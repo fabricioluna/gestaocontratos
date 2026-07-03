@@ -14,19 +14,16 @@ interface ModalEmitirOSProps {
 }
 
 export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo }: ModalEmitirOSProps) {
-  // Estados da Tabela e do Documento
   const [quantidadesPedidas, setQuantidadesPedidas] = useState<{ [id: string]: number | '' }>({});
   const [tipoDocumento, setTipoDocumento] = useState<'Ordem de Serviço' | 'Solicitação de Compra'>('Ordem de Serviço');
   const [localData, setLocalData] = useState('');
 
-  // Estados do Formulário
   const [orgao, setOrgao] = useState('');
   const [justificativa, setJustificativa] = useState('');
   const [nomeSolicitante, setNomeSolicitante] = useState('');
   const [documentoSolicitante, setDocumentoSolicitante] = useState('');
   const [cargoSolicitante, setCargoSolicitante] = useState('');
 
-  // Data dinâmica formatada nativamente em português (Pesqueira-PE, 03 de julho de 2026)
   useEffect(() => {
     if (isOpen) {
       const hoje = new Date();
@@ -37,7 +34,6 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
 
   if (!isOpen || !contrato) return null;
 
-  // Dicionário Oficial de Qualificações
   const orgaosQualificacao: Record<string, { nome: string, cnpj: string }> = {
     'prefeitura': { nome: 'Prefeitura Municipal de Pesqueira', cnpj: '10.264.406/0001-35' },
     'fme': { nome: 'Fundo Municipal de Educação', cnpj: '06.074.663/0001-37' },
@@ -85,14 +81,14 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
       return;
     }
 
-    const docPdf = new jsPDF('portrait');
+    // MAGIA DE COMPRESSÃO AQUI: "compress: true"
+    const docPdf = new jsPDF({ orientation: 'portrait', compress: true });
 
     const construirPDF = () => {
       const qualificador = contrato.orgaoId && orgaosQualificacao[contrato.orgaoId] 
         ? orgaosQualificacao[contrato.orgaoId] 
         : orgaosQualificacao['prefeitura'];
 
-      // --- Cabeçalho Timbrado ---
       docPdf.setFontSize(14);
       docPdf.setTextColor(0, 74, 153);
       docPdf.setFont("helvetica", "bold");
@@ -108,7 +104,6 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
       docPdf.setFont("helvetica", "bold");
       docPdf.text(tipoDocumento.toUpperCase(), 105, 42, { align: 'center' });
 
-      // --- Dados Básicos ---
       let currentY = 52;
       docPdf.setFontSize(10);
 
@@ -128,13 +123,11 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
       adicionarCampo("Objeto:", contrato.objetoResumido || 'N/I', 28);
       adicionarCampo("Justificativa:", justificativa, 38);
 
-      // --- Construção da Tabela com Blindagem de Tipos (TypeScript fix) ---
       const exibirLote = itensParaPedir.some(i => i.numeroLote && i.numeroLote !== 'Único' && i.numeroLote !== '-');
       const tituloPrimeiraColuna = exibirLote ? 'Lote / Item' : 'Item';
 
       const headRow = [tituloPrimeiraColuna, 'Descrição', 'Unid.', 'Qtd. Pedida', 'V. Unitário', 'V. Total'];
       
-      // Mapeamento garantindo que retornamos um Array de Strings (solução do erro TypeScript)
       const tableData: string[][] = itensParaPedir.map(item => {
         const qtd = Number(quantidadesPedidas[item.id!] || 0);
         const total = qtd * item.valorUnitario;
@@ -170,7 +163,6 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
         }
       });
 
-      // --- Rodapé ---
       const finalY = (docPdf as any).lastAutoTable.finalY || currentY;
       const valorTotalPedido = calcularTotalPedido();
 
@@ -182,7 +174,6 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
       docPdf.setFontSize(10);
       docPdf.text(localData, 105, finalY + 30, { align: 'center' });
 
-      // Assinatura
       docPdf.line(60, finalY + 60, 150, finalY + 60); 
       docPdf.setFont("helvetica", "bold");
       docPdf.text(nomeSolicitante.toUpperCase(), 105, finalY + 65, { align: 'center' });
@@ -198,7 +189,8 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
 
     const img = new Image();
     img.src = logo;
-    img.onload = () => { docPdf.addImage(img, 'PNG', 14, 10, 25, 25); construirPDF(); };
+    // MAGIA DA COMPRESSÃO DE IMAGEM AQUI: Usar 'FAST'
+    img.onload = () => { docPdf.addImage(img, 'PNG', 14, 10, 25, 25, 'logo', 'FAST'); construirPDF(); };
     img.onerror = () => { construirPDF(); };
   };
 
@@ -213,9 +205,7 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
 
         <div style={{ overflowY: 'auto', flex: 1, paddingRight: '10px' }}>
           
-          {/* BLOCO 1: DADOS DO SOLICITANTE E DO DOCUMENTO */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '15px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
-            
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px', color: '#334155', fontSize: '13px' }}>1. TIPO DE DOCUMENTO</label>
               <div style={{ display: 'flex', gap: '20px' }}>
@@ -262,7 +252,6 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
             </div>
           </div>
 
-          {/* BLOCO 2: TABELA DE ITENS */}
           <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '10px', color: '#334155', fontSize: '13px' }}>3. SELECIONAR PRODUTOS / SERVIÇOS</label>
           <table className="tabela-contratos" style={{ fontSize: '13px' }}>
             <thead>

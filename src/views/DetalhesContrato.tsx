@@ -16,13 +16,12 @@ import ModalAditivo from '../components/DetalhesContrato/ModalAditivo';
 import ModalDistrato from '../components/DetalhesContrato/ModalDistrato';
 import ModalOpcoesRelatorio from '../components/DetalhesContrato/ModalOpcoesRelatorio';
 import ModalEmitirOS from '../components/DetalhesContrato/ModalEmitirOS';
-import ModalEditarItemCatalogo from '../components/DetalhesContrato/ModalEditarItemCatalogo'; // NOVO MODAL
+import ModalEditarItemCatalogo from '../components/DetalhesContrato/ModalEditarItemCatalogo';
 
 export default function DetalhesContrato() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  // VERIFICAÇÃO DE SEGURANÇA (RBAC)
   const perfilLogado = sessionStorage.getItem('perfilLogado') || 'viewer';
   const isAdmin = perfilLogado === 'admin';
 
@@ -35,7 +34,7 @@ export default function DetalhesContrato() {
     setItemManualVlUnit, fecharModalAditivoState, lidarProcessamentoIA, lidarAdicionarItemManual, 
     removerItemAditivo, abrirEdicaoAditivo, excluirAditivo, salvarAditivo,
     distratoData, setDistratoData, distratoMotivo, setDistratoMotivo, salvarDistrato, excluirContrato,
-    salvarEdicaoItem // NOVA FUNÇÃO DO HOOK
+    salvarEdicaoItem 
   } = useDetalhesContrato(id || '');
 
   const [isModalAditivoOpen, setIsModalAditivoOpen] = useState(false);
@@ -44,7 +43,6 @@ export default function DetalhesContrato() {
   const [isModalOSOpen, setIsModalOSOpen] = useState(false); 
   const [opcIncluirAditivos, setOpcIncluirAditivos] = useState(true);
 
-  // NOVOS ESTADOS PARA O MODAL DE EDIÇÃO DO CATÁLOGO
   const [isModalEditarItemOpen, setIsModalEditarItemOpen] = useState(false);
   const [itemParaEditar, setItemParaEditar] = useState<Item | null>(null);
 
@@ -67,10 +65,10 @@ export default function DetalhesContrato() {
   
   const status = getStatus();
 
-  // --- GERAÇÃO DO PDF INDIVIDUAL ---
   const gerarRelatorioPDF = () => {
     setIsModalRelatorioOpen(false);
-    const doc = new jsPDF();
+    // MAGIA DE COMPRESSÃO GLOBAL DO PDF
+    const doc = new jsPDF({ compress: true });
     
     const gerarConteudoPDF = () => {
       const nomeOrgao = contrato.orgaoId && nomesOrgaos[contrato.orgaoId] ? nomesOrgaos[contrato.orgaoId] : 'Prefeitura Municipal de Pesqueira';
@@ -197,11 +195,11 @@ export default function DetalhesContrato() {
     };
 
     const img = new Image(); img.src = logo;
-    img.onload = () => { doc.addImage(img, 'PNG', 14, 10, 25, 25); gerarConteudoPDF(); };
+    // MAGIA DA COMPRESSÃO DE IMAGEM: alias 'logo' e 'FAST'
+    img.onload = () => { doc.addImage(img, 'PNG', 14, 10, 25, 25, 'logo', 'FAST'); gerarConteudoPDF(); };
     img.onerror = () => { gerarConteudoPDF(); };
   };
 
-  // --- NOVA GERAÇÃO DE EXCEL INDIVIDUAL ---
   const gerarRelatorioExcel = () => {
     setIsModalRelatorioOpen(false);
     
@@ -289,7 +287,6 @@ export default function DetalhesContrato() {
 
       <main className="detalhes-conteudo">
         
-        {/* CARTÃO 1: DADOS GERAIS */}
         <section className="card-detalhe">
           <h3>
             Dados Gerais
@@ -331,7 +328,6 @@ export default function DetalhesContrato() {
           </div>
         )}
 
-        {/* CARTÃO 2: CATÁLOGO DE ITENS */}
         <section className="card-detalhe">
           <h3>Catálogo de Itens Contratados</h3>
           {itensCatalogo.length === 0 ? (
@@ -342,7 +338,6 @@ export default function DetalhesContrato() {
                 <thead>
                   <tr>
                     <th>Lote</th><th>Item</th><th>Descrição</th><th>Unid.</th><th>Qtd</th><th>Valor Unit.</th><th>Valor Total</th>
-                    {/* COLUNA AÇÕES SÓ APARECE PARA ADMIN E SE NÃO ESTIVER DISTRATADO */}
                     {isAdmin && !contrato.dataDistrato && <th>Ações</th>}
                   </tr>
                 </thead>
@@ -354,7 +349,6 @@ export default function DetalhesContrato() {
                       <td>{Number(i.valorUnitario).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                       <td style={{ color: '#004a99', fontWeight: 'bold' }}>{Number(i.valorTotalItem).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                       
-                      {/* BOTAO PARA EDITAR ITEM DO CATÁLOGO */}
                       {isAdmin && !contrato.dataDistrato && (
                         <td style={{ textAlign: 'center' }}>
                           <button 
@@ -374,7 +368,6 @@ export default function DetalhesContrato() {
           )}
         </section>
 
-        {/* CARTÃO 3: HISTÓRICO DE ADITIVOS */}
         <section className="card-detalhe">
           <h3>
             Histórico de Termos Aditivos
@@ -451,7 +444,6 @@ export default function DetalhesContrato() {
         itensCatalogo={itensCatalogo} 
       />
 
-      {/* RENDERIZAÇÃO DO NOVO MODAL DE EDIÇÃO DE ITENS DO CATÁLOGO */}
       <ModalEditarItemCatalogo
         isOpen={isModalEditarItemOpen}
         onClose={() => setIsModalEditarItemOpen(false)}
