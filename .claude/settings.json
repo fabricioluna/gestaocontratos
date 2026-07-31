@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/check-tsc.sh",
+            "timeout": 30,
+            "statusMessage": "Verificando tipos com tsc -b..."
+          }
+        ]
+      }
+    ]
+  }
+}
