@@ -51,9 +51,10 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ success: true, message: 'Usuário já tem cadastro no sistema.', isNewUser: false });
     }
 
-    // 3. Cria a conta
-    const anoAtual = new Date().getFullYear();
-    const senhaPadrao = `Pmp@${anoAtual}`;
+    
+    // 3. Cria a conta no Firebase com senha aleatória
+    const numerosAleatorios = Math.floor(1000 + Math.random() * 9000); // Gera 4 dígitos (ex: 4829)
+    const senhaPadrao = `Pmp@${numerosAleatorios}`; // Ex: Pmp@4829
     
     await auth.createUser({
       email: email,
