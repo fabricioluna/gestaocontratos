@@ -138,16 +138,12 @@ Executada pelo usuário no console, sem código. Achados:
   `extrairDadosAditivoComIA`), então `ModalNovoContrato.tsx` e
   `useDetalhesContrato.ts` não precisaram mudar a chamada em si.
 - [x] `VITE_GEMINI_API_KEY` → `GEMINI_API_KEY`, movida para a seção de
-  servidor do `.env.example`. **Pendente de ação manual, confirmado
-  ainda não feito em 01/08/2026**: a Vercel só tem `VITE_GEMINI_API_KEY`
-  hoje; falta criar `GEMINI_API_KEY` (mesmo valor, por enquanto) e
-  redeployar. Enquanto isso não acontecer, `/api/extrair-documento`
-  responde 500 ("Erro de configuração no servidor") em produção — a
-  extração por IA fica fora do ar até essa variável existir. `VITE_
-  GEMINI_API_KEY` pode continuar na Vercel sem problema durante a
-  transição (nenhum código lê mais essa variável, então não volta a
-  entrar no bundle) — remover só depois de confirmar que
-  `GEMINI_API_KEY` funciona.
+  servidor do `.env.example`. **Criada na Vercel e testada em produção
+  pelo usuário em 01/08/2026** ("Carregar Contrato" preencheu os campos
+  via IA) — `/api/extrair-documento` está lendo `GEMINI_API_KEY` do
+  servidor corretamente. `VITE_GEMINI_API_KEY` ainda está na Vercel com
+  o valor antigo (sem problema, nenhum código lê mais essa variável) —
+  remover só depois de rotacionar a chave (ver pendência abaixo).
 - [x] `verifyIdToken` em `/api/create-user` e `/api/list-users` — sem
   token válido, ambos respondem 401. Os dois chamadores no cliente
   (`ModalNovoContrato.tsx`, `ModalGerenciarUsuarios.tsx`) agora mandam
@@ -158,13 +154,14 @@ Executada pelo usuário no console, sem código. Achados:
   `Authorization: Bearer $CRON_SECRET` contra `process.env.CRON_SECRET`
   antes de qualquer outra coisa. A Vercel injeta esse header sozinha nas
   chamadas agendadas quando o env var existe no projeto — nada a
-  configurar em `vercel.json`. **Pendente de ação manual, confirmado
-  ainda não feito em 01/08/2026**: falta criar `CRON_SECRET` na Vercel
-  (valor aleatório, gerado localmente, nunca colado em código/commit/
-  chat) e redeployar. Enquanto isso não acontecer, `process.env.
-  CRON_SECRET` fica vazio no servidor e o handler responde 401 para
-  *qualquer* chamada, inclusive a do cron da própria Vercel — os alertas
-  de vencimento por e-mail ficam fora do ar até essa variável existir.
+  configurar em `vercel.json`. **`CRON_SECRET` criada na Vercel pelo
+  usuário em 01/08/2026** junto com `GEMINI_API_KEY`. **Não determinado**:
+  a execução agendada real (`0 11 * * *`) ainda não foi observada
+  passando com o secret novo — só o teste manual de IA foi confirmado.
+  Se o próximo disparo do cron falhar com 401, o primeiro lugar a olhar é
+  se o valor de `CRON_SECRET` na Vercel bate com o que a própria Vercel
+  está mandando (não deveria haver divergência, já que é a mesma
+  plataforma injetando os dois lados).
 - [x] Senha provisória por e-mail trocada por link de redefinição:
   `create-user.ts` agora gera uma senha aleatória com
   `crypto.randomBytes(24)` só para satisfazer a API do
@@ -184,23 +181,16 @@ Executada pelo usuário no console, sem código. Achados:
   não vulnerabilidade concreta, dado token de curta duração e só 6 contas
   de teste; prompt injection no texto do documento já cai numa etapa
   humana de revisão antes de qualquer gravação no Firestore.
-- [ ] Rotacionar a chave do Gemini. **Não feito** — depende do Google
-  Cloud Console (fora do repositório). Ordem recomendada, confirmada com
-  o usuário em 01/08/2026:
-  1. Criar `GEMINI_API_KEY` e `CRON_SECRET` na Vercel (ver pendências
-     acima) e redeployar.
-  2. Testar em produção: cadastrar um contrato usando "📄 Carregar
-     Contrato" e confirmar que os campos vêm preenchidos pela IA — isso
-     confirma que `/api/extrair-documento` está lendo `GEMINI_API_KEY`
-     do servidor corretamente.
-  3. Só então ir ao Google Cloud Console do projeto
-     `gestao-contratos-pmp` → Credenciais, gerar uma chave **nova**,
-     atualizar `GEMINI_API_KEY` na Vercel com o valor novo, redeployar e
-     repetir o teste do passo 2.
+- [ ] Rotacionar a chave do Gemini. **Passos 1-2 concluídos em
+  01/08/2026** (`GEMINI_API_KEY`/`CRON_SECRET` criadas, proxy testado e
+  funcionando). **Faltam os passos 3-4, ação do usuário no Google Cloud
+  Console (fora do repositório) — não determinado se já foram feitos**:
+  3. Ir ao Google Cloud Console do projeto `gestao-contratos-pmp` →
+     Credenciais, gerar uma chave **nova**, atualizar `GEMINI_API_KEY` na
+     Vercel com o valor novo, redeployar e repetir o teste de "Carregar
+     Contrato".
   4. Revogar/apagar a chave antiga no Google Console e remover
      `VITE_GEMINI_API_KEY` da Vercel.
-  Ainda não determinado se algum desses passos já foi feito — confirmar
-  com o usuário na próxima sessão antes de assumir o estado.
 
 **Build/lint ao final da fase** (baseline da Fase 1: build 0 erros, lint
 48 erros): build **0 erros** (idêntico); lint **44 erros** (queda de 4 —
