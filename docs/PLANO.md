@@ -307,13 +307,17 @@ real nem as Firestore Rules novas fim-a-fim nesta sessão — o `.env` local
 só tem a config pública do Firebase (cliente), sem
 `FIREBASE_ADMIN_CREDENTIALS` nem senha de nenhuma das 6 contas de teste.
 
-**Pendências manuais, nesta ordem (nenhuma foi executada nesta sessão —
-"não determinado" até o usuário confirmar):**
-1. Copiar `FIREBASE_ADMIN_CREDENTIALS` da Vercel para um `.env` local e
-   rodar `npm run migrar:perfis` — atribui os claims aos 6 usuários de
-   teste. Sem isso, ninguém consegue logar depois que as Rules novas forem
-   publicadas (item 4), porque o login passou a exigir `perfil`/`orgaoId`
-   no token.
+**Pendências manuais, nesta ordem:**
+1. [x] **Concluído em 01/08/2026.** Gerada uma chave nova de service account
+   no Firebase Console (Configurações do projeto → Contas de serviço →
+   Gerar nova chave privada) e colocada em `FIREBASE_ADMIN_CREDENTIALS` no
+   `.env` local. Achado da sessão: colar o JSON multi-linha direto (como
+   baixado) quebra o `dotenv`, que só lê a primeira linha da string — o
+   valor precisa estar comprimido numa linha só e entre aspas simples
+   (`FIREBASE_ADMIN_CREDENTIALS='{"type":"service_account",...}'`).
+   `npm run migrar:perfis` rodado com sucesso — os 6 e-mails de teste
+   confirmados com `perfil`/`orgaoId` corretos (log local, não repetido
+   aqui por conter e-mails reais de contas de produção).
 2. Deploy do código desta fase na Vercel (`api/definir-perfil.ts` e
    `api/_shared/verificarAdmin.ts` são inofensivos antes do passo 1 — nenhum
    token tem claim `admin` ainda, então ninguém consegue chamá-los com
