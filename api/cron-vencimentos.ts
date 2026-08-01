@@ -1,23 +1,7 @@
 // api/cron-vencimentos.ts
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs } from 'firebase/firestore';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 import nodemailer from 'nodemailer';
-
-// O Backend da Vercel lê as variáveis usando process.env em vez de import.meta.env
-const firebaseConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY,
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.VITE_FIREBASE_APP_ID,
-};
-
-// Inicializa a conexão invisível ao Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
 
 export default async function handler(req: any, res: any) {
   // 1. USO DA VARIÁVEL REQ (Resolve o Erro do TypeScript e aumenta a segurança)
@@ -34,17 +18,21 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // 2. O robô faz login no Firebase para ter permissão de ler os dados
-    const emailBot = process.env.BOT_EMAIL || '';
-    const senhaBot = process.env.BOT_PASS || '';
-    
-    if (!emailBot || !senhaBot) {
-      throw new Error("Credenciais do BOT não configuradas na Vercel.");
+    // 2. Inicializa o firebase-admin (mesmo padrão dos outros handlers de /api).
+    // O SDK admin lê com a service account, sem passar pelas Firestore Rules —
+    // necessário aqui porque o cron precisa varrer contratos de todos os órgãos.
+    if (getApps().length === 0) {
+      const envVar = process.env.FIREBASE_ADMIN_CREDENTIALS;
+      if (!envVar) {
+        throw new Error('Falta a variável FIREBASE_ADMIN_CREDENTIALS na Vercel.');
+      }
+      const serviceAccount = JSON.parse(envVar);
+      initializeApp({ credential: cert(serviceAccount) });
     }
-    await signInWithEmailAndPassword(auth, emailBot, senhaBot);
+    const db = getFirestore();
 
     // 3. Busca todos os contratos
-    const snapshot = await getDocs(collection(db, 'contratos'));
+    const snapshot = await db.collection('contratos').get();
     const contratos = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
 
     // 4. Configura a sua conta do Gmail para enviar os alertas

@@ -1,65 +1,47 @@
 // src/hooks/useContratos.ts
 import { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
 import toast from 'react-hot-toast';
 import { db } from '../firebase';
+import { useAuth } from './useAuth';
 import type { Contrato } from '../types/types';
 
-export const useContratos = (orgaoLogado: string | null) => {
+export const useContratos = () => {
+  const { user, perfil, orgaoId, carregando } = useAuth();
+  const isAdmin = perfil === 'admin';
+
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [loading, setLoading] = useState(false);
-  
+
   const [termoBusca, setTermoBusca] = useState('');
   const [ordenacao, setOrdenacao] = useState<{ campo: string, direcao: 'asc' | 'desc' }>({ campo: 'numeroContrato', direcao: 'desc' });
 
-  // 1. CARREGAR DADOS DO FIREBASE (CORRIGIDO PARA SESSIONSTORAGE)
+  // 1. CARREGAR DADOS DO FIREBASE
   useEffect(() => {
-    // Busca os dados da forma correta baseada no seu Painel.tsx
-    const perfil = sessionStorage.getItem('perfilLogado') || 'viewer';
-    const isAdmin = perfil === 'admin';
-    const auth = getAuth();
-    
-    // Tenta pegar o email do Firebase, ou do SessionStorage como backup
-    const userEmail = auth.currentUser?.email || sessionStorage.getItem('emailUsuario') || sessionStorage.getItem('userEmail');
+    if (carregando || !user || !perfil || !orgaoId) return;
 
     const contratosRef = collection(db, 'contratos');
-    let q;
+    // As Firestore Rules da Fase 3 exigem que a query já venha filtrada por
+    // orgaoId (uma query sem esse where() é rejeitada inteira, não filtrada
+    // silenciosamente) — por isso o filtro não pode mais ser feito no
+    // cliente depois de ler tudo, mesmo para admin.
+    const q = isAdmin
+      ? query(contratosRef, where('orgaoId', '==', orgaoId))
+      : query(contratosRef, where('emailSecretaria', '==', user.email));
 
-    if (isAdmin) {
-      q = query(contratosRef);
-    } else {
-      if (!userEmail) {
-        console.warn("Aguardando email do fiscal...");
-        return; 
-      }
-      q = query(contratosRef, where('emailSecretaria', '==', userEmail));
-    }
-    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const lista: Contrato[] = [];
-      
       snapshot.forEach((docSnap) => {
-        const dados = docSnap.data();
-        
-        if (isAdmin) {
-          const identificadorOrgao = dados.orgaoId || dados.orgao || '';
-          if (!orgaoLogado || identificadorOrgao.toLowerCase().includes(orgaoLogado.toLowerCase())) {
-            lista.push({ id: docSnap.id, ...dados } as Contrato);
-          }
-        } else {
-          lista.push({ id: docSnap.id, ...dados } as Contrato);
-        }
+        lista.push({ id: docSnap.id, ...docSnap.data() } as Contrato);
       });
-      
       setContratos(lista);
     }, (error) => {
       console.error("[Firebase Debug] Erro ao ler contratos:", error);
-      toast.error('Erro ao conectar com a base de dados.'); 
+      toast.error('Erro ao conectar com a base de dados.');
     });
-    
+
     return () => unsubscribe();
-  }, [orgaoLogado]);
+  }, [carregando, user, perfil, orgaoId, isAdmin]);
 
   // 2. FUNÇÃO DE ORDENAÇÃO
   const lidarComOrdenacao = (campo: string) => {

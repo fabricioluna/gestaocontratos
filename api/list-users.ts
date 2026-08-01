@@ -1,6 +1,7 @@
 // api/list-users.ts
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { verificarAdmin } from './_shared/verificarAdmin';
 
 export default async function handler(req: any, res: any) {
   // Apenas permite pedidos de leitura (GET)
@@ -24,23 +25,13 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ success: false, message: 'Erro de configuração no servidor.' });
   }
 
-  // 2. Exige um usuário autenticado no Firebase Auth chamando o endpoint
-  const authHeader = req.headers.authorization || '';
-  const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!idToken) {
-    return res.status(401).json({ success: false, message: 'Não autenticado.' });
-  }
-
-  const auth = getAuth();
-  try {
-    await auth.verifyIdToken(idToken);
-  } catch (error) {
-    console.error('Token inválido em /api/list-users:', error);
-    return res.status(401).json({ success: false, message: 'Não autenticado.' });
-  }
+  // 2. Exige um usuário autenticado com claim de admin
+  const admin = await verificarAdmin(req, res);
+  if (!admin) return;
 
   // 3. Busca a lista de utilizadores no Firebase Auth
   try {
+    const auth = getAuth();
     const listUsersResult = await auth.listUsers(1000); // Traz até 1000 usuários
 
     // Extrai apenas os e-mails para um array simples (ex: ["a@a.com", "b@b.com"])

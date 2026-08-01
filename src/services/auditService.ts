@@ -6,8 +6,7 @@ import { getAuth } from 'firebase/auth';
 export const registrarLog = async (acao: string, detalhes: string) => {
   try {
     const auth = getAuth();
-    // Tenta pegar o e-mail do Firebase Auth, ou cai para a sessão local
-    const usuarioLogado = auth.currentUser?.email || sessionStorage.getItem('emailUsuario') || 'Administrador do Sistema';
+    const usuarioLogado = auth.currentUser?.email || 'Administrador do Sistema';
     
     await addDoc(collection(db, 'auditoria_logs'), {
       usuario: usuarioLogado,

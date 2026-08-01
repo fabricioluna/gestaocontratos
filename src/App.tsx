@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast'; // IMPORTAÇÃO DO TOAST
 
 import ProtectedRoute from './components/common/ProtectedRoute';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import { AuthProvider } from './contexts/AuthContext';
 import Login from './views/Login';
 
 // LAZY LOADING
@@ -36,33 +37,35 @@ function App() {
         }} 
       />
       
-      <BrowserRouter>
-        <Suspense fallback={<LoadingScreen />}>
-          <Routes>
-            <Route path="/" element={<Login />} />
-            
-            <Route 
-              path="/painel" 
-              element={
-                <ProtectedRoute>
-                  <Painel />
-                </ProtectedRoute>
-              } 
-            />
-            
-            <Route 
-              path="/contrato/:id" 
-              element={
-                <ProtectedRoute>
-                  <DetalhesContrato />
-                </ProtectedRoute>
-              } 
-            />
-            
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <Suspense fallback={<LoadingScreen />}>
+            <Routes>
+              <Route path="/" element={<Login />} />
+
+              <Route
+                path="/painel"
+                element={
+                  <ProtectedRoute>
+                    <Painel />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/contrato/:id"
+                element={
+                  <ProtectedRoute>
+                    <DetalhesContrato />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </Suspense>
+        </BrowserRouter>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

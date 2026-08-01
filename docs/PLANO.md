@@ -209,21 +209,134 @@ também pelo hook a cada edição).
   no repositório e a consolidação está no escopo da Fase 7
   ("Eliminar duplicações... init do firebase-admin").
 
-## Fase 3 — RBAC com custom claims
+## Fase 3 — RBAC com custom claims (código concluído em 01/08/2026; publicação em produção pendente de ações manuais)
 
-- [ ] Pedir desenho ao agente `Plan` antes de codificar (fase com
-  trade-offs reais)
-- [ ] Endpoint `POST /api/definir-perfil`, só admin
-- [ ] Login lê `getIdTokenResult()` em vez de inferir perfil por substring
-  do e-mail
-- [ ] `ProtectedRoute` usa `onAuthStateChanged`, não `sessionStorage`
-- [ ] Firestore Rules validam `request.auth.token.perfil` e `.orgaoId`
-  para `contratos`/`itens` (a regra definitiva que a Fase 2 adiou)
-- [ ] Cron migra para `firebase-admin` (mata a conta-robô com credenciais
-  estáticas)
-- [ ] Script de migração dos 6 usuários existentes (ver achado 0.3)
-- [ ] Verificação: `sessionStorage.setItem('perfilLogado','admin')` no
-  DevTools não deve dar mais acesso a nada
+- [x] Pedido desenho ao agente `Plan` antes de codificar. As 8 decisões de
+  trade-off (bootstrap do primeiro admin, shape do claim, regra de `itens`
+  via `get()` do contrato pai, cron com `firebase-admin` ignorando as Rules,
+  `ProtectedRoute` assíncrono, contexto de auth compartilhado nesta fase e
+  não na Fase 7, helper `verificarAdmin` sem tocar na duplicação de init do
+  firebase-admin, `orgaoId` obrigatório sem default) foram resolvidas antes
+  de qualquer código — ver histórico da sessão, não repetido aqui.
+- [x] `api/definir-perfil.ts`: `POST`, só admin (`api/_shared/verificarAdmin.ts`,
+  novo helper reaproveitado também por `create-user`/`list-users` — só a
+  checagem de admin é compartilhada, o bloco de init do firebase-admin
+  continua duplicado nos 4 arquivos de propósito, decisão já registrada na
+  Fase 2 e mantida). Recebe `{ email, perfil: 'admin'|'viewer', orgaoId:
+  'prefeitura'|'fms'|'fme'|'fmas' }`, validado contra os 2 enums no
+  servidor, e chama `auth.setCustomUserClaims`.
+- [x] `Login.tsx`: não infere mais `orgao`/`perfil` por substring do
+  e-mail nem grava `sessionStorage`. Após `signInWithEmailAndPassword`,
+  chama `getIdTokenResult(true)` (refresh forçado); se a conta não tiver
+  `perfil`/`orgaoId` nos claims, faz `signOut` e mostra "conta sem perfil
+  configurado" em vez de navegar para `/painel`.
+- [x] `src/contexts/authContextBase.ts` + `AuthContext.tsx` +
+  `src/hooks/useAuth.ts` (3 arquivos, não 1 — `react-refresh/only-export-components`
+  barra misturar o `createContext`, o `AuthProvider` e o hook `useAuth` no
+  mesmo arquivo; sem isso o lint subia de 44 para 49 em vez de 48). Único
+  lugar do app com `onAuthStateChanged` + `getIdTokenResult`. `ProtectedRoute`,
+  `Painel.tsx`, `DetalhesContrato.tsx` e `useContratos.ts` foram todos
+  migrados para `useAuth()` — zero leitura de `sessionStorage` relacionada
+  a auth restando em `src/` (confirmado por grep).
+- [x] `ProtectedRoute.tsx`: 3 estados (`carregando` → tela de espera;
+  sem `user`/`perfil`/`orgaoId` → `Navigate to="/"`; caso contrário
+  renderiza). `App.tsx` envolve `<BrowserRouter>` com `<AuthProvider>`.
+- [x] Firestore Rules (`firestore.rules`, **não publicado ainda** — ver
+  pendências): `contratos` — admin só lê/escreve do próprio `orgaoId`,
+  viewer só lê o contrato cujo `emailSecretaria` bate com o e-mail do
+  token; `update` não pode trocar o `orgaoId` do contrato. `itens` — não
+  carregam `orgaoId`/`emailSecretaria` próprios, a regra faz um `get()` do
+  `contratos/{contratoId}` pai para decidir (custo de 1 leitura extra por
+  item; aceito nesta fase, candidato a denormalizar se o custo incomodar
+  na Fase 6).
+- [x] `useContratos.ts`: **achado da sessão, não previsto no checklist
+  original** — o ramo admin fazia `query(contratosRef)` sem filtro e
+  filtrava client-side por `.includes()`. Com as Rules novas isso
+  quebraria: uma query sem `where('orgaoId','==', orgaoId)` correspondente
+  à regra é rejeitada **inteira** pelo Firestore (`permission-denied`), não
+  filtrada em silêncio. Corrigido: `useContratos()` agora lê `useAuth()`
+  internamente (perdeu o parâmetro `orgaoLogado`) e sempre filtra no
+  servidor (`where('orgaoId','==', orgaoId)` para admin, `where('emailSecretaria','==', user.email)`
+  para viewer).
+- [x] Botão "Sair" em `Painel.tsx`: **segundo achado da sessão** — antes só
+  fazia `sessionStorage.clear()`, nunca deslogava do Firebase Auth de
+  verdade (`auth.currentUser` continuava preenchido). Com `ProtectedRoute`
+  passando a depender de `onAuthStateChanged`, isso virava um logout que não
+  loga out. Corrigido para `auth.signOut()`.
+- [x] `api/cron-vencimentos.ts`: não usa mais o client SDK com conta-robô
+  (`BOT_EMAIL`/`BOT_PASS` via `signInWithEmailAndPassword`) — migrado para
+  `firebase-admin` com `FIREBASE_ADMIN_CREDENTIALS` (mesmo padrão dos
+  outros 3 handlers de `/api`). O SDK admin ignora as Rules por design;
+  aceito porque o cron só lê (nunca escreve) e precisa varrer todos os
+  órgãos. `.env.example` atualizado (removidas `BOT_EMAIL`/`BOT_PASS`).
+- [x] `scripts/migrar-perfis.ts`: script one-off (não é rota HTTP) com a
+  lista fixa dos 6 e-mails de teste → `perfil`/`orgaoId`, usando
+  `firebase-admin` direto. `setCustomUserClaims` substitui o claim inteiro
+  a cada chamada — rodar 2x produz o mesmo resultado, sem duplicar efeito.
+  `npm run migrar:perfis` (novo script no `package.json`; `tsx` e `dotenv`
+  adicionados como devDependencies só para isso).
+- [x] `ModalGerenciarUsuarios.tsx` e o fluxo inline de cadastro de e-mail em
+  `ModalNovoContrato.tsx` (**terceiro achado da sessão** — esse segundo
+  ponto de criação de usuário não estava no checklist original, mas chama
+  `/api/create-user` e sem `/api/definir-perfil` em seguida a conta ficaria
+  sem claims e nunca conseguiria logar): os dois agora encadeiam
+  `POST /api/create-user` → `POST /api/definir-perfil` (`perfil: 'viewer'`),
+  com o `<select>` de órgão trocado de texto livre ("Fundo Municipal de
+  Saúde") para os 4 ids normalizados (`fms`/`fme`/`fmas`/`prefeitura`) e
+  passando a ser obrigatório (sem default silencioso — atribuir órgão
+  errado por omissão seria pior que forçar a escolha).
+- [x] Verificação: `sessionStorage.setItem('perfilLogado','admin')` +
+  `orgaoLogado` no DevTools e navegar para `/painel` continua mandando
+  para `/` — testado com Playwright headless contra `npm run dev` (ver
+  abaixo), não só por leitura de código.
+
+**Build/lint ao final da fase** (baseline da Fase 2: build 0 erros, lint 44
+erros): build **0 erros** (idêntico). Lint **48 erros** (+4) — os 4 novos
+são `(req: any, res: any)` em `api/_shared/verificarAdmin.ts` (2) e
+`api/definir-perfil.ts` (2), mesmo padrão do problema conhecido nº 5 do
+`CLAUDE.md` (não instalar `@vercel/node` é decisão da Fase 7), não uma
+categoria nova de problema. Confirmado por diff completo dos dois lints
+(antes/depois), não só pela contagem total.
+
+**Teste local**: `npm run dev` + Playwright Chromium headless (mesma
+instalação `--no-save` da Fase 1). Confirmado: tela de login renderiza sem
+erro de console; `/painel` e `/contrato/:id` sem sessão redirecionam para
+`/`; **`sessionStorage` forjado no DevTools não dá mais acesso** (a
+verificação-chave do checklist desta fase). Não foi possível testar login
+real nem as Firestore Rules novas fim-a-fim nesta sessão — o `.env` local
+só tem a config pública do Firebase (cliente), sem
+`FIREBASE_ADMIN_CREDENTIALS` nem senha de nenhuma das 6 contas de teste.
+
+**Pendências manuais, nesta ordem (nenhuma foi executada nesta sessão —
+"não determinado" até o usuário confirmar):**
+1. Copiar `FIREBASE_ADMIN_CREDENTIALS` da Vercel para um `.env` local e
+   rodar `npm run migrar:perfis` — atribui os claims aos 6 usuários de
+   teste. Sem isso, ninguém consegue logar depois que as Rules novas forem
+   publicadas (item 4), porque o login passou a exigir `perfil`/`orgaoId`
+   no token.
+2. Deploy do código desta fase na Vercel (`api/definir-perfil.ts` e
+   `api/_shared/verificarAdmin.ts` são inofensivos antes do passo 1 — nenhum
+   token tem claim `admin` ainda, então ninguém consegue chamá-los com
+   sucesso).
+3. Pedir para as 6 contas de teste fazerem logout/login uma vez após o
+   deploy — garante token com claims atualizado no navegador de cada uma.
+4. **Publicar `firestore.rules` no console do Firebase** — só depois dos
+   passos 1-3 confirmados; publicar antes travaria as 6 contas de teste
+   (claims corretos no Auth, mas token em cache no navegador sem eles
+   ainda). Mesmo fluxo manual da Fase 2 (sem Firebase CLI configurada
+   neste ambiente).
+5. Apagar a conta-robô (e-mail em `BOT_EMAIL`) no Firebase Auth Console e
+   remover `BOT_EMAIL`/`BOT_PASS` das env vars da Vercel — só depois de
+   confirmar que o cron novo (`firebase-admin`) está funcionando.
+6. Depois do passo 4: validar manualmente (não só por leitura de código)
+   que um viewer lê `itens` de um contrato que é dele por `emailSecretaria`
+   mas não por `orgaoId`, com pelo menos 1 conta admin e 1 conta viewer
+   reais — a regra de `itens` usa `get()` cruzando documento, apontada pelo
+   agente `Plan` como o ponto mais fácil de acertar errado silenciosamente.
+7. Confirmar no dashboard de Functions da Vercel que
+   `api/_shared/verificarAdmin.ts` não virou uma rota pública própria (a
+   convenção de prefixo `_` deveria evitar isso, mas não foi verificado
+   fora do repositório).
 
 ## Fase 4 — Extrair lógica pura + Vitest
 

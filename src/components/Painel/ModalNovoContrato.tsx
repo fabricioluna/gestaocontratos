@@ -97,6 +97,10 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       toast.error("Por favor, digite o e-mail.");
       return;
     }
+    if (!orgaoLogado) {
+      toast.error("Não foi possível identificar o órgão logado.");
+      return;
+    }
 
     setVerificandoEmail(true);
     const toastId = toast.loading('A criar acesso e a enviar credenciais...');
@@ -116,18 +120,33 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
          throw new Error("Erro no servidor da Vercel (Erro 500).");
       }
 
-      if (response.ok && data.success) {
-         toast.success(data.message, { id: toastId });
-         // Preenche o formulário e atualiza a lista em memória
-         setFormData(prev => ({ ...prev, emailSecretaria: emailTemp }));
-         if (!sugestoesEmails.includes(emailTemp)) {
-           setSugestoesEmails(prev => [...prev, emailTemp]);
-         }
-         setShowNovoEmail(false);
-         setEmailTemp('');
-      } else {
-         toast.error(data.message || "Erro ao tentar cadastrar o utilizador.", { id: toastId });
+      if (!response.ok || !data.success) {
+        toast.error(data.message || "Erro ao tentar cadastrar o utilizador.", { id: toastId });
+        return;
       }
+
+      // Vincula o mesmo órgão do admin logado ao fiscal recém-criado —
+      // sem isso a conta fica sem custom claims e não consegue logar.
+      const responsePerfil = await fetch('/api/definir-perfil', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ email: emailTemp, perfil: 'viewer', orgaoId: orgaoLogado })
+      });
+      const dataPerfil = await responsePerfil.json();
+
+      if (!responsePerfil.ok || !dataPerfil.success) {
+        toast.error("Usuário criado, mas o perfil de acesso não pôde ser definido. Tente cadastrá-lo novamente.", { id: toastId });
+        return;
+      }
+
+      toast.success(data.message, { id: toastId });
+      // Preenche o formulário e atualiza a lista em memória
+      setFormData(prev => ({ ...prev, emailSecretaria: emailTemp }));
+      if (!sugestoesEmails.includes(emailTemp)) {
+        setSugestoesEmails(prev => [...prev, emailTemp]);
+      }
+      setShowNovoEmail(false);
+      setEmailTemp('');
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Erro de comunicação. Tente novamente.", { id: toastId });

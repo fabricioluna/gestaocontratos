@@ -17,9 +17,13 @@ export default function ModalGerenciarUsuarios({ isOpen, onClose }: ModalGerenci
 
   const cadastrarUsuario = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!emailUsuario) {
       toast.error("Por favor, preencha o e-mail do Usuário.");
+      return;
+    }
+    if (!orgaoVinculado) {
+      toast.error("Selecione o Fundo/Órgão vinculado.");
       return;
     }
 
@@ -28,13 +32,11 @@ export default function ModalGerenciarUsuarios({ isOpen, onClose }: ModalGerenci
 
     try {
       const idToken = await auth.currentUser?.getIdToken();
+
       const response = await fetch('/api/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({
-          email: emailUsuario,
-          nomeOrgao: orgaoVinculado || 'Prefeitura Municipal de Pesqueira'
-        })
+        body: JSON.stringify({ email: emailUsuario, nomeOrgao: orgaoVinculado })
       });
 
       let data;
@@ -44,14 +46,27 @@ export default function ModalGerenciarUsuarios({ isOpen, onClose }: ModalGerenci
         throw new Error("Falha na comunicação com o servidor.");
       }
 
-      if (response.ok && data.success) {
-        toast.success(data.message, { id: toastId });
-        setEmailUsuario('');
-        setOrgaoVinculado('');
-        onClose();
-      } else {
+      if (!response.ok || !data.success) {
         toast.error(data.message || "Erro ao tentar validar/criar o usuário.", { id: toastId });
+        return;
       }
+
+      const responsePerfil = await fetch('/api/definir-perfil', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ email: emailUsuario, perfil: 'viewer', orgaoId: orgaoVinculado })
+      });
+      const dataPerfil = await responsePerfil.json();
+
+      if (!responsePerfil.ok || !dataPerfil.success) {
+        toast.error("Usuário criado, mas o perfil de acesso não pôde ser definido. Reenvie o formulário para tentar novamente.", { id: toastId });
+        return;
+      }
+
+      toast.success(data.message, { id: toastId });
+      setEmailUsuario('');
+      setOrgaoVinculado('');
+      onClose();
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Erro de comunicação. Tente novamente.", { id: toastId });
@@ -83,16 +98,17 @@ export default function ModalGerenciarUsuarios({ isOpen, onClose }: ModalGerenci
 
           <div className="form-group full-width" style={{ marginTop: '15px' }}>
             <label>Fundo / Órgão Vinculado</label>
-            <select 
-              value={orgaoVinculado} 
+            <select
+              required
+              value={orgaoVinculado}
               onChange={(e) => setOrgaoVinculado(e.target.value)}
               style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
             >
-              <option value="">Selecione o Órgão (Opcional)</option>
-              <option value="Fundo Municipal de Saúde">Fundo Municipal de Saúde</option>
-              <option value="Fundo Municipal de Educação">Fundo Municipal de Educação</option>
-              <option value="Fundo Municipal de Assistência Social">Fundo Municipal de Assistência Social</option>
-              <option value="Prefeitura Municipal">Prefeitura (Geral)</option>
+              <option value="">Selecione o Órgão</option>
+              <option value="fms">Fundo Municipal de Saúde</option>
+              <option value="fme">Fundo Municipal de Educação</option>
+              <option value="fmas">Fundo Municipal de Assistência Social</option>
+              <option value="prefeitura">Prefeitura (Geral)</option>
             </select>
           </div>
 

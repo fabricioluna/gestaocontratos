@@ -1,7 +1,7 @@
 // src/views/Login.tsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import logo from '../assets/logopmp.png';
 import './Login.css';
@@ -34,25 +34,18 @@ export default function Login() {
 
       // 1. Conexão real com o Firebase Auth
       const userCredential = await signInWithEmailAndPassword(auth, emailToUse, senha);
-      const userEmail = userCredential.user.email || '';
-      const emailLogado = userEmail.toLowerCase();
 
-      // 2. Inteligência de Roteamento de Órgão
-      let orgao = 'prefeitura'; 
-      if (emailLogado.includes('assistencia')) orgao = 'fmas';
-      else if (emailLogado.includes('educacao')) orgao = 'fme';
-      else if (emailLogado.includes('saude')) orgao = 'fms';
-
-      // 3. Inteligência de Perfil (Admin vs Fiscal)
-      let perfil = 'admin';
-      if (emailLogado.includes('fiscal') || emailLogado.includes('leitura')) {
-        perfil = 'viewer';
+      // 2. Força o refresh do ID token: se o perfil/orgaoId foi definido há
+      // pouco (ex: cadastro recente), o token em cache pode não os conter
+      // ainda — sem isso, o passo seguinte veria claims desatualizados.
+      const resultado = await userCredential.user.getIdTokenResult(true);
+      if (!resultado.claims.perfil || !resultado.claims.orgaoId) {
+        await signOut(auth);
+        setErro('Esta conta ainda não tem um perfil configurado. Contacte o administrador.');
+        setLoading(false);
+        return;
       }
 
-      // 4. Salva a sessão e entra
-      sessionStorage.setItem('orgaoLogado', orgao);
-      sessionStorage.setItem('perfilLogado', perfil);
-      
       navigate('/painel');
     } catch (error: any) {
       console.error("Erro no login Firebase:", error);

@@ -10,6 +10,7 @@ import './DetalhesContrato.css';
 
 import { formatarDataBr } from '../utils/formatters';
 import { useDetalhesContrato } from '../hooks/useDetalhesContrato';
+import { useAuth } from '../hooks/useAuth';
 import type { Item } from '../types/types';
 
 import ModalAditivo from '../components/DetalhesContrato/ModalAditivo';
@@ -22,8 +23,8 @@ export default function DetalhesContrato() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const perfilLogado = sessionStorage.getItem('perfilLogado') || 'viewer';
-  const isAdmin = perfilLogado === 'admin';
+  const { perfil } = useAuth();
+  const isAdmin = perfil === 'admin';
 
   const {
     contrato, itensCatalogo, loading, valorGlobalAtualizado, totalAditivosAplicados, valorOriginal,
