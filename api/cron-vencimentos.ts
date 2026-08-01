@@ -25,6 +25,14 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ success: false, message: 'Método não permitido.' });
   }
 
+  // A Vercel injeta este header automaticamente nas chamadas agendadas do
+  // cron quando CRON_SECRET está configurado no projeto — bloqueia
+  // qualquer outra origem de disparar o envio de e-mails em massa.
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || req.headers.authorization !== `Bearer ${cronSecret}`) {
+    return res.status(401).json({ success: false, message: 'Não autorizado.' });
+  }
+
   try {
     // 2. O robô faz login no Firebase para ter permissão de ler os dados
     const emailBot = process.env.BOT_EMAIL || '';
@@ -109,8 +117,8 @@ export default async function handler(req: any, res: any) {
     }
 
     res.status(200).json({ success: true, message: `Rotina concluída. ${emailsEnviados} alertas enviados.` });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Erro no Cron Job:", error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, message: 'Erro interno ao processar a rotina de vencimentos.' });
   }
 }

@@ -1,4 +1,5 @@
 // api/create-user.ts
+import { randomBytes } from 'crypto';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import nodemailer from 'nodemailer';
@@ -14,31 +15,41 @@ export default async function handler(req: any, res: any) {
     if (getApps().length === 0) {
       const envVar = process.env.FIREBASE_ADMIN_CREDENTIALS;
       if (!envVar) {
-         return res.status(500).json({ success: false, message: 'Falta a variável FIREBASE_ADMIN_CREDENTIALS na Vercel.' });
+         console.error('Falta a variável FIREBASE_ADMIN_CREDENTIALS na Vercel.');
+         return res.status(500).json({ success: false, message: 'Erro de configuração no servidor.' });
       }
-      
+
       // Converte o texto da Vercel num objeto JSON
       const serviceAccount = JSON.parse(envVar);
       initializeApp({
         credential: cert(serviceAccount)
       });
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro ao ler a chave do Firebase:', error);
-    return res.status(500).json({ 
-      success: false, 
-      message: 'Erro no JSON do Firebase Admin. Verifique se o texto colado na Vercel não tem quebras de linha quebradas.',
-      error: error.message 
-    });
+    return res.status(500).json({ success: false, message: 'Erro de configuração no servidor.' });
+  }
+
+  // 2. Exige um usuário autenticado no Firebase Auth chamando o endpoint
+  const authHeader = req.headers.authorization || '';
+  const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!idToken) {
+    return res.status(401).json({ success: false, message: 'Não autenticado.' });
+  }
+
+  const auth = getAuth();
+  try {
+    await auth.verifyIdToken(idToken);
+  } catch (error) {
+    console.error('Token inválido em /api/create-user:', error);
+    return res.status(401).json({ success: false, message: 'Não autenticado.' });
   }
 
   const { email, nomeOrgao } = req.body;
   if (!email) return res.status(400).json({ success: false, message: 'E-mail não fornecido.' });
 
   try {
-    const auth = getAuth();
-    
-    // 2. Verifica se o usuário já existe
+    // 3. Verifica se o usuário já existe
     let userExists = false;
     try {
       await auth.getUserByEmail(email);
@@ -51,18 +62,21 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ success: true, message: 'Usuário já tem cadastro no sistema.', isNewUser: false });
     }
 
-    
-    // 3. Cria a conta no Firebase com senha aleatória
-    const numerosAleatorios = Math.floor(1000 + Math.random() * 9000); // Gera 4 dígitos (ex: 4829)
-    const senhaPadrao = `Pmp@${numerosAleatorios}`; // Ex: Pmp@4829
-    
+    // 4. Cria a conta no Firebase com senha aleatória (nunca enviada ao usuário)
+    // e um link de redefinição para ele escolher a própria senha.
+    const senhaAleatoria = randomBytes(24).toString('base64url');
+
     await auth.createUser({
       email: email,
-      password: senhaPadrao,
+      password: senhaAleatoria,
       displayName: `Fiscal - ${nomeOrgao || 'Prefeitura'}`,
     });
 
-    // 4. Envia o Email de forma segura
+    const linkRedefinicao = await auth.generatePasswordResetLink(email, {
+      url: 'https://gestaocontratospmp.vercel.app',
+    });
+
+    // 5. Envia o Email de forma segura
     try {
       const transporter = nodemailer.createTransport({
         service: 'gmail',
@@ -75,11 +89,13 @@ export default async function handler(req: any, res: any) {
           <p>Olá,</p>
           <p>O seu e-mail foi cadastrado com sucesso com perfil de <strong>Fiscal/Visualizador</strong> no Sistema de Gestão de Contratos da Prefeitura Municipal de Pesqueira.</p>
           <div style="background-color: #f8fafc; padding: 15px; border-radius: 5px; margin: 20px 0;">
-            <p style="margin: 5px 0;"><strong>Link de Acesso:</strong> <a href="https://gestaocontratospmp.vercel.app">gestaocontratospmp.vercel.app</a></p>
             <p style="margin: 5px 0;"><strong>Seu E-mail:</strong> ${email}</p>
-            <p style="margin: 5px 0;"><strong>Senha Padrão Provisória:</strong> <span style="color: #004a99; font-weight: bold;">${senhaPadrao}</span></p>
+            <p style="margin: 10px 0;">
+              <a href="${linkRedefinicao}" style="background-color: #004a99; color: white; padding: 10px 18px; border-radius: 5px; text-decoration: none; font-weight: bold;">Definir minha senha de acesso</a>
+            </p>
+            <p style="margin: 5px 0; font-size: 12px; color: #64748b;">Se o botão não funcionar, copie e cole este link no navegador: ${linkRedefinicao}</p>
           </div>
-          <p>Por favor, guarde esta senha para os seus próximos acessos.</p>
+          <p>Depois de definir a senha, acesse em <a href="https://gestaocontratospmp.vercel.app">gestaocontratospmp.vercel.app</a>.</p>
         </div>
       `;
 
@@ -89,15 +105,15 @@ export default async function handler(req: any, res: any) {
         subject: '[Acesso Liberado] Sistema de Gestão de Contratos PMP',
         html: htmlEmail
       });
-    } catch (emailError: any) {
+    } catch (emailError) {
       console.error("Erro no envio do e-mail:", emailError);
       return res.status(201).json({ success: true, message: 'Usuário criado no Firebase, mas ocorreu um erro a enviar o e-mail de aviso.', isNewUser: true });
     }
 
     return res.status(201).json({ success: true, message: 'Usuário criado e e-mail enviado com sucesso!', isNewUser: true });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro geral da API:', error);
-    return res.status(500).json({ success: false, message: 'Erro interno ao processar a requisição.', error: error.message });
+    return res.status(500).json({ success: false, message: 'Erro interno ao processar a requisição.' });
   }
 }
