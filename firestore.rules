@@ -1,18 +1,51 @@
 rules_version = '2';
 
-// Espelha o que está publicado hoje no console (ver docs/PLANO.md, Fase 0
-// e Decisões já tomadas nº 4): autenticação sem autorização real para
-// contratos/itens até a Fase 3 trazer os custom claims. A única correção
-// desta fase é fechar auditoria_logs, que hoje cai no "if false" global
-// e deixa o log de auditoria 100% inoperante.
+// Fase 3: autorização real por custom claims (perfil + orgaoId), atribuídos
+// via /api/definir-perfil e lidos aqui em request.auth.token. Substitui a
+// regra "autenticação sem autorização" das Fases 0-2 (ver docs/PLANO.md).
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function ehAdmin() {
+      return request.auth != null && request.auth.token.perfil == 'admin';
+    }
+
+    function orgaoDoToken() {
+      return request.auth.token.orgaoId;
+    }
+
     match /contratos/{contratoId} {
-      allow read, write: if request.auth != null;
+      // Admin só vê contratos do próprio órgão; fiscal (viewer) só vê o
+      // contrato em que ele é o e-mail da secretaria/fiscal responsável.
+      allow read: if request.auth != null && (
+        (ehAdmin() && resource.data.orgaoId == orgaoDoToken()) ||
+        resource.data.emailSecretaria == request.auth.token.email
+      );
+
+      allow create: if ehAdmin() && request.resource.data.orgaoId == orgaoDoToken();
+
+      // Update não pode mudar o orgaoId do contrato — isso equivaleria a
+      // transferi-lo para outro órgão sem controle nenhum.
+      allow update: if ehAdmin() && resource.data.orgaoId == orgaoDoToken()
+        && request.resource.data.orgaoId == resource.data.orgaoId;
+
+      allow delete: if ehAdmin() && resource.data.orgaoId == orgaoDoToken();
     }
 
     match /itens/{itemId} {
-      allow read, write: if request.auth != null;
+      // itens não carregam orgaoId/emailSecretaria próprios — a regra busca
+      // o contrato pai (contratoId) para decidir. Custo de uma leitura
+      // extra por item, aceito nesta fase (ver docs/PLANO.md).
+      allow read: if request.auth != null && (
+        (ehAdmin() && get(/databases/$(database)/documents/contratos/$(resource.data.contratoId)).data.orgaoId == orgaoDoToken()) ||
+        get(/databases/$(database)/documents/contratos/$(resource.data.contratoId)).data.emailSecretaria == request.auth.token.email
+      );
+
+      allow create: if ehAdmin()
+        && get(/databases/$(database)/documents/contratos/$(request.resource.data.contratoId)).data.orgaoId == orgaoDoToken();
+
+      allow update, delete: if ehAdmin()
+        && get(/databases/$(database)/documents/contratos/$(resource.data.contratoId)).data.orgaoId == orgaoDoToken();
     }
 
     // Qualquer usuário autenticado pode gravar seu próprio log (é como o

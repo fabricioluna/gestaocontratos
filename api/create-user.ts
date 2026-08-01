@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import nodemailer from 'nodemailer';
+import { verificarAdmin } from './_shared/verificarAdmin';
 
 export default async function handler(req: any, res: any) {
   // Segurança
@@ -30,21 +31,11 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ success: false, message: 'Erro de configuração no servidor.' });
   }
 
-  // 2. Exige um usuário autenticado no Firebase Auth chamando o endpoint
-  const authHeader = req.headers.authorization || '';
-  const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!idToken) {
-    return res.status(401).json({ success: false, message: 'Não autenticado.' });
-  }
+  // 2. Exige um usuário autenticado com claim de admin
+  const admin = await verificarAdmin(req, res);
+  if (!admin) return;
 
   const auth = getAuth();
-  try {
-    await auth.verifyIdToken(idToken);
-  } catch (error) {
-    console.error('Token inválido em /api/create-user:', error);
-    return res.status(401).json({ success: false, message: 'Não autenticado.' });
-  }
-
   const { email, nomeOrgao } = req.body;
   if (!email) return res.status(400).json({ success: false, message: 'E-mail não fornecido.' });
 

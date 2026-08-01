@@ -9,6 +9,8 @@ import logo from '../assets/logopmp.png';
 import './Painel.css';
 
 import { formatarDataBr } from '../utils/formatters';
+import { auth } from '../firebase';
+import { useAuth } from '../hooks/useAuth';
 import ModalNovoContrato from '../components/Painel/ModalNovoContrato';
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
 import ModalRelatorioGlobal from '../components/Painel/ModalRelatorioGlobal';
@@ -17,16 +19,13 @@ import { useContratos } from '../hooks/useContratos';
 
 export default function Painel() {
   const navigate = useNavigate();
-  const orgaoLogado = sessionStorage.getItem('orgaoLogado');
-  
-  // VERIFICAÇÃO DE SEGURANÇA (RBAC)
-  const perfilLogado = sessionStorage.getItem('perfilLogado') || 'viewer';
-  const isAdmin = perfilLogado === 'admin';
+  const { perfil, orgaoId: orgaoLogado } = useAuth();
+  const isAdmin = perfil === 'admin';
 
-  const { 
-    contratosFiltrados, loading, termoBusca, setTermoBusca, 
-    ordenacao, lidarComOrdenacao, excluirContrato 
-  } = useContratos(orgaoLogado);
+  const {
+    contratosFiltrados, loading, termoBusca, setTermoBusca,
+    ordenacao, lidarComOrdenacao, excluirContrato
+  } = useContratos();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isModalEditOpen, setIsModalEditOpen] = useState(false);
@@ -229,7 +228,7 @@ export default function Painel() {
           <span style={{ fontSize: '12px', color: isAdmin ? '#28a745' : '#64748b', fontWeight: 'bold', backgroundColor: 'white', padding: '5px 10px', borderRadius: '4px' }}>
             {isAdmin ? '🛡️ Admin' : '👁️ Visualizador'}
           </span>
-          <button className="btn-sair" onClick={() => { sessionStorage.clear(); navigate('/'); }}>
+          <button className="btn-sair" onClick={() => { auth.signOut().then(() => navigate('/')); }}>
             Sair
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
           </button>
