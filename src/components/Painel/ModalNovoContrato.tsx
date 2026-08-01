@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth'; 
 import * as pdfjsLib from 'pdfjs-dist'; 
 import toast from 'react-hot-toast';
-import { db } from '../../firebase';
+import { db, auth } from '../../firebase';
 import { parseMoeda, extrairNumeroPlanilha } from '../../utils/formatters';
 import { extrairDadosContratoComIA } from '../../services/geminiService';
 import type { FormContratoState, Item } from '../../types/types';
@@ -44,7 +44,10 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
     if (isOpen) {
       const carregarEmailsDoSistema = async () => {
         try {
-          const res = await fetch('/api/list-users');
+          const idToken = await auth.currentUser?.getIdToken();
+          const res = await fetch('/api/list-users', {
+            headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
+          });
           if (res.ok) {
             const data = await res.json();
             if (data.success && data.emails) {
@@ -99,9 +102,10 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
     const toastId = toast.loading('A criar acesso e a enviar credenciais...');
 
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       const response = await fetch('/api/create-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ email: emailTemp, nomeOrgao: orgaoLogado })
       });
 

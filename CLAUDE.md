@@ -18,9 +18,10 @@ atualizado antes de um `/clear`.
   é Realtime Database**. Nunca sugerir `firebase/database`, `getDatabase`,
   `ref` ou `onValue`.
 - 3 funções serverless na Vercel em `api/` (firebase-admin 12, nodemailer 9)
-- `@google/generative-ai` 0.24.1, modelo `gemini-2.5-flash` — hoje chamado
-  do cliente em `src/services/geminiService.ts`; migra para o servidor na
-  Fase 2 do plano.
+- `@google/generative-ai` 0.24.1, modelo `gemini-2.5-flash` — chamado do
+  servidor em `api/extrair-documento.ts` desde a Fase 2.
+  `src/services/geminiService.ts` no cliente só faz um `fetch` autenticado
+  (token do Firebase Auth) para esse endpoint.
 - `pdfjs-dist`, `mammoth`, `xlsx`, `jspdf` + `jspdf-autotable`,
   `react-hot-toast`
 - CSS puro em 3 arquivos + muitos estilos inline no JSX
@@ -40,10 +41,13 @@ atualizado antes de um `/clear`.
   substrings do e-mail no login e guardados em `sessionStorage` — isso é
   decorativo, não é controle de acesso real. A partir da Fase 3, viram
   custom claims do Firebase Auth.
-- Firestore Security Rules hoje (antes da Fase 3): `contratos` e `itens`
-  permitem `read, write` para qualquer usuário autenticado, sem checar
-  quem é. Não trate isso como segurança real ao raciocinar sobre acesso
-  a dados até a Fase 3 estar concluída.
+- Firestore Security Rules hoje (antes da Fase 3, ver `firestore.rules`):
+  `contratos` e `itens` permitem `read, write` para qualquer usuário
+  autenticado, sem checar quem é. Não trate isso como segurança real ao
+  raciocinar sobre acesso a dados até a Fase 3 estar concluída.
+  `auditoria_logs` é a exceção desde a Fase 2: só permite `create`, e só
+  se o campo `usuario` do documento bater com o e-mail do token
+  (`request.auth.token.email`) — ninguém lê, edita ou apaga pela regra.
 
 ## Problemas conhecidos — não reintroduzir, não corrigir de surpresa
 
@@ -51,25 +55,26 @@ Cada um pertence a uma fase específica do plano (`docs/PLANO.md`). Se for
 relevante para a tarefa atual, aponte em 1-2 frases; só corrija se for o
 objetivo da fase em andamento.
 
-1. `VITE_GEMINI_API_KEY` é lida no cliente e fica exposta no bundle
-   (Fase 2). Nunca criar variáveis `VITE_*` novas para segredos.
-2. `/api/create-user`, `/api/list-users` e `/api/cron-vencimentos` não
-   têm autenticação (Fase 2). Não adicionar endpoint novo sem verificação
-   de chamador.
-3. `valorTotal` e o array `aditivos` são atualizados por read-modify-write
+1. `valorTotal` e o array `aditivos` são atualizados por read-modify-write
    sem transação (Fase 5). Ao mexer nesses caminhos, avisar sobre a
    condição de corrida em vez de silenciosamente "corrigir".
-4. Datas: UTC no cliente vs. parsing manual em hora local no cron
+2. Datas: UTC no cliente vs. parsing manual em hora local no cron
    (Fase 5) — divergência de um dia já confirmada.
-5. `onSnapshot` sem callback de erro em `useDetalhesContrato.ts` — falhas
+3. `onSnapshot` sem callback de erro em `useDetalhesContrato.ts` — falhas
    de permissão ou rede ficam mudas (Fase 5).
-6. `react-hooks/set-state-in-effect` em 4 modais (sincronizar prop→state
+4. `react-hooks/set-state-in-effect` em 4 modais (sincronizar prop→state
    dentro de `useEffect` ao abrir) — achado do lint, não da auditoria
    original. Candidato de refactor na Fase 7.
-7. Os handlers de `/api` usam `(req: any, res: any)` — `@vercel/node`
+5. Os handlers de `/api` usam `(req: any, res: any)` — `@vercel/node`
    não está instalado (Fase 7).
-8. `geminiService` sozinho gera um chunk de build de ~1.78 MB minificado —
-   candidato a `import()` dinâmico na Fase 6.
+6. O chunk de build que hoje aparece com o nome `geminiService` (~1,76 MB
+   minificado) na verdade é jsPDF + html2canvas agrupados por um artefato
+   de nomeação do bundler — o SDK do Gemini saiu do cliente na Fase 2.
+   Candidato a `import()` dinâmico na Fase 6 mesmo assim.
+
+Resolvidos na Fase 2 (não reabrir): `VITE_GEMINI_API_KEY` exposta no
+bundle, e `/api/create-user` / `/api/list-users` / `/api/cron-vencimentos`
+sem verificação de chamador.
 
 ## Convenções do código
 
@@ -84,9 +89,12 @@ objetivo da fase em andamento.
 - Escritas no Firestore ficam nos hooks (`src/hooks/`), não nos
   componentes.
 - Leituras são `onSnapshot` em tempo real e devem sempre ter callback de
-  erro (ver problema conhecido nº 5 — é uma lacuna a fechar, não um
+  erro (ver problema conhecido nº 3 — é uma lacuna a fechar, não um
   padrão a copiar).
 - Tipos compartilhados vivem em `src/types/types.ts`.
+- Nunca criar variáveis `VITE_*` novas para segredos — qualquer coisa com
+  esse prefixo entra no bundle público. Segredos de servidor são lidos em
+  `api/*.ts` via `process.env`, sem prefixo.
 
 ## Como trabalhar neste repositório
 

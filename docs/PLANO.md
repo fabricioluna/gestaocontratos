@@ -109,31 +109,102 @@ Executada pelo usuário no console, sem código. Achados:
 
 ---
 
-## Fase 2 — Segurança do servidor
+## Fase 2 — Segurança do servidor (concluída em 01/08/2026)
 
 **Objetivo:** eliminar os riscos críticos que não dependem da decisão de RBAC.
 
-- [ ] `auditoria_logs`: adicionar regra própria nas Firestore Rules
-  (`allow create: if request.auth != null;`, sem update/delete)
-- [ ] Versionar `firestore.rules` + `firebase.json` no repositório
-- [ ] Novo endpoint `POST /api/extrair-documento`: move a chamada ao
-  Gemini do cliente para o servidor
-- [ ] `geminiService.ts` passa a chamar `/api/extrair-documento`, não o
-  Google diretamente
-- [ ] Renomear `VITE_GEMINI_API_KEY` → `GEMINI_API_KEY` (perde o prefixo
-  `VITE_`, some do bundle)
-- [ ] `verifyIdToken` (firebase-admin) em `/api/create-user` e
-  `/api/list-users`
-- [ ] Validar `Authorization: Bearer $CRON_SECRET` em
-  `/api/cron-vencimentos`
-- [ ] Trocar senha provisória por e-mail por `crypto.randomBytes` + link
-  de redefinição do Firebase
-- [ ] Parar de devolver `error.message` bruto ao cliente nos handlers de
-  `/api`; logar no servidor
-- [ ] Delimitar o texto do documento no prompt do Gemini agora que passa
-  pelo servidor
-- [ ] `/security-review` no final
-- [ ] Rotacionar a chave do Gemini (só depois do proxy estar de pé)
+- [x] `auditoria_logs`: adicionar regra própria nas Firestore Rules.
+  Regra final ficou mais estrita do que o desenho original: além de
+  `allow create: if request.auth != null`, exige
+  `request.resource.data.usuario == request.auth.token.email` — achado do
+  `/security-review` desta fase (ver abaixo). Sem update/delete.
+- [x] Versionado `firestore.rules` + `firebase.json` no repositório.
+  **Não determinado / pendente de ação manual**: não há Firebase CLI
+  configurado neste ambiente (`.firebaserc` não existe, `firebase-tools`
+  não está instalado) — os arquivos ficaram versionados mas **não foram
+  publicados**. Alguém com acesso ao projeto Firebase precisa rodar
+  `firebase login`, `firebase use gestao-contratos-pmp` e
+  `firebase deploy --only firestore:rules` (ou colar o conteúdo de
+  `firestore.rules` no console) para que a regra de `auditoria_logs`
+  passe a valer de verdade. Até lá, o log de auditoria continua 100%
+  inoperante como descrito no achado 0.1 da Fase 0.
+- [x] Novo endpoint `POST /api/extrair-documento` (`api/extrair-documento.ts`):
+  recebe `{ texto, tipo: 'contrato' | 'aditivo' }`, exige
+  `Authorization: Bearer <idToken>` verificado com `verifyIdToken`
+  (firebase-admin), chama o Gemini com `GEMINI_API_KEY` do servidor e
+  delimita o texto do documento no prompt com marcadores
+  `===DOCUMENTO===` e instrução explícita para o modelo tratar o conteúdo
+  como dado, nunca como comando.
+- [x] `geminiService.ts` reescrito: não importa mais `@google/generative-ai`
+  nem lê `API_KEY` nenhuma — só pega o ID token do usuário logado
+  (`auth.currentUser.getIdToken()`) e faz `fetch('/api/extrair-documento')`.
+  Mesma assinatura pública (`extrairDadosContratoComIA`,
+  `extrairDadosAditivoComIA`), então `ModalNovoContrato.tsx` e
+  `useDetalhesContrato.ts` não precisaram mudar a chamada em si.
+- [x] `VITE_GEMINI_API_KEY` → `GEMINI_API_KEY`, movida para a seção de
+  servidor do `.env.example`. **Pendente de ação manual**: renomear/criar
+  a variável na Vercel (`GEMINI_API_KEY`, sem escopo de build) e remover
+  a antiga `VITE_GEMINI_API_KEY` do painel — não determinado se já foi
+  feito, fora do repositório.
+- [x] `verifyIdToken` em `/api/create-user` e `/api/list-users` — sem
+  token válido, ambos respondem 401. Os dois chamadores no cliente
+  (`ModalNovoContrato.tsx`, `ModalGerenciarUsuarios.tsx`) agora mandam
+  `Authorization: Bearer <idToken>`. Continua sem checar *perfil*
+  (admin vs. viewer) — isso é a Fase 3, que ainda não tem custom claims
+  para checar.
+- [x] `/api/cron-vencimentos` valida
+  `Authorization: Bearer $CRON_SECRET` contra `process.env.CRON_SECRET`
+  antes de qualquer outra coisa. A Vercel injeta esse header sozinha nas
+  chamadas agendadas quando o env var existe no projeto — nada a
+  configurar em `vercel.json`. **Pendente de ação manual**: criar
+  `CRON_SECRET` na Vercel (qualquer valor aleatório) — não determinado se
+  já existe.
+- [x] Senha provisória por e-mail trocada por link de redefinição:
+  `create-user.ts` agora gera uma senha aleatória com
+  `crypto.randomBytes(24)` só para satisfazer a API do
+  `auth.createUser` (nunca é exposta), e usa
+  `auth.generatePasswordResetLink(email)` para gerar o link que vai no
+  e-mail. O usuário define a própria senha pelo fluxo do Firebase.
+- [x] Handlers de `/api` (`create-user`, `list-users`, `cron-vencimentos`,
+  `extrair-documento`) não devolvem mais `error.message` bruto ao
+  cliente — sempre uma mensagem genérica fixa, com `console.error` do
+  detalhe real no servidor (vai para os logs da Vercel).
+- [x] `/security-review` rodado ao final via 3 subagentes (achar riscos →
+  filtrar falso-positivo por item → cortar confiança < 8). De 3 candidatos
+  (log de auditoria forjável, `verifyIdToken` sem `checkRevoked`, prompt
+  injection residual no Gemini), só o primeiro sobreviveu com confiança
+  8/10 — corrigido na própria regra do `auditoria_logs` acima. Os outros
+  dois foram descartados: falta de `checkRevoked` é reforço de defesa,
+  não vulnerabilidade concreta, dado token de curta duração e só 6 contas
+  de teste; prompt injection no texto do documento já cai numa etapa
+  humana de revisão antes de qualquer gravação no Firestore.
+- [ ] Rotacionar a chave do Gemini. **Não feito nesta sessão** — depende
+  do Google Cloud Console (fora do repositório) e só faz sentido depois
+  de confirmar em produção que `GEMINI_API_KEY` está configurada na
+  Vercel e que o proxy (`/api/extrair-documento`) está funcionando; senão
+  troca-se uma chave exposta por outra igualmente exposta durante a
+  janela de deploy. Fica para o usuário fazer manualmente e avisar aqui
+  quando feito.
+
+**Build/lint ao final da fase** (baseline da Fase 1: build 0 erros, lint
+48 erros): build **0 erros** (idêntico); lint **44 erros** (queda de 4 —
+`error: any` viraram `catch (error)` sem tipo em 3 dos 4 handlers de
+`/api`; os 2 `any` novos em `api/extrair-documento.ts` são o mesmo padrão
+`(req: any, res: any)` do problema conhecido nº 5 do `CLAUDE.md`, não uma
+regressão nova). Sem novos erros de tipo (`tsc -b` limpo, verificado
+também pelo hook a cada edição).
+
+**Pendências que ficaram para fora desta fase, por decisão consciente:**
+- Autorização por perfil (admin vs. viewer) nos três endpoints — Fase 3,
+  precisa dos custom claims.
+- `firestore.rules` versionado mas não publicado, `GEMINI_API_KEY` e
+  `CRON_SECRET` não confirmadas na Vercel, rotação da chave do Gemini —
+  as três dependem de ações manuais fora do repositório, listadas acima.
+- Duplicação do bloco de inicialização do firebase-admin entre os 4
+  arquivos de `api/` (create-user, list-users, cron-vencimentos,
+  extrair-documento) — mantida de propósito, já é a convenção existente
+  no repositório e a consolidação está no escopo da Fase 7
+  ("Eliminar duplicações... init do firebase-admin").
 
 ## Fase 3 — RBAC com custom claims
 

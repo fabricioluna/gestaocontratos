@@ -1,6 +1,7 @@
 // src/components/Painel/ModalGerenciarUsuarios.tsx
 import React, { useState } from 'react';
 import toast from 'react-hot-toast';
+import { auth } from '../../firebase';
 
 interface ModalGerenciarUsuariosProps {
   isOpen: boolean;
@@ -26,9 +27,10 @@ export default function ModalGerenciarUsuarios({ isOpen, onClose }: ModalGerenci
     const toastId = toast.loading('A processar permissões e a enviar credenciais...');
 
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       const response = await fetch('/api/create-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({
           email: emailUsuario,
           nomeOrgao: orgaoVinculado || 'Prefeitura Municipal de Pesqueira'
