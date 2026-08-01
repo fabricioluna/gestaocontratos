@@ -318,10 +318,11 @@ só tem a config pública do Firebase (cliente), sem
    `npm run migrar:perfis` rodado com sucesso — os 6 e-mails de teste
    confirmados com `perfil`/`orgaoId` corretos (log local, não repetido
    aqui por conter e-mails reais de contas de produção).
-2. Deploy do código desta fase na Vercel (`api/definir-perfil.ts` e
-   `api/_shared/verificarAdmin.ts` são inofensivos antes do passo 1 — nenhum
-   token tem claim `admin` ainda, então ninguém consegue chamá-los com
-   sucesso).
+2. [x] **Concluído em 01/08/2026.** PR #2 (`evolucao/fase-3` → `main`)
+   aberto e mergeado pelo usuário no GitHub. Deploy de produção na Vercel
+   deve disparar automaticamente a partir do merge em `main` — não
+   verificado a partir deste repositório (painel da Vercel, fora do
+   escopo do código); confirmar lá antes do passo 3.
 3. Pedir para as 6 contas de teste fazerem logout/login uma vez após o
    deploy — garante token com claims atualizado no navegador de cada uma.
 4. **Publicar `firestore.rules` no console do Firebase** — só depois dos
