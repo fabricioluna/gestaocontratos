@@ -138,12 +138,10 @@ Executada pelo usuário no console, sem código. Achados:
   `extrairDadosAditivoComIA`), então `ModalNovoContrato.tsx` e
   `useDetalhesContrato.ts` não precisaram mudar a chamada em si.
 - [x] `VITE_GEMINI_API_KEY` → `GEMINI_API_KEY`, movida para a seção de
-  servidor do `.env.example`. **Criada na Vercel e testada em produção
-  pelo usuário em 01/08/2026** ("Carregar Contrato" preencheu os campos
+  servidor do `.env.example`. Criada na Vercel e testada em produção
+  pelo usuário em 01/08/2026 ("Carregar Contrato" preencheu os campos
   via IA) — `/api/extrair-documento` está lendo `GEMINI_API_KEY` do
-  servidor corretamente. `VITE_GEMINI_API_KEY` ainda está na Vercel com
-  o valor antigo (sem problema, nenhum código lê mais essa variável) —
-  remover só depois de rotacionar a chave (ver pendência abaixo).
+  servidor corretamente. `VITE_GEMINI_API_KEY` foi removida da Vercel.
 - [x] `verifyIdToken` em `/api/create-user` e `/api/list-users` — sem
   token válido, ambos respondem 401. Os dois chamadores no cliente
   (`ModalNovoContrato.tsx`, `ModalGerenciarUsuarios.tsx`) agora mandam
@@ -181,16 +179,15 @@ Executada pelo usuário no console, sem código. Achados:
   não vulnerabilidade concreta, dado token de curta duração e só 6 contas
   de teste; prompt injection no texto do documento já cai numa etapa
   humana de revisão antes de qualquer gravação no Firestore.
-- [ ] Rotacionar a chave do Gemini. **Passos 1-2 concluídos em
-  01/08/2026** (`GEMINI_API_KEY`/`CRON_SECRET` criadas, proxy testado e
-  funcionando). **Faltam os passos 3-4, ação do usuário no Google Cloud
-  Console (fora do repositório) — não determinado se já foram feitos**:
-  3. Ir ao Google Cloud Console do projeto `gestao-contratos-pmp` →
-     Credenciais, gerar uma chave **nova**, atualizar `GEMINI_API_KEY` na
-     Vercel com o valor novo, redeployar e repetir o teste de "Carregar
-     Contrato".
-  4. Revogar/apagar a chave antiga no Google Console e remover
-     `VITE_GEMINI_API_KEY` da Vercel.
+- [x] Rotacionar a chave do Gemini. Confirmado pelo usuário em
+  01/08/2026: chave nova gerada no Google Cloud Console do projeto
+  `gestao-contratos-pmp`, `GEMINI_API_KEY` na Vercel atualizada com o
+  valor novo, chave antiga (a que ficou meses exposta via
+  `VITE_GEMINI_API_KEY`) revogada/apagada no Console, e
+  `VITE_GEMINI_API_KEY` removida da Vercel. Não verificável a partir
+  deste repositório (ação no Google Cloud Console, fora do escopo do
+  código) — registrado como feito com base na confirmação direta do
+  usuário.
 
 **Build/lint ao final da fase** (baseline da Fase 1: build 0 erros, lint
 48 erros): build **0 erros** (idêntico); lint **44 erros** (queda de 4 —
