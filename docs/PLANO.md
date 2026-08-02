@@ -396,6 +396,19 @@ permanente — relevante principalmente para a Fase 7, que pretende
 consolidar código duplicado entre os arquivos de `api/` e vai criar mais
 imports relativos como este.
 
+**Teste end-to-end do fluxo de cadastro de usuário, feito depois da
+correção:** achado um segundo problema, também de configuração externa,
+não de código — `auth.generatePasswordResetLink` falhava com
+`auth/unauthorized-continue-uri` porque `gestaocontratospmp.vercel.app`
+não estava na lista de **Authorized domains** do Firebase Auth (Console
+→ Authentication → Settings). Usuário corrigiu manualmente. Reteste
+completo: conta criada, `perfil`/`orgaoId` corretos via
+`/api/definir-perfil`, e-mail entregue com sucesso pelo Gmail — só caiu
+no Spam do destinatário (entregabilidade do remetente
+`notifica.licitacao.pesqueira@gmail.com`, sem SPF/DKIM configurado; fora
+do escopo de código, não é bug, backlog de melhoria se incomodar no uso
+real).
+
 ## Fase 4 — Extrair lógica pura + Vitest
 
 - [ ] Extrair para `src/domain/`: cálculo de valor global com aditivos,
