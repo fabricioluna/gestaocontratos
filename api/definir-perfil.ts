@@ -1,7 +1,7 @@
 // api/definir-perfil.ts
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { verificarAdmin } from './lib/verificarAdmin.js';
+import { verificarAdmin } from './_shared/verificarAdmin.js';
 
 const PERFIS_VALIDOS = ['admin', 'viewer'];
 const ORGAOS_VALIDOS = ['prefeitura', 'fms', 'fme', 'fmas'];
