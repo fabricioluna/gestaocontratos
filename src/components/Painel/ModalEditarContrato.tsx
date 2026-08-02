@@ -4,6 +4,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { db } from '../../firebase';
 import { parseMoeda } from '../../utils/formatters';
+import { MODALIDADES_LICITACAO } from '../../utils/modalidades';
 import type { Contrato, FormContratoState } from '../../types/types';
 
 interface ModalEditarContratoProps {
@@ -59,10 +60,18 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
     
     try {
       const novoValorGlobal = parseMoeda(formEdit.valorTotal || '0');
+      // `formEdit` foi inicializado com `{ ...contratoOriginal }`, que traz
+      // `id` e `aditivos` junto — gravar isso de volta criava um campo `id`
+      // redundante no documento e, pior, sobrescrevia `aditivos` com o
+      // snapshot que estava em memória quando o modal abriu (perdendo
+      // qualquer aditivo registado por outra pessoa nesse intervalo).
+      const dadosParaGravar = { ...(formEdit as Partial<Contrato>) };
+      delete dadosParaGravar.id;
+      delete dadosParaGravar.aditivos;
 
       await updateDoc(doc(db, 'contratos', contratoOriginal.id!), {
-        ...formEdit, 
-        valorTotal: novoValorGlobal, 
+        ...dadosParaGravar,
+        valorTotal: novoValorGlobal,
         dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
       });
       toast.success('Contrato atualizado com sucesso!', { id: toastId });
@@ -87,12 +96,7 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
               <label>Modalidade</label>
               <select name="modalidade" value={formEdit.modalidade || ''} onChange={lidarComMudancaEdit} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
                 <option value="">Selecione...</option>
-                <option value="Pregão">Pregão</option>
-                <option value="Concorrência">Concorrência</option>
-                <option value="Dispensa">Dispensa</option>
-                <option value="Inexigibilidade">Inexigibilidade</option>
-                <option value="Credenciamento">Credenciamento</option>
-                <option value="Contratação Direta">Contratação Direta</option>
+                {MODALIDADES_LICITACAO.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
             

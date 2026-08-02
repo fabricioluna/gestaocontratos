@@ -9,7 +9,7 @@ import logo from '../assets/logopmp.png';
 import './Painel.css';
 
 import { formatarDataBr } from '../utils/formatters';
-import { diasAteVencimento, statusVencimento } from '../domain/vencimento';
+import { diasAteVencimento, statusVencimento, parseDataLocal } from '../domain/vencimento';
 import { auth } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import ModalNovoContrato from '../components/Painel/ModalNovoContrato';
@@ -86,19 +86,19 @@ export default function Painel() {
     if (!dataI && !dataF) return lista;
     return lista.filter(c => {
       if (!c.dataFim) return false;
-      const vencimento = new Date(c.dataFim); vencimento.setHours(0, 0, 0, 0);
-      let passaInicio = true; 
+      const vencimento = parseDataLocal(c.dataFim); vencimento.setHours(0, 0, 0, 0);
+      let passaInicio = true;
       let passaFim = true;
-      
-      if (dataI) { 
-        const inicio = new Date(dataI); 
-        inicio.setHours(0, 0, 0, 0); 
-        if (vencimento < inicio) passaInicio = false; 
+
+      if (dataI) {
+        const inicio = parseDataLocal(dataI);
+        inicio.setHours(0, 0, 0, 0);
+        if (vencimento < inicio) passaInicio = false;
       }
-      if (dataF) { 
-        const fim = new Date(dataF); 
-        fim.setHours(0, 0, 0, 0); 
-        if (vencimento > fim) passaFim = false; 
+      if (dataF) {
+        const fim = parseDataLocal(dataF);
+        fim.setHours(0, 0, 0, 0);
+        if (vencimento > fim) passaFim = false;
       }
       return passaInicio && passaFim;
     });
@@ -297,7 +297,7 @@ export default function Painel() {
                     <td style={{ display: 'flex', gap: '5px' }}>
                       <button style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => navigate(`/contrato/${c.id}`)}>Detalhes</button>
                       
-                      {isAdmin && <button style={{ backgroundColor: '#ffc107', color: '#333', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => abrirEdicao(c)}>✏️</button>}
+                      {isAdmin && !c.dataDistrato && <button style={{ backgroundColor: '#ffc107', color: '#333', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => abrirEdicao(c)}>✏️</button>}
                       {isAdmin && <button style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => excluirContrato(c.id!)} disabled={loading}>🗑️</button>}
                     </td>
                   </tr>

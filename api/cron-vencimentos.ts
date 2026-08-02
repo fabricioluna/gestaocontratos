@@ -47,6 +47,7 @@ export default async function handler(req: any, res: any) {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0); // Zera a hora para fazer conta de dias exatos
     let emailsEnviados = 0;
+    let emailsComFalha = 0;
 
     // 5. Analisa contrato a contrato
     for (const c of contratos) {
@@ -92,19 +93,30 @@ export default async function handler(req: any, res: any) {
         const emailExtra = process.env.EMAIL_CC || '';
         const listaCopias = [emailPrincipal, emailExtra].filter(e => e !== '').join(', ');
 
-        await transporter.sendMail({
-          from: '"Gestão de Contratos PMP" <notifica.licitacao.pesqueira@gmail.com>',
-          to: c.emailSecretaria,
-          cc: listaCopias, 
-          subject: `[ALERTA PMP] O Contrato ${c.numeroContrato} ${textoUrgencia}!`,
-          html: htmlEmail
-        });
-
-        emailsEnviados++;
+        // try/catch por contrato: um único emailSecretaria inválido não pode
+        // abortar o laço e cancelar o alerta dos demais contratos do dia —
+        // como o disparo é por igualdade exata de dias (90/30/0), a janela
+        // perdida não volta (achado A7 da auditoria, Fase 5).
+        try {
+          await transporter.sendMail({
+            from: '"Gestão de Contratos PMP" <notifica.licitacao.pesqueira@gmail.com>',
+            to: c.emailSecretaria,
+            cc: listaCopias,
+            subject: `[ALERTA PMP] O Contrato ${c.numeroContrato} ${textoUrgencia}!`,
+            html: htmlEmail
+          });
+          emailsEnviados++;
+        } catch (erroEnvio) {
+          console.error(`Erro ao enviar alerta do contrato ${c.numeroContrato} (${c.emailSecretaria}):`, erroEnvio);
+          emailsComFalha++;
+        }
       }
     }
 
-    res.status(200).json({ success: true, message: `Rotina concluída. ${emailsEnviados} alertas enviados.` });
+    res.status(200).json({
+      success: true,
+      message: `Rotina concluída. ${emailsEnviados} alertas enviados${emailsComFalha > 0 ? `, ${emailsComFalha} falharam` : ''}.`
+    });
   } catch (error) {
     console.error("Erro no Cron Job:", error);
     res.status(500).json({ success: false, message: 'Erro interno ao processar a rotina de vencimentos.' });

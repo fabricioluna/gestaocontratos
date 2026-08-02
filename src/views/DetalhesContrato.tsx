@@ -9,6 +9,7 @@ import logo from '../assets/logopmp.png';
 import './DetalhesContrato.css';
 
 import { formatarDataBr } from '../utils/formatters';
+import { diasAteVencimento } from '../domain/vencimento';
 import { useDetalhesContrato } from '../hooks/useDetalhesContrato';
 import { useAuth } from '../hooks/useAuth';
 import type { Item } from '../types/types';
@@ -27,7 +28,7 @@ export default function DetalhesContrato() {
   const isAdmin = perfil === 'admin';
 
   const {
-    contrato, itensCatalogo, loading, valorGlobalAtualizado, totalAditivosAplicados, valorOriginal,
+    contrato, itensCatalogo, loading, erro, valorGlobalAtualizado, totalAditivosAplicados, valorOriginal,
     aditivoEmEdicao, aditivoDataAditivo, setAditivoDataAditivo, aditivoDescricao, setAditivoDescricao, 
     aditivoTipo, setAditivoTipo, aditivoOperacao, setAditivoOperacao, aditivoValor, setAditivoValor,
     aditivoNovaData, setAditivoNovaData, itensDoAditivo, arquivoPdfAditivo, setArquivoPdfAditivo, 
@@ -54,13 +55,20 @@ export default function DetalhesContrato() {
     'fms': 'Fundo Municipal de Saúde'
   };
 
+  if (erro) {
+    return (
+      <div className="loading">
+        <p>{erro}</p>
+        <button className="btn-voltar" onClick={() => navigate('/painel')} style={{ marginTop: '15px' }}>Voltar ao Painel</button>
+      </div>
+    );
+  }
   if (!contrato) return <div className="loading">A carregar detalhes do contrato...</div>;
 
   const getStatus = () => {
     if (contrato.dataDistrato) return { texto: 'Distratado', cor: '#dc3545' };
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    const vencimento = new Date(contrato.dataFim || ''); vencimento.setHours(0, 0, 0, 0);
-    if (hoje > vencimento) return { texto: 'Vencido', cor: '#64748b' }; 
+    if (!contrato.dataFim) return { texto: 'Vigente', cor: '#28a745' };
+    if (diasAteVencimento(contrato.dataFim) < 0) return { texto: 'Vencido', cor: '#64748b' };
     return { texto: 'Vigente', cor: '#28a745' };
   };
   

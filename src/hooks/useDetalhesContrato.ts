@@ -1,6 +1,6 @@
 // src/hooks/useDetalhesContrato.ts
 import { useState, useEffect } from 'react';
-import { doc, onSnapshot, collection, query, where, deleteDoc, getDocs, writeBatch, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, deleteDoc, getDocs, writeBatch, updateDoc, runTransaction } from 'firebase/firestore';
 import * as mammoth from 'mammoth'; 
 import * as pdfjsLib from 'pdfjs-dist'; 
 import toast from 'react-hot-toast';
@@ -22,6 +22,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
   const [contrato, setContrato] = useState<Contrato | null>(null);
   const [itensCatalogo, setItensCatalogo] = useState<Item[]>([]);
   const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
   const [aditivoEmEdicao, setAditivoEmEdicao] = useState<Aditivo | null>(null);
   const [aditivoDataAditivo, setAditivoDataAditivo] = useState('');
@@ -44,7 +45,15 @@ export const useDetalhesContrato = (id: string | undefined) => {
   useEffect(() => {
     if (!id) return;
     const unsubContrato = onSnapshot(doc(db, 'contratos', id as string), (docSnap) => {
-      if (docSnap.exists()) setContrato({ id: docSnap.id, ...docSnap.data() } as Contrato);
+      if (docSnap.exists()) {
+        setContrato({ id: docSnap.id, ...docSnap.data() } as Contrato);
+        setErro(null);
+      } else {
+        setErro('Contrato não encontrado.');
+      }
+    }, (error) => {
+      console.error('[Firebase Debug] Erro ao ler contrato:', error);
+      setErro('Erro ao carregar o contrato. Verifique a sua conexão ou permissão de acesso.');
     });
 
     const qItens = query(collection(db, 'itens'), where('contratoId', '==', id as string), where('tipoRegistro', '==', 'catalogo'));
@@ -59,6 +68,9 @@ export const useDetalhesContrato = (id: string | undefined) => {
         return (a.numeroItem || '').localeCompare(b.numeroItem || '', undefined, { numeric: true });
       });
       setItensCatalogo(lista);
+    }, (error) => {
+      console.error('[Firebase Debug] Erro ao ler itens do catálogo:', error);
+      toast.error('Erro ao carregar o catálogo de itens.');
     });
 
     return () => { unsubContrato(); unsubItens(); };
@@ -157,40 +169,103 @@ export const useDetalhesContrato = (id: string | undefined) => {
     if (!window.confirm("Excluir este aditivo e recalcular valor global?")) return;
     const toastId = toast.loading('A excluir aditivo...'); setLoading(true);
     try {
-      const valorAjuste = aditivo.valorAditivado || 0;
-      const novoValorTotal = recalcularValorTotalComAditivo(Number(contrato.valorTotal), valorAjuste, 0);
-      const novaLista = contrato.aditivos ? contrato.aditivos.filter(a => a.id !== aditivo.id) : [];
-      await updateDoc(doc(db, 'contratos', id as string), { valorTotal: novoValorTotal, aditivos: novaLista, dataUltimaAtualizacao: new Date().toLocaleString('pt-BR') });
-      
+      const contratoRef = doc(db, 'contratos', id as string);
+      // Transação: lê o contrato mais recente do servidor em vez do estado
+      // local (que pode estar desatualizado se outro fiscal alterou os
+      // aditivos entretanto) antes de recalcular e regravar valorTotal +
+      // aditivos — evita a condição de corrida do read-modify-write direto
+      // (CLAUDE.md, problema conhecido nº 1).
+      await runTransaction(db, async (transaction) => {
+        const contratoSnap = await transaction.get(contratoRef);
+        if (!contratoSnap.exists()) throw new Error('Contrato não encontrado.');
+        const contratoAtual = contratoSnap.data() as Contrato;
+        const valorAjuste = aditivo.valorAditivado || 0;
+        const novoValorTotal = recalcularValorTotalComAditivo(Number(contratoAtual.valorTotal) || 0, valorAjuste, 0);
+        const novaLista = contratoAtual.aditivos ? contratoAtual.aditivos.filter(a => a.id !== aditivo.id) : [];
+        transaction.update(contratoRef, { valorTotal: novoValorTotal, aditivos: novaLista, dataUltimaAtualizacao: new Date().toLocaleString('pt-BR') });
+      });
+
       await registrarLog('EXCLUSÃO ADITIVO', `Aditivo "${aditivo.descricao}" excluído do Contrato ${contrato.numeroContrato}.`);
       toast.success('Aditivo excluído com sucesso!', { id: toastId });
-    } catch (error) { toast.error("Erro ao excluir o aditivo.", { id: toastId }); 
+    } catch (error) { toast.error("Erro ao excluir o aditivo.", { id: toastId });
     } finally { setLoading(false); }
   };
 
   const salvarAditivo = async (e: React.FormEvent, onSuccess: () => void) => {
     e.preventDefault(); if (!id || !contrato) return;
-    if (!aditivoDataAditivo) return toast.error("Preencha a Data de Assinatura."); 
+    if (!aditivoDataAditivo) return toast.error("Preencha a Data de Assinatura.");
+    let toastId: string | undefined;
     try {
-      let novoValorTotal = recalcularValorTotalComAditivo(Number(contrato.valorTotal) || 0, aditivoEmEdicao?.valorAditivado || 0, 0);
-      let novaDataFimStr = contrato.dataFim; let valorAlteracao = 0;
+      // Pré-checagem com o estado local só para decidir se mostra o aviso
+      // de "acréscimo supera 25%" — window.confirm não pode rodar dentro da
+      // transação abaixo (Firestore pode reexecutar o corpo da transação em
+      // caso de conflito, e um confirm() duplicado seria péssima UX). O
+      // valor e a lista realmente gravados vêm de dentro da transação,
+      // lidos do servidor no momento do commit — se o usuário já confirmou
+      // aqui, aceitamos prosseguir mesmo que o valor real tenha oscilado
+      // levemente entretanto.
+      let avisoConfirmado = false;
+      let novoValorTotalPreview = recalcularValorTotalComAditivo(Number(contrato.valorTotal) || 0, aditivoEmEdicao?.valorAditivado || 0, 0);
+      let valorAlteracaoPreview = 0;
       if (aditivoTipo === 'valor' || aditivoTipo === 'ambos') {
-        const v = Number(aditivoValor); valorAlteracao = calcularValorAlteracaoAditivo(aditivoOperacao, v);
-        if (aditivoOperacao === 'acrescimo' && excedeLimite25(v, novoValorTotal)) { if(!window.confirm(`Acréscimo supera 25%. Prosseguir?`)) return; }
-        novoValorTotal += valorAlteracao;
+        const v = Number(aditivoValor); valorAlteracaoPreview = calcularValorAlteracaoAditivo(aditivoOperacao, v);
+        if (aditivoOperacao === 'acrescimo' && excedeLimite25(v, novoValorTotalPreview)) {
+          if (!window.confirm(`Acréscimo supera 25%. Prosseguir?`)) return;
+          avisoConfirmado = true;
+        }
+        novoValorTotalPreview += valorAlteracaoPreview;
       }
       if (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') {
-        if (!aditivoNovaData) return toast.error('Informe a nova validade.'); novaDataFimStr = aditivoNovaData;
+        if (!aditivoNovaData) return toast.error('Informe a nova validade.');
       }
-      const toastId = toast.loading('A guardar aditivo...'); setLoading(true);
-      const novoAditivo: Aditivo = { id: aditivoEmEdicao ? aditivoEmEdicao.id : Date.now().toString(), descricao: aditivoDescricao || 'Termo Aditivo', dataAditivo: aditivoDataAditivo, tipo: aditivoTipo, valorAditivado: valorAlteracao, novaDataFim: (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') && aditivoNovaData ? aditivoNovaData : "", itensAditivados: itensDoAditivo.length > 0 ? itensDoAditivo : [], };
-      const novaLista = substituirAditivo(contrato.aditivos, novoAditivo, !!aditivoEmEdicao, aditivoEmEdicao?.id);
-      await updateDoc(doc(db, 'contratos', id as string), { valorTotal: novoValorTotal, dataFim: novaDataFimStr, aditivos: novaLista, dataUltimaAtualizacao: new Date().toLocaleString('pt-BR') });
-      
-      await registrarLog('ADITIVO', `Aditivo "${novoAditivo.descricao}" ${aditivoEmEdicao ? 'atualizado' : 'registado'} no Contrato ${contrato.numeroContrato}.`);
+
+      toastId = toast.loading('A guardar aditivo...'); setLoading(true);
+
+      let novoAditivo: Aditivo | null = null;
+      const contratoRef = doc(db, 'contratos', id as string);
+      // Transação: lê o contrato mais recente do servidor em vez do estado
+      // local antes de recalcular valorTotal/aditivos — evita a condição de
+      // corrida do read-modify-write direto (CLAUDE.md, problema conhecido
+      // nº 1). Repete a checagem dos 25% aqui contra o valor real: se o
+      // usuário NÃO tinha sido avisado na pré-checagem (achava que era um
+      // acréscimo normal) mas o valor base mudou entretanto — outro fiscal
+      // registou aditivo nesse intervalo — e agora ultrapassa 25%, aborta
+      // em vez de gravar silenciosamente sem aviso (achado do revisor-pmp
+      // nesta fase). Se já tinha sido avisado e confirmado, prossegue.
+      await runTransaction(db, async (transaction) => {
+        const contratoSnap = await transaction.get(contratoRef);
+        if (!contratoSnap.exists()) throw new Error('Contrato não encontrado.');
+        const contratoAtual = contratoSnap.data() as Contrato;
+
+        let novoValorTotal = recalcularValorTotalComAditivo(Number(contratoAtual.valorTotal) || 0, aditivoEmEdicao?.valorAditivado || 0, 0);
+        let novaDataFimStr = contratoAtual.dataFim;
+        let valorAlteracao = 0;
+        if (aditivoTipo === 'valor' || aditivoTipo === 'ambos') {
+          const v = Number(aditivoValor);
+          if (aditivoOperacao === 'acrescimo' && !avisoConfirmado && excedeLimite25(v, novoValorTotal)) {
+            throw new Error('CONCORRENCIA_25');
+          }
+          valorAlteracao = calcularValorAlteracaoAditivo(aditivoOperacao, v);
+          novoValorTotal += valorAlteracao;
+        }
+        if (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') {
+          novaDataFimStr = aditivoNovaData;
+        }
+
+        novoAditivo = { id: aditivoEmEdicao ? aditivoEmEdicao.id : Date.now().toString(), descricao: aditivoDescricao || 'Termo Aditivo', dataAditivo: aditivoDataAditivo, tipo: aditivoTipo, valorAditivado: valorAlteracao, novaDataFim: (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') && aditivoNovaData ? aditivoNovaData : "", itensAditivados: itensDoAditivo.length > 0 ? itensDoAditivo : [], };
+        const novaLista = substituirAditivo(contratoAtual.aditivos, novoAditivo, !!aditivoEmEdicao, aditivoEmEdicao?.id);
+        transaction.update(contratoRef, { valorTotal: novoValorTotal, dataFim: novaDataFimStr, aditivos: novaLista, dataUltimaAtualizacao: new Date().toLocaleString('pt-BR') });
+      });
+
+      await registrarLog('ADITIVO', `Aditivo "${novoAditivo!.descricao}" ${aditivoEmEdicao ? 'atualizado' : 'registado'} no Contrato ${contrato.numeroContrato}.`);
       toast.success(aditivoEmEdicao ? 'Aditivo atualizado!' : 'Aditivo registado!', { id: toastId });
       fecharModalAditivoState(); onSuccess();
-    } catch (error) { toast.error("Erro ao guardar o aditivo."); 
+    } catch (error) {
+      if (error instanceof Error && error.message === 'CONCORRENCIA_25') {
+        toast.error('O valor base do contrato mudou enquanto o formulário estava aberto e este acréscimo passou a ultrapassar 25%. Reabra o aditivo para confirmar com os dados atualizados.', { id: toastId, duration: 6000 });
+      } else {
+        toast.error("Erro ao guardar o aditivo.", toastId ? { id: toastId } : undefined);
+      }
     } finally { setLoading(false); }
   };
 
@@ -224,12 +299,20 @@ export const useDetalhesContrato = (id: string | undefined) => {
         valorTotalItem: itemEditado.valorTotalItem
       });
 
-      // Recalcula o Contrato global se o item mudou de valor
+      // Recalcula o Contrato global se o item mudou de valor. Transação:
+      // soma a diferença sobre o valorTotal lido do servidor no momento do
+      // commit, não o do estado local (mesma condição de corrida do
+      // problema conhecido nº 1 do CLAUDE.md).
       if (diferencaValor !== 0) {
-        const novoTotal = (Number(contrato.valorTotal) || 0) + diferencaValor;
-        await updateDoc(doc(db, 'contratos', id as string), {
-          valorTotal: novoTotal,
-          dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
+        const contratoRef = doc(db, 'contratos', id as string);
+        await runTransaction(db, async (transaction) => {
+          const contratoSnap = await transaction.get(contratoRef);
+          if (!contratoSnap.exists()) throw new Error('Contrato não encontrado.');
+          const valorAtual = Number((contratoSnap.data() as Contrato).valorTotal) || 0;
+          transaction.update(contratoRef, {
+            valorTotal: valorAtual + diferencaValor,
+            dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
+          });
         });
       }
 
@@ -245,7 +328,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
   };
 
   return {
-    contrato, itensCatalogo, loading, valorGlobalAtualizado, totalAditivosAplicados, valorOriginal,
+    contrato, itensCatalogo, loading, erro, valorGlobalAtualizado, totalAditivosAplicados, valorOriginal,
     aditivoEmEdicao, aditivoDataAditivo, setAditivoDataAditivo, aditivoDescricao, setAditivoDescricao, 
     aditivoTipo, setAditivoTipo, aditivoOperacao, setAditivoOperacao, aditivoValor, setAditivoValor,
     aditivoNovaData, setAditivoNovaData, itensDoAditivo, arquivoPdfAditivo, setArquivoPdfAditivo, 

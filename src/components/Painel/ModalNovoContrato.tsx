@@ -7,6 +7,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import toast from 'react-hot-toast';
 import { db, auth } from '../../firebase';
 import { parseMoeda, extrairNumeroPlanilha } from '../../utils/formatters';
+import { MODALIDADES_LICITACAO } from '../../utils/modalidades';
 import { extrairDadosContratoComIA } from '../../services/geminiService';
 import type { FormContratoState, Item } from '../../types/types';
 
@@ -356,12 +357,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
                 <label>Modalidade</label>
                 <select name="modalidade" value={formData.modalidade} onChange={lidarComMudanca} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
                   <option value="">Selecione...</option>
-                  <option value="Pregão Eletrônico">Pregão Eletrônico</option>
-                  <option value="Pregão Presencial">Pregão Presencial</option>
-                  <option value="Concorrência">Concorrência</option>
-                  <option value="Dispensa">Dispensa</option>
-                  <option value="Inexigibilidade">Inexigibilidade</option>
-                  <option value="Credenciamento">Credenciamento</option>
+                  {MODALIDADES_LICITACAO.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
               

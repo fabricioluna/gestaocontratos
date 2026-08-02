@@ -473,19 +473,113 @@ login carregou sem erro de console.
 **Pendências:** nenhuma — a fase não tinha dependência de ação manual fora
 do repositório.
 
-## Fase 5 — Correção de bugs
+## Fase 5 — Correção de bugs (concluída em 02/08/2026)
 
-- [ ] Datas UTC vs. hora local (divergência de um dia)
-- [ ] `updateDoc` sem transação em `valorTotal`/`aditivos`
-- [ ] `ModalEditarContrato` regrava `id` e `aditivos` por engano
-- [ ] Modalidades divergentes entre cadastro e edição
-- [ ] Falha de e-mail no cron cancela todos os alertas do dia (janela de
-  vencimento perdida para sempre)
-- [ ] `onSnapshot` sem callback de erro em `useDetalhesContrato.ts`
-- [ ] Contrato inexistente = "A carregar..." eterno
-- [ ] Fiscal com lista vazia permanente (race condition no useEffect)
-- [ ] Toast preso sem `{ id: toastId }` no catch de `salvarAditivo`
-- [ ] Contrato distratado ainda editável pelo botão do painel
+- [x] **Datas UTC vs. hora local.** `src/domain/vencimento.ts` ganhou
+  `parseDataLocal` (interpreta `"YYYY-MM-DD"` como meia-noite local, mesma
+  leitura manual que `api/cron-vencimentos.ts` já fazia — o cliente foi
+  alinhado ao cron, não o contrário). `diasAteVencimento` passou a usá-la
+  internamente; `Painel.tsx` (`filtrarContratosPorPeriodo`) e
+  `DetalhesContrato.tsx` (`getStatus`, agora reaproveitando
+  `diasAteVencimento` em vez de reimplementar o cálculo) foram migrados
+  para a mesma função. `api/cron-vencimentos.ts` não foi tocado — seu
+  parsing manual já era o comportamento correto. `vencimento.test.ts`
+  ajustado: o parâmetro `hoje` dos testes passou a usar
+  `new Date(ano, mes-1, dia)` (data local) em vez de
+  `new Date('YYYY-MM-DD')` (UTC) — do jeito antigo o teste só passava por
+  coincidência de que ambos os lados sofriam o mesmo desvio de fuso;
+  confirmado que quebraria em fuso não-UTC antes desse ajuste (máquina de
+  desenvolvimento roda em America/Fortaleza, UTC-3).
+- [x] **`updateDoc` sem transação em `valorTotal`/`aditivos`.**
+  `useDetalhesContrato.ts`: `excluirAditivo`, `salvarAditivo` e a parte de
+  `salvarEdicaoItem` que ajusta o `valorTotal` do contrato agora usam
+  `runTransaction`, lendo o contrato do servidor no momento do commit em
+  vez do estado React (que pode estar desatualizado). Achado do
+  `revisor-pmp` nesta fase: a checagem da regra dos 25% (`excedeLimite25`)
+  ainda usava o valor em memória só para decidir se mostrava o
+  `window.confirm` — que não pode rodar dentro da transação, pois o
+  Firestore pode reexecutar o corpo em caso de conflito. Corrigido
+  repetindo a checagem *dentro* da transação contra o valor real: se o
+  usuário não tinha sido avisado (achava que era um acréscimo normal) mas
+  o valor base mudou nesse intervalo — outro fiscal registou aditivo — e
+  agora ultrapassa 25%, a transação aborta com um erro específico
+  (`CONCORRENCIA_25`) e pede para reabrir o aditivo, em vez de gravar
+  silenciosamente sem aviso. Se o aviso já tinha sido confirmado, prossegue
+  sem perguntar de novo.
+- [x] **`ModalEditarContrato` regrava `id` e `aditivos` por engano.**
+  `formEdit` continua inicializado com `{ ...contratoOriginal }` (mais
+  simples que reconstruir campo a campo), mas agora `id` e `aditivos` são
+  removidos do payload (`delete`) antes do `updateDoc` — evita o campo
+  `id` redundante no documento e, principalmente, a sobrescrita de
+  `aditivos` com o snapshot que estava em memória quando o modal abriu.
+- [x] **Modalidades divergentes entre cadastro e edição.** Lista única em
+  `src/utils/modalidades.ts` (`MODALIDADES_LICITACAO`), usada nos dois
+  `<select>`. É a união das duas listas antigas, **exceto** a opção
+  `"Pregão"` (sem qualificador), que só existia no modal de edição —
+  decisão consciente (achado do `revisor-pmp`): como o sistema ainda não
+  tem uso real (só contas de teste), o risco de um contrato salvo com
+  `modalidade === "Pregão"` ficar sem opção correspondente é aceitável;
+  não valia duplicar uma opção ambígua na lista unificada.
+- [x] **Falha de e-mail no cron cancela todos os alertas do dia.**
+  `api/cron-vencimentos.ts`: o `sendMail` dentro do laço agora tem
+  try/catch por contrato — um `emailSecretaria` inválido não aborta mais
+  os alertas dos contratos seguintes na mesma execução. Resposta do
+  endpoint passou a informar `emailsComFalha` na mensagem quando houver.
+- [x] **`onSnapshot` sem callback de erro em `useDetalhesContrato.ts`.**
+  Os dois listeners (contrato e itens do catálogo) ganharam callback de
+  erro, seguindo o padrão já usado em `useContratos.ts`.
+- [x] **Contrato inexistente = "A carregar..." eterno.** Novo estado
+  `erro` no hook: setado quando `docSnap.exists()` é falso ou quando
+  qualquer um dos `onSnapshot` falha; limpo quando o contrato carrega com
+  sucesso. `DetalhesContrato.tsx` mostra a mensagem de erro com botão
+  "Voltar ao Painel" em vez de manter o "A carregar..." para sempre.
+- [x] **Fiscal com lista vazia permanente (race condition no useEffect).**
+  Investigado e confirmado **já resolvido como efeito colateral da
+  reescrita do `AuthContext` na Fase 3** — nenhuma mudança de código
+  necessária nesta fase. O bug original (auditoria M-race, pré-Fase-3) era
+  o `useEffect` de `useContratos.ts` depender só de `orgaoLogado`
+  (`sessionStorage`) e desistir silenciosamente se `auth.currentUser`
+  ainda fosse `null`, sem nunca reexecutar. Hoje o efeito depende de
+  `[carregando, user, perfil, orgaoId, isAdmin]`, todos vindos de
+  `useAuth()`, e reexecuta corretamente assim que o auth state resolve.
+- [x] **Toast preso sem `{ id: toastId }` no catch de `salvarAditivo`.**
+  Corrigido — o catch agora sempre referencia o `toastId` do escopo
+  externo (precisou virar `let` no topo da função, já que o
+  `toast.loading` só roda depois das validações síncronas).
+- [x] **Contrato distratado ainda editável pelo botão do painel.**
+  `Painel.tsx`: o botão ✏️ de editar contrato agora só aparece quando
+  `!c.dataDistrato`, consistente com o resto da tela de detalhes.
+
+**Build/lint/testes ao final da fase** (baseline da Fase 4: build 0 erros,
+lint 47 erros, 21 testes): build **0 erros** (idêntico). Lint **46 erros**
+(queda de 1) — o catch de `salvarAditivo` passou a referenciar `error`
+(para distinguir o abort por `CONCORRENCIA_25` do erro genérico), o que
+eliminou um dos `catch (error)` não usados já mapeados como padrão na
+Fase 1; confirmado por diff completo (`eslint --format json`, agrupado por
+arquivo+regra) contra a baseline da Fase 4 — nenhuma categoria nova de
+erro sobrando, só essa queda de 1. Vitest **21/21 passando** (mesmos
+testes da Fase 4, `vencimento.test.ts` ajustado para a nova leitura local
+de data sem mudar a cobertura).
+
+**Revisão:** `revisor-pmp` rodado no diff completo desta fase. Dois
+achados, ambos endereçados nesta mesma sessão (não ficaram pendentes): a
+janela de checagem dos 25% dessincronizada da transação (corrigido, ver
+item acima) e a lista de modalidades unificada descartando a opção
+`"Pregão"` sem qualificador (decisão consciente, documentada acima, não
+corrigida por ser de baixo risco com o sistema ainda sem uso real).
+
+**Teste visual**: `npm run dev` (porta 5174, a 5173 já estava em uso) +
+Playwright Chromium headless (reaproveitado de `node_modules`, mesma
+convenção `--no-save` das fases anteriores). Tela de login carregou sem
+erro de console. Não foi possível testar login real nem os fluxos de
+aditivo/transação fim-a-fim nesta sessão — mesma limitação já registrada na
+Fase 3 (sem `FIREBASE_ADMIN_CREDENTIALS`/senha de conta de teste no
+ambiente local desta sessão).
+
+**Pendências:** nenhuma bloqueante. Nota para fases futuras: a opção de
+modalidade `"Pregão"` (sem qualificador) não existe mais em nenhum dos dois
+`<select>` — se algum contrato de teste antigo tiver esse valor exato
+salvo, o campo aparecerá em branco ao editar (ver decisão acima).
 
 ## Fase 6 — Desempenho
 

@@ -1,15 +1,19 @@
 // src/domain/vencimento.ts
 
-// Mesma leitura de data que já era feita em Painel.tsx: `new Date(dataFim)`
-// interpreta "YYYY-MM-DD" como UTC (ver CLAUDE.md, problema conhecido nº 2).
-// O cron (api/cron-vencimentos.ts) faz parsing manual em hora local e diverge
-// desta função por até um dia — divergência conhecida, não corrigida nesta
-// fase (Fase 5). Não trocar a implementação do cron por esta sem revisar
-// esse problema primeiro.
+// "YYYY-MM-DD" interpretado como data local (meia-noite no fuso da
+// máquina), não UTC — `new Date("YYYY-MM-DD")` faz o JS interpretar como
+// UTC, o que divergia em até 1 dia do parsing manual que
+// api/cron-vencimentos.ts já fazia (ver CLAUDE.md, problema conhecido nº 2,
+// corrigido na Fase 5 alinhando o cliente ao cron, não o contrário).
+export const parseDataLocal = (dataStr: string): Date => {
+  const [ano, mes, dia] = dataStr.split('-').map(Number);
+  return new Date(ano, mes - 1, dia);
+};
+
 export const diasAteVencimento = (dataFim: string, hoje: Date = new Date()): number => {
   const hojeZerado = new Date(hoje);
   hojeZerado.setHours(0, 0, 0, 0);
-  const vencimento = new Date(dataFim);
+  const vencimento = parseDataLocal(dataFim);
   vencimento.setHours(0, 0, 0, 0);
   return Math.ceil((vencimento.getTime() - hojeZerado.getTime()) / (1000 * 60 * 60 * 24));
 };
