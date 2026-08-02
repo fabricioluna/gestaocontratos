@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import nodemailer from 'nodemailer';
-import { verificarAdmin } from './lib/verificarAdmin';
+import { verificarAdmin } from './lib/verificarAdmin.js';
 
 export default async function handler(req: any, res: any) {
   // Segurança

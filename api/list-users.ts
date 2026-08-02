@@ -1,7 +1,7 @@
 // api/list-users.ts
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { verificarAdmin } from './lib/verificarAdmin';
+import { verificarAdmin } from './lib/verificarAdmin.js';
 
 export default async function handler(req: any, res: any) {
   // Apenas permite pedidos de leitura (GET)
