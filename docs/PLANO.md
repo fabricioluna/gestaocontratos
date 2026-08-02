@@ -209,7 +209,7 @@ também pelo hook a cada edição).
   no repositório e a consolidação está no escopo da Fase 7
   ("Eliminar duplicações... init do firebase-admin").
 
-## Fase 3 — RBAC com custom claims (código concluído em 01/08/2026; publicação em produção pendente de ações manuais)
+## Fase 3 — RBAC com custom claims (concluída e validada em produção em 01/08/2026; restam só os itens 5 e 7 da lista de pendências, não bloqueantes)
 
 - [x] Pedido desenho ao agente `Plan` antes de codificar. As 8 decisões de
   trade-off (bootstrap do primeiro admin, shape do claim, regra de `itens`
@@ -323,21 +323,26 @@ só tem a config pública do Firebase (cliente), sem
    deve disparar automaticamente a partir do merge em `main` — não
    verificado a partir deste repositório (painel da Vercel, fora do
    escopo do código); confirmar lá antes do passo 3.
-3. Pedir para as 6 contas de teste fazerem logout/login uma vez após o
-   deploy — garante token com claims atualizado no navegador de cada uma.
-4. **Publicar `firestore.rules` no console do Firebase** — só depois dos
-   passos 1-3 confirmados; publicar antes travaria as 6 contas de teste
-   (claims corretos no Auth, mas token em cache no navegador sem eles
-   ainda). Mesmo fluxo manual da Fase 2 (sem Firebase CLI configurada
-   neste ambiente).
+3. [x] **Concluído em 01/08/2026.** As 6 contas de teste fizeram
+   logout/login (ou primeiro login, para as 3 que nunca tinham entrado).
+   Único imprevisto: senha de `fiscal.teste@gmail.com` esquecida —
+   redefinida diretamente via `firebase-admin` (`updateUser` com a nova
+   senha escolhida pelo usuário), sem precisar do link de e-mail; valor da
+   senha não passou pelo log/histórico desta sessão.
+4. [x] **Concluído em 01/08/2026.** `firestore.rules` publicado pelo
+   usuário no console do Firebase.
 5. Apagar a conta-robô (e-mail em `BOT_EMAIL`) no Firebase Auth Console e
    remover `BOT_EMAIL`/`BOT_PASS` das env vars da Vercel — só depois de
-   confirmar que o cron novo (`firebase-admin`) está funcionando.
-6. Depois do passo 4: validar manualmente (não só por leitura de código)
-   que um viewer lê `itens` de um contrato que é dele por `emailSecretaria`
-   mas não por `orgaoId`, com pelo menos 1 conta admin e 1 conta viewer
-   reais — a regra de `itens` usa `get()` cruzando documento, apontada pelo
-   agente `Plan` como o ponto mais fácil de acertar errado silenciosamente.
+   confirmar que o cron novo (`firebase-admin`) está funcionando (ainda
+   "não determinado": o cron roda 1x/dia, não foi observado passando desde
+   o deploy desta fase).
+6. [x] **Concluído em 01/08/2026, validado em produção com contas reais**
+   (não só por leitura de código): admin (`prefeitura`) logou depois da
+   publicação e viu só os contratos do próprio órgão; viewer
+   (`fiscal.teste@gmail.com`) logou e confirmou acesso restrito ao
+   contrato/itens onde é o `emailSecretaria` — a regra de `itens` via
+   `get()` do contrato pai (ponto que o agente `Plan` apontou como mais
+   fácil de acertar errado silenciosamente) funcionou como desenhado.
 7. Confirmar no dashboard de Functions da Vercel que
    `api/_shared/verificarAdmin.ts` não virou uma rota pública própria (a
    convenção de prefixo `_` deveria evitar isso, mas não foi verificado
