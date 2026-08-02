@@ -8,6 +8,13 @@ import { db } from '../firebase';
 import type { Contrato, Aditivo, ItemAditivado, Item } from '../types/types';
 import { extrairDadosAditivoComIA } from '../services/geminiService';
 import { registrarLog } from '../services/auditService'; // NOVO: Motor de Auditoria
+import {
+  calcularResumoValorGlobal,
+  calcularValorAlteracaoAditivo,
+  excedeLimite25,
+  recalcularValorTotalComAditivo,
+  substituirAditivo,
+} from '../domain/aditivos';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
 
@@ -57,9 +64,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
     return () => { unsubContrato(); unsubItens(); };
   }, [id]);
 
-  const valorGlobalAtualizado = contrato ? (Number(contrato.valorTotal) || 0) : 0;
-  const totalAditivosAplicados = contrato?.aditivos ? contrato.aditivos.reduce((acc, ad) => acc + (ad.valorAditivado || 0), 0) : 0;
-  const valorOriginal = valorGlobalAtualizado - totalAditivosAplicados;
+  const { valorGlobalAtualizado, totalAditivosAplicados, valorOriginal } = calcularResumoValorGlobal(contrato);
 
   const excluirContrato = async (onSuccess: () => void) => {
     if (!id || !contrato) return;
@@ -153,7 +158,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
     const toastId = toast.loading('A excluir aditivo...'); setLoading(true);
     try {
       const valorAjuste = aditivo.valorAditivado || 0;
-      const novoValorTotal = Number(contrato.valorTotal) - valorAjuste;
+      const novoValorTotal = recalcularValorTotalComAditivo(Number(contrato.valorTotal), valorAjuste, 0);
       const novaLista = contrato.aditivos ? contrato.aditivos.filter(a => a.id !== aditivo.id) : [];
       await updateDoc(doc(db, 'contratos', id as string), { valorTotal: novoValorTotal, aditivos: novaLista, dataUltimaAtualizacao: new Date().toLocaleString('pt-BR') });
       
@@ -167,11 +172,11 @@ export const useDetalhesContrato = (id: string | undefined) => {
     e.preventDefault(); if (!id || !contrato) return;
     if (!aditivoDataAditivo) return toast.error("Preencha a Data de Assinatura."); 
     try {
-      let novoValorTotal = Number(contrato.valorTotal) || 0; let novaDataFimStr = contrato.dataFim; let valorAlteracao = 0;
-      if (aditivoEmEdicao) novoValorTotal -= (aditivoEmEdicao.valorAditivado || 0);
+      let novoValorTotal = recalcularValorTotalComAditivo(Number(contrato.valorTotal) || 0, aditivoEmEdicao?.valorAditivado || 0, 0);
+      let novaDataFimStr = contrato.dataFim; let valorAlteracao = 0;
       if (aditivoTipo === 'valor' || aditivoTipo === 'ambos') {
-        const v = Number(aditivoValor); valorAlteracao = aditivoOperacao === 'acrescimo' ? v : -v;
-        if (v > (novoValorTotal * 0.25) && aditivoOperacao === 'acrescimo') { if(!window.confirm(`Acréscimo supera 25%. Prosseguir?`)) return; }
+        const v = Number(aditivoValor); valorAlteracao = calcularValorAlteracaoAditivo(aditivoOperacao, v);
+        if (aditivoOperacao === 'acrescimo' && excedeLimite25(v, novoValorTotal)) { if(!window.confirm(`Acréscimo supera 25%. Prosseguir?`)) return; }
         novoValorTotal += valorAlteracao;
       }
       if (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') {
@@ -179,8 +184,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
       }
       const toastId = toast.loading('A guardar aditivo...'); setLoading(true);
       const novoAditivo: Aditivo = { id: aditivoEmEdicao ? aditivoEmEdicao.id : Date.now().toString(), descricao: aditivoDescricao || 'Termo Aditivo', dataAditivo: aditivoDataAditivo, tipo: aditivoTipo, valorAditivado: valorAlteracao, novaDataFim: (aditivoTipo === 'prazo' || aditivoTipo === 'ambos') && aditivoNovaData ? aditivoNovaData : "", itensAditivados: itensDoAditivo.length > 0 ? itensDoAditivo : [], };
-      let novaLista = contrato.aditivos ? [...contrato.aditivos] : [];
-      if (aditivoEmEdicao) { const index = novaLista.findIndex(a => a.id === aditivoEmEdicao.id); if (index !== -1) novaLista[index] = novoAditivo; } else { novaLista.push(novoAditivo); }
+      const novaLista = substituirAditivo(contrato.aditivos, novoAditivo, !!aditivoEmEdicao, aditivoEmEdicao?.id);
       await updateDoc(doc(db, 'contratos', id as string), { valorTotal: novoValorTotal, dataFim: novaDataFimStr, aditivos: novaLista, dataUltimaAtualizacao: new Date().toLocaleString('pt-BR') });
       
       await registrarLog('ADITIVO', `Aditivo "${novoAditivo.descricao}" ${aditivoEmEdicao ? 'atualizado' : 'registado'} no Contrato ${contrato.numeroContrato}.`);

@@ -1,11 +1,6 @@
 // src/utils/formatters.ts
 
-export const parseMoeda = (valor: string | number): number => {
-  if (!valor) return 0;
-  if (typeof valor === 'number') return valor;
-  const limpo = valor.replace(/\./g, '').replace(',', '.');
-  return Number(limpo) || 0;
-};
+export { parseMoeda } from '../domain/moeda';
 
 export const extrairNumeroPlanilha = (valor: any): number => {
   if (typeof valor === 'number') return valor;

@@ -409,11 +409,69 @@ no Spam do destinatário (entregabilidade do remetente
 do escopo de código, não é bug, backlog de melhoria se incomodar no uso
 real).
 
-## Fase 4 — Extrair lógica pura + Vitest
+## Fase 4 — Extrair lógica pura + Vitest (concluída em 01/08/2026)
 
-- [ ] Extrair para `src/domain/`: cálculo de valor global com aditivos,
-  acréscimo/supressão, regra dos 25%, dias até vencimento, `parseMoeda`
-- [ ] Vitest, 15-25 testes cobrindo esses pontos
+- [x] `src/domain/moeda.ts`: `parseMoeda` movida para cá.
+  `src/utils/formatters.ts` passou a reexportar (`export { parseMoeda } from
+  '../domain/moeda'`) em vez de duplicar — os 3 arquivos que já importavam
+  de `utils/formatters` não precisaram mudar.
+- [x] `src/domain/aditivos.ts`: `calcularResumoValorGlobal` (valor global
+  atualizado / total de aditivos / valor original — antes calculado inline
+  em `useDetalhesContrato.ts`), `calcularValorAlteracaoAditivo` (sinal do
+  acréscimo/supressão), `excedeLimite25` (regra dos 25%) e
+  `recalcularValorTotalComAditivo` (desfaz o aditivo anterior ao editar,
+  reaproveitada também na exclusão de aditivo, passando alteração nova = 0).
+  Extraída também `substituirAditivo` (não estava no checklist original,
+  mas fazia parte do mesmo bloco de `salvarAditivo`): **achado da sessão**
+  — o comportamento original, se um aditivo em edição tem um `id` que não
+  bate com nenhum item da lista, é não fazer nada (nem substituir, nem
+  inserir); preservado de propósito com um parâmetro `emEdicao: boolean`
+  separado do id, em vez de inferir "está editando" a partir do id ter sido
+  encontrado (isso teria mudado o comportamento silenciosamente).
+- [x] `src/domain/vencimento.ts`: `diasAteVencimento` (mesma leitura
+  `new Date(dataFim)` que já existia em `Painel.tsx`, interpretada como UTC)
+  e `statusVencimento` (classifica em `vencido`/`critico`/`atencao`/
+  `vigente` pelos mesmos limiares de 0/30/90 dias que já existiam).
+  **Decisão deliberada**: `api/cron-vencimentos.ts` **não** foi migrado
+  para usar esta função — o cron faz parsing manual em hora local
+  (`new Date(ano, mes-1, dia)`), que é exatamente a divergência do
+  problema conhecido nº 2 do `CLAUDE.md` (Fase 5). Unificar os dois agora
+  teria corrigido o bug de surpresa, fora do escopo desta fase. Só
+  `Painel.tsx` (`getRowStyle`/`getRowTitle`) foi migrado para a função de
+  domínio, porque já usava exatamente essa mesma lógica.
+- [x] `useDetalhesContrato.ts` e `Painel.tsx` refatorados para chamar as
+  funções de `src/domain/`; comportamento numérico conferido função a
+  função contra o código original antes de cada substituição (inclusive o
+  detalhe de que a regra dos 25% só dispara em acréscimo, nunca em
+  supressão — preservado, não é bug desta fase corrigir).
+- [x] Vitest instalado (`^4.1.10`, devDependency) + script `"test": "vitest
+  run"` no `package.json`. **21 testes** em 3 arquivos
+  (`moeda.test.ts`, `aditivos.test.ts`, `vencimento.test.ts`), todos
+  passando. Sem Testing Library, sem ambiente jsdom — só funções puras,
+  ambiente `node` padrão do Vitest.
+- [x] `revisor-pmp` rodado no diff desta fase antes de considerá-la
+  concluída: **nenhum achado**. Conferiu termo a termo a equivalência
+  numérica de cada função extraída contra o código original (incluindo a
+  ordem de operações em `recalcularValorTotalComAditivo` e a assimetria
+  acréscimo/supressão da regra dos 25%) e confirmou que nenhum teste testa
+  algo diferente do que a função realmente faz.
+
+**Build/lint ao final da fase** (baseline da Fase 3: build 0 erros, lint 48
+erros): build **0 erros** (idêntico). Lint **47 erros** (queda de 1) — a
+extração de `substituirAditivo` transformou um `let novaLista` que nunca
+era reatribuído em `const` (achado do lint `prefer-const` que já existia
+antes desta fase, corrigido como efeito colateral da extração, não uma
+correção proposital). Confirmado por diff completo dos dois lints
+(antes/depois): nenhuma categoria nova de erro, todas as outras linhas são
+as mesmas apenas deslocadas de número de linha.
+
+**Teste visual**: `npm run dev` + Playwright Chromium headless (reinstalado
+localmente via `npm install --no-save playwright`, mesma convenção da
+Fase 1 — não persiste no `package.json`/`package-lock.json`). Tela de
+login carregou sem erro de console.
+
+**Pendências:** nenhuma — a fase não tinha dependência de ação manual fora
+do repositório.
 
 ## Fase 5 — Correção de bugs
 
