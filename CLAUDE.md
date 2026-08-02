@@ -17,7 +17,10 @@ atualizado antes de um `/clear`.
 - Cloud Firestore + Firebase Authentication (Firebase Web SDK 12) — **NÃO
   é Realtime Database**. Nunca sugerir `firebase/database`, `getDatabase`,
   `ref` ou `onValue`.
-- 3 funções serverless na Vercel em `api/` (firebase-admin 12, nodemailer 9)
+- 5 funções serverless na Vercel em `api/` (firebase-admin 12, nodemailer 9):
+  `create-user`, `list-users`, `definir-perfil`, `cron-vencimentos`,
+  `extrair-documento`. `api/_shared/verificarAdmin.ts` é um helper
+  importado pelos 3 primeiros, não uma rota própria.
 - `@google/generative-ai` 0.24.1, modelo `gemini-2.5-flash` — chamado do
   servidor em `api/extrair-documento.ts` desde a Fase 2.
   `src/services/geminiService.ts` no cliente só faz um `fetch` autenticado
@@ -37,16 +40,19 @@ atualizado antes de um `/clear`.
   `dataAdicao` são strings de `toLocaleString('pt-BR')`, não Timestamp.
   `new Date("YYYY-MM-DD")` é interpretado como UTC no navegador — tome
   cuidado ao comparar com lógica que faz parsing manual em hora local.
-- Perfis: `'admin'` e `'viewer'`. Até a Fase 3 do plano, são inferidos de
-  substrings do e-mail no login e guardados em `sessionStorage` — isso é
-  decorativo, não é controle de acesso real. A partir da Fase 3, viram
-  custom claims do Firebase Auth.
-- Firestore Security Rules hoje (antes da Fase 3, ver `firestore.rules`):
-  `contratos` e `itens` permitem `read, write` para qualquer usuário
-  autenticado, sem checar quem é. Não trate isso como segurança real ao
-  raciocinar sobre acesso a dados até a Fase 3 estar concluída.
-  `auditoria_logs` é a exceção desde a Fase 2: só permite `create`, e só
-  se o campo `usuario` do documento bater com o e-mail do token
+- Perfis: `'admin'` e `'viewer'`. Desde a Fase 3, são custom claims reais
+  do Firebase Auth (`request.auth.token.perfil`), junto com `orgaoId`
+  (`'prefeitura'|'fms'|'fme'|'fmas'`) — atribuídos via
+  `POST /api/definir-perfil` (só admin). `sessionStorage` não tem mais
+  nenhum papel em autorização; o estado de auth vem de
+  `src/contexts/AuthContext.tsx` + `src/hooks/useAuth.ts`
+  (`onAuthStateChanged` + `getIdTokenResult`).
+- Firestore Security Rules (`firestore.rules`, publicado desde a Fase 3):
+  `contratos` — admin só lê/escreve do próprio `orgaoId`, viewer só lê o
+  contrato onde é o `emailSecretaria`. `itens` não têm `orgaoId`/
+  `emailSecretaria` próprios — a regra faz `get()` do `contratos/{contratoId}`
+  pai pra decidir. `auditoria_logs`: só `create`, e só se o campo
+  `usuario` do documento bater com o e-mail do token
   (`request.auth.token.email`) — ninguém lê, edita ou apaga pela regra.
 
 ## Problemas conhecidos — não reintroduzir, não corrigir de surpresa
@@ -76,6 +82,12 @@ Resolvidos na Fase 2 (não reabrir): `VITE_GEMINI_API_KEY` exposta no
 bundle, e `/api/create-user` / `/api/list-users` / `/api/cron-vencimentos`
 sem verificação de chamador.
 
+Resolvidos na Fase 3 (não reabrir): RBAC decorativo (perfil por substring
+do e-mail em `sessionStorage`) e Firestore Rules sem autorização real —
+ver `docs/PLANO.md` para o incidente de produção descoberto e corrigido
+no fechamento desta fase (import relativo sem extensão `.js` quebrando
+`create-user`/`list-users`/`definir-perfil` — ver convenção abaixo).
+
 ## Convenções do código
 
 - Nomes de função, variáveis, comentários e mensagens de usuário são em
@@ -95,6 +107,19 @@ sem verificação de chamador.
 - Nunca criar variáveis `VITE_*` novas para segredos — qualquer coisa com
   esse prefixo entra no bundle público. Segredos de servidor são lidos em
   `api/*.ts` via `process.env`, sem prefixo.
+- **Imports relativos entre arquivos dentro de `api/` precisam da
+  extensão `.js` explícita** (ex: `from './_shared/verificarAdmin.js'`,
+  mesmo o arquivo de origem sendo `.ts`). A Vercel compila cada função de
+  `api/` com `moduleResolution: node16`/`nodenext`, que exige isso — mas
+  `tsconfig.node.json` usa `moduleResolution: "bundler"` (mais
+  permissivo), então o `tsc -b` local **não pega esse erro**. Sem a
+  extensão, o build da Vercel completa normalmente (não falha o deploy)
+  mas a função quebra em runtime com `FUNCTION_INVOCATION_FAILED` em toda
+  requisição — só aparece nos Build Logs da Vercel, não no terminal local.
+  Isso já quebrou produção uma vez na Fase 3; checar isto primeiro se
+  algum handler de `/api` voltar a dar 500 genérico sem log de aplicação.
+  Pastas de `api/` prefixadas com `_` (ex: `_shared`) não viram rota
+  pública — confirmado em produção; use esse prefixo para helpers.
 
 ## Como trabalhar neste repositório
 

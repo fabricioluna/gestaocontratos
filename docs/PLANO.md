@@ -343,10 +343,58 @@ só tem a config pública do Firebase (cliente), sem
    contrato/itens onde é o `emailSecretaria` — a regra de `itens` via
    `get()` do contrato pai (ponto que o agente `Plan` apontou como mais
    fácil de acertar errado silenciosamente) funcionou como desenhado.
-7. Confirmar no dashboard de Functions da Vercel que
-   `api/_shared/verificarAdmin.ts` não virou uma rota pública própria (a
-   convenção de prefixo `_` deveria evitar isso, mas não foi verificado
-   fora do repositório).
+7. [x] **Concluído em 01/08/2026** — resolvido junto do incidente abaixo,
+   não como verificação isolada. Confirmado em produção via `curl`:
+   `api/_shared/verificarAdmin` responde 404 (não é rota pública).
+
+### Incidente pós-deploy: `create-user`/`list-users`/`definir-perfil` quebrados em produção (01/08/2026, resolvido no mesmo dia)
+
+Ao investigar o item 7 (se `_shared` tinha virado rota pública), usei
+`curl` direto contra a produção pra confirmar — e descobri que os 3
+endpoints que importam `verificarAdmin` estavam respondendo
+`500 FUNCTION_INVOCATION_FAILED` (erro genérico da própria Vercel, não do
+nosso código) desde o deploy da Fase 3. `api/extrair-documento` (não
+depende de `verificarAdmin`) respondia normalmente — isolando o problema
+para esse import específico. Não pego por nenhum teste local porque
+dependia do ambiente de build da Vercel, não do `tsc -b`/`vite build`
+daqui.
+
+**Duas hipóteses erradas testadas e descartadas antes da causa real**
+(cada uma virou um deploy, nenhuma resolveu — registrado para não
+repetir o mesmo caminho errado numa próxima vez):
+1. "A Vercel exclui pastas `_` do bundle inteiro, não só do roteamento" —
+   mover `verificarAdmin.ts` de `api/_shared/` para `api/lib/` não
+   resolveu nada (confirmado via `curl` depois do deploy virar "Current"
+   em produção).
+2. "`import { getAuth, type DecodedIdToken } from '...'` (tipo misturado
+   num import de valor) não transpila certo" — separar em duas linhas
+   também não resolveu.
+
+**Causa real**, achada lendo os Build Logs completos da Vercel (não
+aparece resumido na UI, só no log expandido): `error TS2835: Relative
+import paths need explicit file extensions in ECMAScript imports when
+'--moduleResolution' is 'node16' or 'nodenext'`. A Vercel compila cada
+função de `api/` com uma resolução de módulo mais estrita que a nossa
+(`tsconfig.node.json` usa `"moduleResolution": "bundler"`, permissivo)
+— por isso o erro nunca apareceu no `tsc -b` local. O erro TS2835 não
+falha o build inteiro (a Vercel completa e marca "Ready" mesmo assim),
+mas deixa a função quebrada em runtime. Corrigido acrescentando `.js` aos
+3 imports (`from './_shared/verificarAdmin.js'`) — sintaxe válida em
+TS+ESM mesmo importando um arquivo `.ts` (a extensão escrita é a de
+saída, não a de origem).
+
+Depois da causa real corrigida, voltei `verificarAdmin.ts` para
+`api/_shared/` (a hipótese 1 estava errada sobre a causa do incidente,
+mas o comportamento em si era real: `api/lib/verificarAdmin`, sem `_`,
+tinha virado uma rota própria acessível, respondendo 500 por não ter
+`export default handler` — sem risco de segurança, mas sem necessidade
+de existir). Confirmado com `curl`: os 4 endpoints reais voltaram a
+responder corretamente, `_shared` responde 404.
+
+**Registrado em `CLAUDE.md`** (seção "Convenções do código") como regra
+permanente — relevante principalmente para a Fase 7, que pretende
+consolidar código duplicado entre os arquivos de `api/` e vai criar mais
+imports relativos como este.
 
 ## Fase 4 — Extrair lógica pura + Vitest
 
