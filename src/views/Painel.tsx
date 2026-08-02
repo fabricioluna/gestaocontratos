@@ -9,6 +9,7 @@ import logo from '../assets/logopmp.png';
 import './Painel.css';
 
 import { formatarDataBr } from '../utils/formatters';
+import { diasAteVencimento, statusVencimento } from '../domain/vencimento';
 import { auth } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import ModalNovoContrato from '../components/Painel/ModalNovoContrato';
@@ -57,26 +58,22 @@ export default function Painel() {
 
   const getRowStyle = (dataFim: string) => {
     if (!dataFim) return {};
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0); 
-    const vencimento = new Date(dataFim); vencimento.setHours(0, 0, 0, 0);
-    const diffEmDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
-
-    if (diffEmDias < 0) return { backgroundColor: '#64748b', color: '#ffffff' }; 
-    if (diffEmDias <= 30) return { backgroundColor: '#ffd5d5', color: '#900' }; 
-    if (diffEmDias <= 90) return { backgroundColor: '#fff9c4', color: '#856404' }; 
-    return {};
+    switch (statusVencimento(diasAteVencimento(dataFim))) {
+      case 'vencido': return { backgroundColor: '#64748b', color: '#ffffff' };
+      case 'critico': return { backgroundColor: '#ffd5d5', color: '#900' };
+      case 'atencao': return { backgroundColor: '#fff9c4', color: '#856404' };
+      default: return {};
+    }
   };
 
   const getRowTitle = (dataFim: string) => {
     if (!dataFim) return "Status Desconhecido";
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    const vencimento = new Date(dataFim); vencimento.setHours(0, 0, 0, 0);
-    const diffEmDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (diffEmDias < 0) return "Contrato Vencido";
-    if (diffEmDias <= 30) return "Atenção: Vencimento em menos de 30 dias";
-    if (diffEmDias <= 90) return "Aviso: Vencimento em menos de 3 meses";
-    return "Vigente";
+    switch (statusVencimento(diasAteVencimento(dataFim))) {
+      case 'vencido': return "Contrato Vencido";
+      case 'critico': return "Atenção: Vencimento em menos de 30 dias";
+      case 'atencao': return "Aviso: Vencimento em menos de 3 meses";
+      default: return "Vigente";
+    }
   };
 
   const renderSeta = (campo: string) => {
