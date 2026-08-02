@@ -1,16 +1,16 @@
 // src/views/Painel.tsx
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx'; // Biblioteca de Excel
+import { terminate, clearIndexedDbPersistence } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 import type { Contrato } from '../types/types';
 import logo from '../assets/logopmp.png';
 import './Painel.css';
 
 import { formatarDataBr } from '../utils/formatters';
 import { diasAteVencimento, statusVencimento, parseDataLocal } from '../domain/vencimento';
-import { auth } from '../firebase';
+import { carregarJsPDF } from '../utils/pdfGerador';
+import { auth, db } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import ModalNovoContrato from '../components/Painel/ModalNovoContrato';
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
@@ -25,7 +25,8 @@ export default function Painel() {
 
   const {
     contratosFiltrados, loading, termoBusca, setTermoBusca,
-    ordenacao, lidarComOrdenacao, excluirContrato
+    ordenacao, lidarComOrdenacao, excluirContrato,
+    temMais, carregarMaisContratos
   } = useContratos();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -105,10 +106,10 @@ export default function Painel() {
   };
 
   // --- GERAÇÃO DE EXCEL COM FILTRO ---
-  const exportarParaExcel = (dataInicio: string, dataFim: string) => {
+  const exportarParaExcel = async (dataInicio: string, dataFim: string) => {
     setIsModalRelatorioOpen(false);
     const listaFiltrada = filtrarContratosPorPeriodo(contratosFiltrados, dataInicio, dataFim);
-    
+
     const dadosPlanilha = listaFiltrada.map(c => {
       const vTotal = Number(c.valorTotal) || 0;
       return {
@@ -127,20 +128,22 @@ export default function Painel() {
       };
     });
 
+    const XLSX = await import('xlsx');
     const worksheet = XLSX.utils.json_to_sheet(dadosPlanilha);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Contratos");
-    
+
     const nomeFundo = orgaoLogado ? orgaoLogado.toUpperCase() : 'GERAL';
     XLSX.writeFile(workbook, `Relatorio_Contratos_${nomeFundo}.xlsx`);
   };
 
   // --- GERAÇÃO DE PDF COM FILTRO ---
-  const gerarRelatorioPDF = (dataInicio: string, dataFim: string) => {
-    setIsModalRelatorioOpen(false); 
+  const gerarRelatorioPDF = async (dataInicio: string, dataFim: string) => {
+    setIsModalRelatorioOpen(false);
     const listaFiltrada = filtrarContratosPorPeriodo(contratosFiltrados, dataInicio, dataFim);
-    const docPdf = new jsPDF('landscape'); 
-    
+    const { jsPDF, autoTable } = await carregarJsPDF();
+    const docPdf = new jsPDF('landscape');
+
     const gerarTabela = () => {
       docPdf.setFontSize(16); docPdf.setTextColor(0, 74, 153);
       docPdf.text(orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Relatório de Contratos', 45, 20);
@@ -214,6 +217,42 @@ export default function Painel() {
     setIsModalEditOpen(true);
   };
 
+  const lidarComSaida = async () => {
+    try {
+      await auth.signOut();
+    } catch (error) {
+      console.error('Erro ao encerrar sessão:', error);
+      toast.error('Erro ao encerrar sessão. Tente novamente.');
+      return;
+    }
+    // Limpa o cache persistente do Firestore (IndexedDB) no logout — sem
+    // isso, num computador compartilhado o próximo usuário recuperava os
+    // contratos do usuário anterior direto do IndexedDB, sem precisar de
+    // senha (achado A9 da auditoria). `clearIndexedDbPersistence` exige
+    // que a instância não tenha operações em andamento, por isso
+    // `terminate(db)` primeiro; como isso invalida `db` pelo resto desta
+    // aba, um reload completo (não navegação client-side) é necessário
+    // para reinicializar o Firestore do zero.
+    try {
+      await terminate(db);
+      await clearIndexedDbPersistence(db);
+    } catch (error) {
+      // Falha esperada se houver outra aba do sistema aberta na mesma
+      // origem: `firebase.ts` usa `persistentMultipleTabManager`, que
+      // compartilha o IndexedDB entre abas — `clearIndexedDbPersistence`
+      // rejeita enquanto outra conexão o mantém aberto (comportamento
+      // documentado da própria API de IndexedDB, não específico deste
+      // código). Não bloqueia o logout, mas avisa o usuário em vez de
+      // falhar em silêncio: sem o aviso, a limpeza — que é justamente a
+      // mitigação do achado A9 — poderia não acontecer sem nenhum indício
+      // visível. Não testado com múltiplas abas reais nesta sessão (ver
+      // docs/PLANO.md, achado do revisor-pmp na Fase 6).
+      console.error('Erro ao limpar o cache local do Firestore:', error);
+      toast.error('Sessão encerrada, mas não foi possível limpar todos os dados locais deste navegador. Feche todas as abas do sistema para concluir a limpeza.', { duration: 8000 });
+    }
+    window.location.href = '/';
+  };
+
   return (
     <div className="painel-container">
       <header className="header">
@@ -225,7 +264,7 @@ export default function Painel() {
           <span style={{ fontSize: '12px', color: isAdmin ? '#28a745' : '#64748b', fontWeight: 'bold', backgroundColor: 'white', padding: '5px 10px', borderRadius: '4px' }}>
             {isAdmin ? '🛡️ Admin' : '👁️ Visualizador'}
           </span>
-          <button className="btn-sair" onClick={() => { auth.signOut().then(() => navigate('/')); }}>
+          <button className="btn-sair" onClick={lidarComSaida}>
             Sair
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
           </button>
@@ -306,6 +345,14 @@ export default function Painel() {
             )}
           </tbody>
         </table>
+
+        {temMais && (
+          <div style={{ textAlign: 'center', padding: '20px' }}>
+            <button onClick={carregarMaisContratos} className="btn-cancelar" style={{ backgroundColor: 'white' }}>
+              Carregar mais contratos
+            </button>
+          </div>
+        )}
       </main>
 
       {isAdmin && <ModalNovoContrato isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} orgaoLogado={orgaoLogado} />}

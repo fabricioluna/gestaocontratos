@@ -1,13 +1,12 @@
 // src/hooks/useDetalhesContrato.ts
 import { useState, useEffect } from 'react';
 import { doc, onSnapshot, collection, query, where, deleteDoc, getDocs, writeBatch, updateDoc, runTransaction } from 'firebase/firestore';
-import * as mammoth from 'mammoth'; 
-import * as pdfjsLib from 'pdfjs-dist'; 
 import toast from 'react-hot-toast';
 import { db } from '../firebase';
 import type { Contrato, Aditivo, ItemAditivado, Item } from '../types/types';
 import { extrairDadosAditivoComIA } from '../services/geminiService';
 import { registrarLog } from '../services/auditService'; // NOVO: Motor de Auditoria
+import { carregarPdfjs } from '../utils/pdfjs';
 import {
   calcularResumoValorGlobal,
   calcularValorAlteracaoAditivo,
@@ -15,8 +14,6 @@ import {
   recalcularValorTotalComAditivo,
   substituirAditivo,
 } from '../domain/aditivos';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
 
 export const useDetalhesContrato = (id: string | undefined) => {
   const [contrato, setContrato] = useState<Contrato | null>(null);
@@ -114,12 +111,14 @@ export const useDetalhesContrato = (id: string | undefined) => {
       let textoCompleto = '';
       if (arquivoPdfAditivo.name.toLowerCase().endsWith('.pdf')) {
         const typedArray = new Uint8Array(arrayBuffer);
+        const pdfjsLib = await carregarPdfjs();
         const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i); const content = await page.getTextContent();
           textoCompleto += content.items.map((item: any) => item.str).join(" ") + "\n";
         }
       } else if (arquivoPdfAditivo.name.toLowerCase().endsWith('.docx')) {
+        const mammoth = await import('mammoth');
         textoCompleto = (await mammoth.extractRawText({ arrayBuffer })).value;
       } else textoCompleto = await arquivoPdfAditivo.text();
 

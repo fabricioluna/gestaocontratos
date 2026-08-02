@@ -1,17 +1,13 @@
 // src/components/Painel/ModalNovoContrato.tsx
 import React, { useState, useRef, useEffect } from 'react';
 import { collection, addDoc, writeBatch, doc } from 'firebase/firestore';
-import * as XLSX from 'xlsx';
-import * as mammoth from 'mammoth'; 
-import * as pdfjsLib from 'pdfjs-dist'; 
 import toast from 'react-hot-toast';
 import { db, auth } from '../../firebase';
 import { parseMoeda, extrairNumeroPlanilha } from '../../utils/formatters';
 import { MODALIDADES_LICITACAO } from '../../utils/modalidades';
+import { carregarPdfjs } from '../../utils/pdfjs';
 import { extrairDadosContratoComIA } from '../../services/geminiService';
 import type { FormContratoState, Item } from '../../types/types';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
 
 interface ModalNovoContratoProps {
   isOpen: boolean;
@@ -176,6 +172,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       
       if (file.name.toLowerCase().endsWith('.pdf')) {
         const typedArray = new Uint8Array(arrayBuffer);
+        const pdfjsLib = await carregarPdfjs();
         const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
@@ -184,6 +181,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
           textoCompleto += strings.join(" ") + "\n";
         }
       } else if (file.name.toLowerCase().endsWith('.docx')) {
+        const mammoth = await import('mammoth');
         const result = await mammoth.extractRawText({ arrayBuffer });
         textoCompleto = result.value;
       }
@@ -267,9 +265,10 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
         const bstr = evt.target?.result;
+        const XLSX = await import('xlsx');
         const wb = XLSX.read(bstr, { type: 'binary' });
         const data = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[wb.SheetNames[0]]);
         let somaImportacao = 0;

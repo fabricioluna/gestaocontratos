@@ -581,16 +581,128 @@ modalidade `"Pregão"` (sem qualificador) não existe mais em nenhum dos dois
 `<select>` — se algum contrato de teste antigo tiver esse valor exato
 salvo, o campo aparecerá em branco ao editar (ver decisão acima).
 
-## Fase 6 — Desempenho
+## Fase 6 — Desempenho (concluída em 02/08/2026)
 
-- [ ] `import()` dinâmico para `xlsx`, `pdfjs-dist`, `mammoth`, `jspdf`
-  (prioridade: `geminiService`, hoje 1,78 MB no bundle — ver Fase 1)
-- [ ] `pdf.worker` local em vez da CDN unpkg
-- [ ] Filtro por órgão do admin no servidor (hoje o navegador recebe todos
-  os contratos de todos os órgãos)
-- [ ] `limit()` + paginação nas queries do Firestore
-- [ ] `useMemo` na ordenação/filtragem de `useContratos.ts`
-- [ ] Limpar IndexedDB (cache persistente do Firestore) no logout
+- [x] **`import()` dinâmico para `xlsx`, `pdfjs-dist`, `mammoth`,
+  `jspdf`/`jspdf-autotable`.** Dois helpers novos: `src/utils/pdfjs.ts`
+  (`carregarPdfjs`) e `src/utils/pdfGerador.ts` (`carregarJsPDF`, carrega
+  `jspdf`+`jspdf-autotable` juntos via `Promise.all`); `xlsx` e `mammoth`
+  importados diretamente no ponto de uso, sem helper (só uma função por
+  arquivo usa cada um). Tocou 6 arquivos: `useDetalhesContrato.ts`,
+  `ModalNovoContrato.tsx` (extração de PDF/DOCX/XLSX), `Painel.tsx`,
+  `DetalhesContrato.tsx` (relatórios PDF/Excel) e `ModalEmitirOS.tsx`
+  (O.S. em PDF) — as funções que chamavam essas libs viraram `async`.
+  Resultado do build: o bundle carregado de imediato (`index-*.js`, único
+  `<script>` referenciado no `index.html`) caiu de ~897 KB + o chunk de
+  1,78 MB (rotulado `geminiService` por um artefato de nomeação — era
+  jsPDF+html2canvas, o SDK do Gemini já tinha saído do cliente na Fase 2,
+  ver CLAUDE.md problema conhecido nº 6) para **~899 KB isolados**; xlsx
+  (425 KB), pdf.js (410 KB), jsPDF (400 KB), mammoth (497 KB, chunk `lib`)
+  e o plugin autoTable (30 KB) agora só carregam sob demanda, quando o
+  usuário efetivamente sobe um arquivo ou pede um relatório.
+- [x] **`pdf.worker` local em vez da CDN unpkg.** Resolvido junto do item
+  acima: `carregarPdfjs()` aponta `GlobalWorkerOptions.workerSrc` para
+  `new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).href` —
+  Vite empacota o worker como asset próprio (`pdf.worker-*.mjs`, ~2,1 MB,
+  também sob demanda). Confirmado por grep: zero referências a
+  `unpkg.com` restando no código-fonte (era o achado A3 da auditoria —
+  dependia de CDN externa em runtime, sem SRI).
+- [x] **Filtro por órgão do admin no servidor.** Investigado antes de
+  mexer: **já resolvido desde a Fase 3** (`useContratos.ts` já fazia
+  `where('orgaoId','==', orgaoId)` server-side) — nenhuma mudança de
+  código necessária nesta fase, mesmo padrão do achado do "fiscal com
+  lista vazia" na Fase 5.
+- [x] **`limit()` + paginação nas queries do Firestore.**
+  `useContratos.ts`: a query principal ganhou
+  `orderBy('numeroContrato', 'desc') + limit(tamanhoPagina)`
+  (`tamanhoPagina` começa em 200, cresce em passos de 200 via
+  `carregarMaisContratos`, novo botão "Carregar mais contratos" em
+  `Painel.tsx` condicionado a `temMais`). Não é paginação por cursor
+  (`startAfter`) — a cada "carregar mais" a query inteira é reexecutada
+  com um `limit` maior; decisão deliberada porque cursor real não
+  combina bem com `onSnapshot` em tempo real (documentos podem ser
+  inseridos/removidos entre páginas) e o app não tinha esse problema
+  antes. **Achado do `revisor-pmp`, corrigido nesta mesma sessão**:
+  `where()` em um campo + `orderBy()` em campo diferente normalmente
+  exige um índice composto do Firestore que não é coberto pelos índices
+  automáticos de campo único — sem ele, a query falha em runtime com
+  "the query requires an index", erro que não aparece no `tsc -b`/`vite
+  build` local (mesma classe de problema do incidente da Fase 3 com os
+  imports de `api/`, mas do lado do Firestore). Corrigido criando
+  `firestore.indexes.json` (dois índices: `orgaoId`+`numeroContrato` para
+  admin, `emailSecretaria`+`numeroContrato` para viewer) e referenciando
+  em `firebase.json`. **Não determinado**: os índices não foram
+  publicados nesta sessão — não há Firebase CLI configurado neste
+  ambiente (mesma limitação já registrada na Fase 2 para
+  `firestore.rules`). Publicar com `firebase deploy --only
+  firestore:indexes` (ou criar manualmente pelo link que o próprio erro
+  do Firestore mostra no console do navegador na primeira vez que a query
+  rodar) é pendência manual antes desta parte da fase valer em produção
+  — ver lista de pendências abaixo.
+- [x] **`useMemo` na ordenação/filtragem de `useContratos.ts`.**
+  `contratosOrdenados` e `contratosFiltrados` só recalculam quando
+  `contratos`/`ordenacao` ou `termoBusca` mudam, respectivamente — antes
+  rodavam a cada renderização (inclusive a cada tecla digitada na busca).
+- [x] **Limpar IndexedDB (cache persistente do Firestore) no logout.**
+  `Painel.tsx`: `lidarComSaida` faz `terminate(db)` seguido de
+  `clearIndexedDbPersistence(db)` após o `signOut()`, com reload completo
+  (`window.location.href`, não `navigate()`) porque `db` fica inutilizável
+  na aba depois do `terminate`. **Achado do `revisor-pmp`, corrigido
+  nesta mesma sessão**: `firebase.ts` usa `persistentMultipleTabManager`,
+  que compartilha o IndexedDB entre abas da mesma origem —
+  `clearIndexedDbPersistence` rejeita (comportamento documentado da
+  própria API de IndexedDB, não bug deste código) se houver outra aba do
+  sistema aberta, exatamente o cenário de "computador compartilhado" que
+  essa limpeza deveria cobrir (achado A9 da auditoria). O catch agora
+  mostra um toast avisando o usuário em vez de falhar em silêncio
+  ("Sessão encerrada, mas não foi possível limpar todos os dados locais
+  ... feche todas as abas"). `signOut()` também ganhou tratamento de erro
+  próprio (não tinha antes desta fase). **Não testado com múltiplas abas
+  reais nesta sessão** — o comportamento acima é inferido da documentação
+  do IndexedDB/Firestore, não confirmado empiricamente; candidato a
+  verificação manual (abrir duas abas, fazer logout numa, checar se a
+  outra ainda lê dados do cache).
+
+**Build/lint/testes ao final da fase** (baseline da Fase 5: build 0 erros,
+lint 46 erros, 21 testes): build **0 erros** (idêntico). Bundle inicial
+caiu de ~2,7 MB eager para ~899 KB (detalhe acima). Lint **46 erros**
+(idêntico) — confirmado por diff completo (`eslint --format json`,
+agrupado por arquivo+regra) contra a baseline da Fase 5: **zero
+diferenças**, nenhuma categoria nova, nenhuma removida. Vitest **21/21
+passando** (sem testes novos — nenhuma lógica de domínio financeira nova
+nesta fase, escopo do Vitest continua restrito a isso por decisão já
+tomada).
+
+**Revisão:** `revisor-pmp` rodado no diff completo desta fase. Três
+achados: o índice composto do Firestore ausente para a nova query paginada
+(corrigido — `firestore.indexes.json` criado, publicação pendente, ver
+acima), a limpeza de IndexedDB falhando em silêncio com múltiplas abas
+(corrigido — aviso ao usuário via toast, ver acima) e `auth.signOut()` sem
+tratamento de erro (corrigido, tratamento de erro adicionado). Os três
+ficaram resolvidos nesta mesma sessão, exceto a publicação do índice em
+si, que depende do Firebase CLI/Console (pendência manual, listada
+abaixo).
+
+**Teste visual**: `npm run dev` (porta 5174) + Playwright Chromium
+headless. Tela de login carregou sem erro de console. Não foi possível
+testar os fluxos de upload de PDF/DOCX/XLSX, geração de relatórios, nem o
+logout com múltiplas abas nesta sessão — mesma limitação de ambiente já
+registrada nas fases anteriores (sem conta de teste configurada
+localmente).
+
+**Pendências manuais:**
+1. Publicar os índices compostos de `firestore.indexes.json` no projeto
+   Firebase (`firebase deploy --only firestore:indexes`, ou criar
+   manualmente pelo link que aparece no erro "the query requires an
+   index" na primeira vez que a query de `useContratos.ts` rodar contra o
+   Firestore real). Sem isso, `/painel` vai quebrar com erro de
+   permissão/índice ao carregar a lista de contratos — testar antes do
+   próximo deploy.
+2. Confirmar manualmente o comportamento da limpeza de IndexedDB no
+   logout com duas abas do sistema abertas simultaneamente (ver achado do
+   `revisor-pmp` acima) — não bloqueia o uso do sistema de nenhuma forma
+   (o toast de aviso já cobre o caso de falha), mas vale confirmar que o
+   aviso aparece quando esperado.
 
 ## Fase 7 — Refatoração
 

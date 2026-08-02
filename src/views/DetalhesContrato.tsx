@@ -1,15 +1,13 @@
 // src/views/DetalhesContrato.tsx
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import logo from '../assets/logopmp.png';
 import './DetalhesContrato.css';
 
 import { formatarDataBr } from '../utils/formatters';
 import { diasAteVencimento } from '../domain/vencimento';
+import { carregarJsPDF } from '../utils/pdfGerador';
 import { useDetalhesContrato } from '../hooks/useDetalhesContrato';
 import { useAuth } from '../hooks/useAuth';
 import type { Item } from '../types/types';
@@ -74,11 +72,12 @@ export default function DetalhesContrato() {
   
   const status = getStatus();
 
-  const gerarRelatorioPDF = () => {
+  const gerarRelatorioPDF = async () => {
     setIsModalRelatorioOpen(false);
+    const { jsPDF, autoTable } = await carregarJsPDF();
     // MAGIA DE COMPRESSÃO GLOBAL DO PDF
     const doc = new jsPDF({ compress: true });
-    
+
     const gerarConteudoPDF = () => {
       const nomeOrgao = contrato.orgaoId && nomesOrgaos[contrato.orgaoId] ? nomesOrgaos[contrato.orgaoId] : 'Prefeitura Municipal de Pesqueira';
 
@@ -209,9 +208,9 @@ export default function DetalhesContrato() {
     img.onerror = () => { gerarConteudoPDF(); };
   };
 
-  const gerarRelatorioExcel = () => {
+  const gerarRelatorioExcel = async () => {
     setIsModalRelatorioOpen(false);
-    
+
     if (itensCatalogo.length === 0 && (!contrato.aditivos || contrato.aditivos.length === 0)) {
       toast.error("Este contrato não possui itens no catálogo para exportar.");
       return;
@@ -251,6 +250,7 @@ export default function DetalhesContrato() {
       });
     }
 
+    const XLSX = await import('xlsx');
     const worksheet = XLSX.utils.json_to_sheet(dadosPlanilha);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Itens do Contrato");

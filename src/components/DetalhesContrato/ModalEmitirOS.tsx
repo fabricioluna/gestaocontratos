@@ -1,9 +1,8 @@
 // src/components/DetalhesContrato/ModalEmitirOS.tsx
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import logo from '../../assets/logopmp.png';
+import { carregarJsPDF } from '../../utils/pdfGerador';
 import type { Contrato, Item } from '../../types/types';
 
 interface ModalEmitirOSProps {
@@ -68,7 +67,7 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
       .replace(/(-\d{2})\d+?$/, '$1');
   };
 
-  const gerarDocumentoPDF = () => {
+  const gerarDocumentoPDF = async () => {
     const itensParaPedir = itensCatalogo.filter(item => Number(quantidadesPedidas[item.id!] || 0) > 0);
 
     if (itensParaPedir.length === 0) {
@@ -81,6 +80,7 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
       return;
     }
 
+    const { jsPDF, autoTable } = await carregarJsPDF();
     // MAGIA DE COMPRESSÃO AQUI: "compress: true"
     const docPdf = new jsPDF({ orientation: 'portrait', compress: true });
 
