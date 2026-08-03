@@ -631,14 +631,12 @@ salvo, o campo aparecerá em branco ao editar (ver decisão acima).
   imports de `api/`, mas do lado do Firestore). Corrigido criando
   `firestore.indexes.json` (dois índices: `orgaoId`+`numeroContrato` para
   admin, `emailSecretaria`+`numeroContrato` para viewer) e referenciando
-  em `firebase.json`. **Não determinado**: os índices não foram
-  publicados nesta sessão — não há Firebase CLI configurado neste
-  ambiente (mesma limitação já registrada na Fase 2 para
-  `firestore.rules`). Publicar com `firebase deploy --only
-  firestore:indexes` (ou criar manualmente pelo link que o próprio erro
-  do Firestore mostra no console do navegador na primeira vez que a query
-  rodar) é pendência manual antes desta parte da fase valer em produção
-  — ver lista de pendências abaixo.
+  em `firebase.json`. **Publicado e confirmado em produção em
+  03/08/2026** — os dois índices compostos foram criados manualmente pelo
+  usuário no console do Firebase (coleção `contratos`, escopo "Coleção",
+  `numeroContrato` Decrescente nos dois — a criação inicial de um deles
+  saiu com `numeroContrato` Crescente por engano, corrigido antes de
+  ativar) e `/painel` testado funcionando após a propagação.
 - [x] **`useMemo` na ordenação/filtragem de `useContratos.ts`.**
   `contratosOrdenados` e `contratosFiltrados` só recalculam quando
   `contratos`/`ordenacao` ou `termoBusca` mudam, respectivamente — antes
@@ -675,13 +673,11 @@ tomada).
 
 **Revisão:** `revisor-pmp` rodado no diff completo desta fase. Três
 achados: o índice composto do Firestore ausente para a nova query paginada
-(corrigido — `firestore.indexes.json` criado, publicação pendente, ver
-acima), a limpeza de IndexedDB falhando em silêncio com múltiplas abas
-(corrigido — aviso ao usuário via toast, ver acima) e `auth.signOut()` sem
-tratamento de erro (corrigido, tratamento de erro adicionado). Os três
-ficaram resolvidos nesta mesma sessão, exceto a publicação do índice em
-si, que depende do Firebase CLI/Console (pendência manual, listada
-abaixo).
+(corrigido — `firestore.indexes.json` criado; publicado no console pelo
+usuário em 03/08/2026, ver acima), a limpeza de IndexedDB falhando em
+silêncio com múltiplas abas (corrigido — aviso ao usuário via toast, ver
+acima) e `auth.signOut()` sem tratamento de erro (corrigido, tratamento
+de erro adicionado). Os três ficaram resolvidos.
 
 **Teste visual**: `npm run dev` (porta 5174) + Playwright Chromium
 headless. Tela de login carregou sem erro de console. Não foi possível
@@ -691,13 +687,11 @@ registrada nas fases anteriores (sem conta de teste configurada
 localmente).
 
 **Pendências manuais:**
-1. Publicar os índices compostos de `firestore.indexes.json` no projeto
-   Firebase (`firebase deploy --only firestore:indexes`, ou criar
-   manualmente pelo link que aparece no erro "the query requires an
-   index" na primeira vez que a query de `useContratos.ts` rodar contra o
-   Firestore real). Sem isso, `/painel` vai quebrar com erro de
-   permissão/índice ao carregar a lista de contratos — testar antes do
-   próximo deploy.
+1. [x] **Concluído em 03/08/2026.** Índices compostos de
+   `firestore.indexes.json` publicados manualmente pelo usuário no
+   console do Firebase (coleção `contratos`, escopo "Coleção",
+   `numeroContrato` Decrescente nos dois). `/painel` testado funcionando
+   em produção depois da propagação.
 2. Confirmar manualmente o comportamento da limpeza de IndexedDB no
    logout com duas abas do sistema abertas simultaneamente (ver achado do
    `revisor-pmp` acima) — não bloqueia o uso do sistema de nenhuma forma
@@ -900,13 +894,16 @@ lint 0 erros, 21 testes): build **0 erros**, lint **0 erros**, Vitest
 produção nesta fase (só documentação, CI e a revisão de segurança), então
 não havia expectativa de diferença.
 
-**Pendências:** nenhuma bloqueante. Itens que dependem de ações fora
-deste repositório, já registrados nas fases correspondentes e ainda em
-aberto: publicar os índices de `firestore.indexes.json` no console do
-Firebase (Fase 6, bloqueante para `/painel` funcionar em produção depois
-do próximo deploy), apagar a conta-robô `BOT_EMAIL` (Fase 3, item 5), e
-confirmar visualmente a primeira execução do workflow de CI no GitHub
-após o merge em `main` (não verificável a partir daqui).
+**Pendências:** nenhuma bloqueante. PR #4 (`evolucao/fase-8` → `main`)
+aberto e mergeado pelo usuário no GitHub em 03/08/2026. Os índices de
+`firestore.indexes.json` foram publicados no console do Firebase pelo
+usuário no mesmo dia, com `/painel` confirmado funcionando em produção
+depois da propagação (ver detalhe na Fase 6, acima) — item que era
+bloqueante para o deploy já está resolvido. Restam, sem urgência: apagar
+a conta-robô `BOT_EMAIL` (Fase 3, item 5) e confirmar visualmente a
+primeira execução do workflow de CI no GitHub (não verificável a partir
+daqui — `gh` foi instalado nesta sessão via `winget`, mas ainda sem
+`gh auth login` feito).
 
 ---
 
