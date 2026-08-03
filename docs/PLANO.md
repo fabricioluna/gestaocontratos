@@ -331,11 +331,12 @@ só tem a config pública do Firebase (cliente), sem
    senha não passou pelo log/histórico desta sessão.
 4. [x] **Concluído em 01/08/2026.** `firestore.rules` publicado pelo
    usuário no console do Firebase.
-5. Apagar a conta-robô (e-mail em `BOT_EMAIL`) no Firebase Auth Console e
-   remover `BOT_EMAIL`/`BOT_PASS` das env vars da Vercel — só depois de
-   confirmar que o cron novo (`firebase-admin`) está funcionando (ainda
-   "não determinado": o cron roda 1x/dia, não foi observado passando desde
-   o deploy desta fase).
+5. [x] **Concluído em 03/08/2026.** Conta-robô apagada no Firebase Auth
+   Console e `BOT_EMAIL`/`BOT_PASS` removidas das env vars da Vercel pelo
+   usuário. Confirmado antes de apagar que o cron novo (`firebase-admin`)
+   já não depende dessa conta — ela nunca recebeu os custom claims
+   (`perfil`/`orgaoId`) do `scripts/migrar-perfis.ts`, então já não
+   conseguia passar da tela de login mesmo antes de ser removida.
 6. [x] **Concluído em 01/08/2026, validado em produção com contas reais**
    (não só por leitura de código): admin (`prefeitura`) logou depois da
    publicação e viu só os contratos do próprio órgão; viewer
@@ -894,8 +895,8 @@ lint 0 erros, 21 testes): build **0 erros**, lint **0 erros**, Vitest
 produção nesta fase (só documentação, CI e a revisão de segurança), então
 não havia expectativa de diferença.
 
-**Pendências:** nenhuma bloqueante. PR #4 (`evolucao/fase-8` → `main`)
-aberto e mergeado pelo usuário no GitHub em 03/08/2026. Os índices de
+**Pendências:** nenhuma. PR #4 (`evolucao/fase-8` → `main`) aberto e
+mergeado pelo usuário no GitHub em 03/08/2026. Os índices de
 `firestore.indexes.json` foram publicados no console do Firebase pelo
 usuário no mesmo dia, com `/painel` confirmado funcionando em produção
 depois da propagação (ver detalhe na Fase 6, acima) — item que era
@@ -903,8 +904,9 @@ bloqueante para o deploy já está resolvido. `gh` CLI instalado via
 `winget` e autenticado (`gh auth login`) nesta sessão — usado para
 confirmar as 3 primeiras execuções do workflow de CI no GitHub (PR #4,
 merge em `main`, e o commit de docs seguinte), todas com status
-`success`. Resta, sem urgência: apagar a conta-robô `BOT_EMAIL` (Fase 3,
-item 5).
+`success`. A conta-robô `BOT_EMAIL` (Fase 3, item 5) foi apagada pelo
+usuário — era a última pendência manual registrada no plano de evolução
+inteiro, agora encerrado.
 
 ---
 
