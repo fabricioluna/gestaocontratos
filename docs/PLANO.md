@@ -899,11 +899,12 @@ aberto e mergeado pelo usuário no GitHub em 03/08/2026. Os índices de
 `firestore.indexes.json` foram publicados no console do Firebase pelo
 usuário no mesmo dia, com `/painel` confirmado funcionando em produção
 depois da propagação (ver detalhe na Fase 6, acima) — item que era
-bloqueante para o deploy já está resolvido. Restam, sem urgência: apagar
-a conta-robô `BOT_EMAIL` (Fase 3, item 5) e confirmar visualmente a
-primeira execução do workflow de CI no GitHub (não verificável a partir
-daqui — `gh` foi instalado nesta sessão via `winget`, mas ainda sem
-`gh auth login` feito).
+bloqueante para o deploy já está resolvido. `gh` CLI instalado via
+`winget` e autenticado (`gh auth login`) nesta sessão — usado para
+confirmar as 3 primeiras execuções do workflow de CI no GitHub (PR #4,
+merge em `main`, e o commit de docs seguinte), todas com status
+`success`. Resta, sem urgência: apagar a conta-robô `BOT_EMAIL` (Fase 3,
+item 5).
 
 ---
 
