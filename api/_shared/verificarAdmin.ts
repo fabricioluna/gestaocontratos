@@ -1,6 +1,7 @@
 // api/_shared/verificarAdmin.ts
 import { getAuth } from 'firebase-admin/auth';
 import type { DecodedIdToken } from 'firebase-admin/auth';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 // Exige um token válido cujo custom claim `perfil` seja 'admin'. Em caso de
 // falha (sem token, token inválido ou perfil != admin), já escreve a
@@ -23,7 +24,7 @@ import type { DecodedIdToken } from 'firebase-admin/auth';
 // saída, não a de origem). tsconfig.node.json usa moduleResolution
 // "bundler" (mais permissivo), por isso o `tsc -b` local não acusava o
 // erro. Os handlers precisam importar como `./_shared/verificarAdmin.js`.
-export async function verificarAdmin(req: any, res: any): Promise<DecodedIdToken | null> {
+export async function verificarAdmin(req: VercelRequest, res: VercelResponse): Promise<DecodedIdToken | null> {
   const authHeader = req.headers.authorization || '';
   const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!idToken) {

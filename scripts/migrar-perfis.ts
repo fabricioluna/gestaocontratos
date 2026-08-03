@@ -12,6 +12,7 @@
 // script mais de uma vez produz o mesmo resultado final, sem duplicar efeito.
 import 'dotenv/config';
 import { initializeApp, cert } from 'firebase-admin/app';
+import type { ServiceAccount } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 
 interface DefinicaoPerfil {
@@ -35,7 +36,7 @@ async function main() {
     console.error('Falta FIREBASE_ADMIN_CREDENTIALS no .env local.');
     process.exit(1);
   }
-  const serviceAccount = JSON.parse(envVar);
+  const serviceAccount = JSON.parse(envVar) as ServiceAccount;
   initializeApp({ credential: cert(serviceAccount) });
   const auth = getAuth();
 
@@ -50,4 +51,7 @@ async function main() {
   }
 }
 
-main();
+main().catch((error: unknown) => {
+  console.error('Falha inesperada no script:', error);
+  process.exit(1);
+});

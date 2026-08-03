@@ -704,17 +704,145 @@ localmente).
    (o toast de aviso já cobre o caso de falha), mas vale confirmar que o
    aviso aparece quando esperado.
 
-## Fase 7 — Refatoração
+## Fase 7 — Refatoração (concluída em 03/08/2026)
 
-- [ ] Quebrar `ModalNovoContrato` (494 linhas), `Painel` (327),
-  `DetalhesContrato` (454)
-- [ ] Corrigir os 4 `react-hooks/set-state-in-effect` (ver achado da Fase 1)
-- [ ] Eliminar duplicações: extração de PDF, init do firebase-admin,
-  funções do Gemini, `nomesOrgaos`, importação XLSX
-- [ ] Instalar `@vercel/node`, tipar os handlers de `/api`
-- [ ] Reduzir os `any` (baseline: 36 após Fase 1) — meta: menos de 5
-- [ ] ESLint type-aware (`recommendedTypeChecked` + `parserOptions.project`)
-- [ ] `/simplify` no final
+- [x] **Eliminar duplicações.** Seis extrações, cada uma com comentário no
+  código apontando os pontos de uso originais: `src/utils/extrairTexto.ts`
+  (leitura de PDF/DOCX, antes duplicada entre `useDetalhesContrato.ts` e
+  `ModalNovoContrato.tsx`), `api/_shared/firebaseAdmin.ts`
+  (`inicializarFirebaseAdmin`, consolidando o bloco de init repetido nos 5
+  arquivos de `api/`), `src/utils/xlsxGerador.ts` (`gerarPlanilhaXlsx`,
+  antes duplicada entre os dois relatórios Excel), `src/utils/orgaos.ts`
+  (`NOMES_ORGAOS`, antes duplicado — e ligeiramente divergente, uma cópia
+  tinha a sigla entre parênteses e a outra não — entre `Painel.tsx` e
+  `DetalhesContrato.tsx`), e os fragmentos repetidos dos dois prompts do
+  Gemini em `api/extrair-documento.ts` (`REGRA_ANTI_INJECAO`,
+  `SCHEMA_ITENS`, `envolverDocumento`). "Importação XLSX" do checklist
+  original já tinha virado `import()` dinâmico na Fase 6; o que restava
+  duplicado era a lógica de geração em si, coberta pelo `xlsxGerador.ts`.
+- [x] **Instalar `@vercel/node`, tipar os handlers de `/api`.** Os 6
+  arquivos (`create-user`, `list-users`, `definir-perfil`,
+  `cron-vencimentos`, `extrair-documento`, `_shared/verificarAdmin`)
+  trocaram `(req: any, res: any)` por `(req: VercelRequest, res:
+  VercelResponse)`. `req.body` continua sendo `any` no tipo da lib
+  (decisão do próprio `@vercel/node`), então cada handler faz
+  `req.body as { campo?: tipo }` no destructuring — só afeta o
+  TypeScript, a validação em runtime (`if (!email) return
+  res.status(400)...`, `PERFIS_VALIDOS.includes(...)`) continua
+  acontecendo depois, e em `definir-perfil.ts` ficou até mais estrita
+  (`!perfil`/`!orgaoId` explícitos antes do `.includes()`, evitando passar
+  `undefined` pra ele). `JSON.parse(envVar)` (service account) passou a
+  ser `as ServiceAccount` em vez de implícito `any`.
+- [x] **Reduzir os `any`.** Baseline real desta sessão: 33 (não os 36 do
+  CLAUDE.md, que já tinha caído um pouco nas fases anteriores). Resultado:
+  **zero** `any` explícito em todo o repositório (`src/`, `api/`,
+  `scripts/`) — muito além da meta de "menos de 5". A tipagem dos
+  handlers de `/api` (item acima) já eliminou 14 de uma vez; o resto foi
+  corrigido na origem: `geminiService.ts` ganhou um genérico
+  `chamarExtracaoIA<T>` (elimina a propagação de `any` para
+  `useDetalhesContrato.ts` e `ModalNovoContrato.tsx` de uma vez, em vez de
+  um cast em cada consumidor), `src/vite-env.d.ts` tipou
+  `import.meta.env.VITE_*`, `src/types/types.ts` ganhou `RespostaApi`
+  para tipar `await response.json()` nos três fetches para `/api` do
+  cliente, e casts pontuais (`as ServiceAccount`, `as Record<string,
+  unknown>`) substituíram os `any` que restavam em `JSON.parse`.
+- [x] **Corrigir os 4 `react-hooks/set-state-in-effect`**
+  (`ModalEditarItemCatalogo`, `ModalEmitirOS`, `ModalEditarContrato`,
+  `ModalNovoContrato`) — todos tinham o mesmo padrão: um `useEffect`
+  sincronizando prop→state toda vez que o modal abria. Corrigido pela
+  raiz, não com gambiarra: o componente pai passou a só montar o modal
+  quando `isOpen` é `true` (`{isOpen && <Modal ... />}`) em vez de manter
+  o componente sempre montado com um `if (!isOpen) return null` interno;
+  o estado inicial passou a vir de um lazy initializer do `useState`
+  (`useState(() => ({...itemOriginal}))`), que roda uma vez por
+  montagem — e como o componente só monta quando deve abrir, isso já
+  cobre o caso de sincronizar com a prop, sem efeito nenhum. Efeito
+  colateral positivo: `ModalNovoContrato.tsx` agora sempre abre com
+  formulário limpo (antes, cancelar sem salvar e reabrir mantinha os
+  campos preenchidos, já que o componente nunca desmontava).
+- [x] **Quebrar `ModalNovoContrato` (494→434 linhas), `Painel`
+  (360→288), `DetalhesContrato` (457→379).** Seis componentes novos,
+  todos puramente apresentacionais (recebem dados prontos e callbacks,
+  sem estado que precisasse ser movido com cuidado especial):
+  `TabelaContratos.tsx` e `CatalogoItensPreviaForm.tsx` (Painel/ModalNovoContrato),
+  `CatalogoItensContrato.tsx` e `HistoricoAditivos.tsx`
+  (DetalhesContrato), `ModalBuscarEmail.tsx` e `ModalCadastrarEmail.tsx`
+  (os dois sub-modais de e-mail do ModalNovoContrato). Não é uma reescrita
+  completa da arquitetura desses 3 arquivos — é uma primeira extração
+  segura e verificável; ainda sobra espaço para quebrar mais
+  (`ModalNovoContrato.tsx` continua o maior dos três).
+- [x] **ESLint type-aware** (`tseslint.configs.recommendedTypeChecked` +
+  `parserOptions.projectService`). Ligar a regra gerou **165 erros novos**
+  de uma vez — não foi corrigido erro a erro sem critério; a causa de
+  cada categoria foi resolvida na origem:
+  - `no-misused-promises` (~25 ocorrências): configurado com
+    `checksVoidReturn: { attributes: false }` — a opção oficial do
+    próprio typescript-eslint para o padrão `onClick={async () =>
+    ...}`, predominante neste projeto (toast.loading → await →
+    toast.success/error) e que o React já tolera de propósito.
+  - `no-unsafe-*` (~110 ocorrências): quase todas vinham de duas fontes —
+    `geminiService.ts` sem tipo de retorno e `import.meta.env` sem
+    augmentation — corrigidas na origem (ver item "Reduzir os any"
+    acima), o que fez a maioria cair em cascata.
+  - `lastAutoTable` do jspdf-autotable (propriedade injetada em runtime,
+    ausente dos tipos oficiais do jsPDF): em vez de castear em cada
+    ponto de uso, virou module augmentation
+    (`src/types/jspdf-autotable.d.ts`), então nenhum cast é mais
+    necessário nos dois call sites.
+  - Resto (`no-floating-promises`, `no-unnecessary-type-assertion`,
+    `no-base-to-string`, `require-await`): corrigidos um a um,
+    pontuais.
+- [x] **`/simplify` no final.** 4 agentes em paralelo (reuse,
+  simplification, efficiency, altitude) sobre o diff completo da fase.
+  Achados aplicados: helper `quebrarTexto()` em `src/utils/pdfGerador.ts`
+  substituindo o cast de `splitTextToSize` duplicado 5 vezes entre
+  `DetalhesContrato.tsx` e `ModalEmitirOS.tsx`; `src/utils/statusContrato.ts`
+  unificado numa função só `infoVencimento()` (antes
+  `corLinhaPorVencimento`/`tituloPorVencimento` recalculavam
+  `statusVencimento` cada uma por conta própria — `TabelaContratos.tsx`
+  chamava as duas por linha renderizada). Achado de "efficiency" sobre
+  esse mesmo ponto anotado como não-regressão (padrão já existia em
+  `Painel.tsx` antes desta fase) e resolvido do mesmo jeito.
+
+**Build/lint/testes ao final da fase** (baseline da Fase 6: build 0 erros,
+lint 46 erros, 21 testes): build **0 erros** (idêntico). Lint **0 erros** —
+não é "sem regressão", é uma redução real de 46 para 0 (os 46 da Fase 6
+incluíam os ~30 `any`/handlers de `/api` não tipados que este fase
+eliminou, mais o ganho líquido de ligar `recommendedTypeChecked` e ainda
+assim fechar em zero). Vitest **21/21 passando** (mesmos testes, nenhuma
+lógica de domínio nova nesta fase). `any` explícito: **zero** em todo o
+repositório (baseline desta sessão: 33).
+
+**Revisão:** duas rodadas. `/simplify` (4 agentes em paralelo) encontrou
+duplicação de casts jsPDF e cálculo de status duplicado, ambos corrigidos
+(ver acima). `revisor-pmp` no diff completo da fase: **nenhum achado** —
+conferiu especificamente que a tipagem de `req.body` não enfraqueceu
+nenhuma validação em runtime, que os 4 modais refatorados preservaram
+fechar por clique no overlay e (onde já existia) por ESC, que `RespostaApi`
+bate com o que cada endpoint devolve de verdade, e que nada das Fases 5/6
+(transações do Firestore, `parseDataLocal`, paginação, limpeza de
+IndexedDB) foi tocado por engano durante a extração de componentes.
+
+**Teste visual**: `npm run dev` + Playwright Chromium headless (Playwright
+precisou ser reinstalado com `--no-save` nesta sessão — tinha sumido do
+`node_modules` depois do `npm install @vercel/node`; confirmado que não
+vazou para `package-lock.json`). Tela de login carregou sem erro de
+console.
+
+**Achado não-crítico registrado, não corrigido nesta fase:** a extração de
+`extrairTexto.ts` unificou o comportamento para arquivos que não são
+`.pdf`/`.docx` — antes `ModalNovoContrato.tsx` produzia string vazia
+nesse caso, `useDetalhesContrato.ts` já fazia fallback para `file.text()`;
+agora os dois fazem `file.text()`. Mudança de comportamento pequena e
+provavelmente benéfica (efeito colateral da consolidação, não um bug
+introduzido de propósito), sinalizada pelo `revisor-pmp` como nuance, não
+como achado formal.
+
+**Pendências:** nenhuma bloqueante. `ModalNovoContrato.tsx` (434 linhas)
+continua o maior arquivo do projeto — candidato a uma segunda rodada de
+extração numa fase futura, se o incômodo justificar (não estava no
+critério de conclusão desta fase, que era "quebrar", não atingir um
+número de linhas específico).
 
 ## Fase 8 — Fechamento
 

@@ -2,7 +2,7 @@
 
 export { parseMoeda } from '../domain/moeda';
 
-export const extrairNumeroPlanilha = (valor: any): number => {
+export const extrairNumeroPlanilha = (valor: unknown): number => {
   if (typeof valor === 'number') return valor;
   if (typeof valor === 'string') {
     const limpo = valor.replace(/[^\d.,]/g, '');

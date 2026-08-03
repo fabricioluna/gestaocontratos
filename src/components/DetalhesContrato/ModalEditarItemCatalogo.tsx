@@ -1,29 +1,25 @@
 // src/components/DetalhesContrato/ModalEditarItemCatalogo.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import type { Item } from '../../types/types';
 
 interface Props {
-  isOpen: boolean;
   onClose: () => void;
-  itemOriginal: Item | null;
+  itemOriginal: Item;
   salvarEdicao: (itemEditado: Item) => Promise<boolean>;
 }
 
-export default function ModalEditarItemCatalogo({ isOpen, onClose, itemOriginal, salvarEdicao }: Props) {
-  const [item, setItem] = useState<Item | null>(null);
-
-  useEffect(() => {
-    if (itemOriginal && isOpen) {
-      setItem({ ...itemOriginal });
-    }
-  }, [itemOriginal, isOpen]);
-
-  if (!isOpen || !item) return null;
+// O pai (DetalhesContrato.tsx) só monta este componente quando o modal
+// deve estar aberto, então cada montagem já nasce com o estado
+// inicializado a partir de `itemOriginal` via lazy initializer — sem
+// precisar de um useEffect para sincronizar prop → state toda vez que
+// abre (Fase 7; achado de lint react-hooks/set-state-in-effect da Fase 1).
+export default function ModalEditarItemCatalogo({ onClose, itemOriginal, salvarEdicao }: Props) {
+  const [item, setItem] = useState<Item>(() => ({ ...itemOriginal }));
 
   const recalcularTotal = (qtdStr: string, valorStr: string) => {
     const qtd = Number(qtdStr) || 0;
     const valor = Number(valorStr) || 0;
-    setItem(prev => prev ? { ...prev, quantidade: qtd, valorUnitario: valor, valorTotalItem: qtd * valor } : null);
+    setItem(prev => ({ ...prev, quantidade: qtd, valorUnitario: valor, valorTotalItem: qtd * valor }));
   };
 
   const submit = async (e: React.FormEvent) => {

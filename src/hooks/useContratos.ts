@@ -85,8 +85,8 @@ export const useContratos = () => {
       return ordenacao.direcao === 'asc' ? valA.numero - valB.numero : valB.numero - valA.numero;
     }
 
-    let valorA: any = a[ordenacao.campo as keyof Contrato] || '';
-    let valorB: any = b[ordenacao.campo as keyof Contrato] || '';
+    let valorA: string | number = (a[ordenacao.campo as keyof Contrato] as string | number | undefined) ?? '';
+    let valorB: string | number = (b[ordenacao.campo as keyof Contrato] as string | number | undefined) ?? '';
     if (typeof valorA === 'string') valorA = valorA.toLowerCase();
     if (typeof valorB === 'string') valorB = valorB.toLowerCase();
 
@@ -108,7 +108,7 @@ export const useContratos = () => {
   }), [contratosOrdenados, termoBusca]);
 
   // 5. EXCLUSÃO COM CASCADE (DELETA ITENS VINCULADOS)
-  const excluirContrato = async (contratoId: string) => {
+  const excluirContrato = (contratoId: string) => {
     if (window.confirm('Tem certeza que deseja excluir este contrato e todos os itens vinculados?')) {
       const exclusaoPromise = async () => {
         setLoading(true);
@@ -122,7 +122,7 @@ export const useContratos = () => {
         }
         setLoading(false);
       };
-      toast.promise(exclusaoPromise(), {
+      void toast.promise(exclusaoPromise(), {
         loading: 'A excluir contrato e itens...',
         success: 'Contrato excluído com sucesso!',
         error: 'Erro ao excluir o contrato.',

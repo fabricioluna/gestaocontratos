@@ -1,9 +1,23 @@
 // api/cron-vencimentos.ts
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import nodemailer from 'nodemailer';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { inicializarFirebaseAdmin } from './_shared/firebaseAdmin.js';
 
-export default async function handler(req: any, res: any) {
+// Só os campos que este cron efetivamente lê — definido localmente em vez
+// de importar `Contrato` de `src/types/types.ts` para não acoplar o
+// compile target de `api/` (moduleResolution mais estrito, ver
+// CLAUDE.md) ao do cliente.
+interface ContratoParaAlerta {
+  dataFim?: string;
+  dataDistrato?: string;
+  emailSecretaria?: string;
+  numeroContrato?: string;
+  fornecedor?: string;
+  objetoResumido?: string;
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 1. USO DA VARIÁVEL REQ (Resolve o Erro do TypeScript e aumenta a segurança)
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ success: false, message: 'Método não permitido.' });
@@ -21,19 +35,12 @@ export default async function handler(req: any, res: any) {
     // 2. Inicializa o firebase-admin (mesmo padrão dos outros handlers de /api).
     // O SDK admin lê com a service account, sem passar pelas Firestore Rules —
     // necessário aqui porque o cron precisa varrer contratos de todos os órgãos.
-    if (getApps().length === 0) {
-      const envVar = process.env.FIREBASE_ADMIN_CREDENTIALS;
-      if (!envVar) {
-        throw new Error('Falta a variável FIREBASE_ADMIN_CREDENTIALS na Vercel.');
-      }
-      const serviceAccount = JSON.parse(envVar);
-      initializeApp({ credential: cert(serviceAccount) });
-    }
+    inicializarFirebaseAdmin();
     const db = getFirestore();
 
     // 3. Busca todos os contratos
     const snapshot = await db.collection('contratos').get();
-    const contratos = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+    const contratos = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as ContratoParaAlerta) }));
 
     // 4. Configura a sua conta do Gmail para enviar os alertas
     const transporter = nodemailer.createTransport({

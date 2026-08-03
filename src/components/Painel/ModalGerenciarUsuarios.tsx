@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import { auth } from '../../firebase';
+import type { RespostaApi } from '../../types/types';
 
 interface ModalGerenciarUsuariosProps {
   isOpen: boolean;
@@ -39,10 +40,10 @@ export default function ModalGerenciarUsuarios({ isOpen, onClose }: ModalGerenci
         body: JSON.stringify({ email: emailUsuario, nomeOrgao: orgaoVinculado })
       });
 
-      let data;
+      let data: RespostaApi;
       try {
-        data = await response.json();
-      } catch (err) {
+        data = await response.json() as RespostaApi;
+      } catch {
         throw new Error("Falha na comunicação com o servidor.");
       }
 
@@ -56,20 +57,20 @@ export default function ModalGerenciarUsuarios({ isOpen, onClose }: ModalGerenci
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ email: emailUsuario, perfil: 'viewer', orgaoId: orgaoVinculado })
       });
-      const dataPerfil = await responsePerfil.json();
+      const dataPerfil = await responsePerfil.json() as RespostaApi;
 
       if (!responsePerfil.ok || !dataPerfil.success) {
         toast.error("Usuário criado, mas o perfil de acesso não pôde ser definido. Reenvie o formulário para tentar novamente.", { id: toastId });
         return;
       }
 
-      toast.success(data.message, { id: toastId });
+      toast.success(data.message || 'Usuário cadastrado com sucesso!', { id: toastId });
       setEmailUsuario('');
       setOrgaoVinculado('');
       onClose();
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      toast.error(error.message || "Erro de comunicação. Tente novamente.", { id: toastId });
+      toast.error(error instanceof Error ? error.message : "Erro de comunicação. Tente novamente.", { id: toastId });
     } finally {
       setLoading(false);
     }

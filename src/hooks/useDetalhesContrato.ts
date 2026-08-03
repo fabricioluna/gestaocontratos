@@ -6,7 +6,7 @@ import { db } from '../firebase';
 import type { Contrato, Aditivo, ItemAditivado, Item } from '../types/types';
 import { extrairDadosAditivoComIA } from '../services/geminiService';
 import { registrarLog } from '../services/auditService'; // NOVO: Motor de Auditoria
-import { carregarPdfjs } from '../utils/pdfjs';
+import { extrairTextoDeArquivo } from '../utils/extrairTexto';
 import {
   calcularResumoValorGlobal,
   calcularValorAlteracaoAditivo,
@@ -41,7 +41,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
 
   useEffect(() => {
     if (!id) return;
-    const unsubContrato = onSnapshot(doc(db, 'contratos', id as string), (docSnap) => {
+    const unsubContrato = onSnapshot(doc(db, 'contratos', id), (docSnap) => {
       if (docSnap.exists()) {
         setContrato({ id: docSnap.id, ...docSnap.data() } as Contrato);
         setErro(null);
@@ -53,7 +53,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
       setErro('Erro ao carregar o contrato. Verifique a sua conexão ou permissão de acesso.');
     });
 
-    const qItens = query(collection(db, 'itens'), where('contratoId', '==', id as string), where('tipoRegistro', '==', 'catalogo'));
+    const qItens = query(collection(db, 'itens'), where('contratoId', '==', id), where('tipoRegistro', '==', 'catalogo'));
     const unsubItens = onSnapshot(qItens, (querySnapshot) => {
       const lista: Item[] = [];
       querySnapshot.forEach((d) => lista.push({ id: d.id, ...d.data() } as Item));
@@ -81,8 +81,8 @@ export const useDetalhesContrato = (id: string | undefined) => {
       const toastId = toast.loading('A excluir contrato...');
       setLoading(true);
       try {
-        await deleteDoc(doc(db, 'contratos', id as string));
-        const qItens = query(collection(db, 'itens'), where('contratoId', '==', id as string));
+        await deleteDoc(doc(db, 'contratos', id));
+        const qItens = query(collection(db, 'itens'), where('contratoId', '==', id));
         const querySnapshot = await getDocs(qItens);
         if (!querySnapshot.empty) {
           const batch = writeBatch(db);
@@ -93,7 +93,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
         await registrarLog('EXCLUSÃO CONTRATO', `Contrato ${contrato.numeroContrato} do fornecedor ${contrato.fornecedor} foi totalmente excluído.`);
         toast.success("Contrato excluído com sucesso!", { id: toastId });
         onSuccess();
-      } catch (error) { toast.error("Erro ao excluir o contrato.", { id: toastId }); 
+      } catch { toast.error("Erro ao excluir o contrato.", { id: toastId });
       } finally { setLoading(false); }
     }
   };
@@ -107,20 +107,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
     if (!arquivoPdfAditivo) return toast.error("Selecione o arquivo do aditivo primeiro.");
     setProcessandoPdfIA(true); const toastId = toast.loading('A processar IA...');
     try {
-      const arrayBuffer = await arquivoPdfAditivo.arrayBuffer();
-      let textoCompleto = '';
-      if (arquivoPdfAditivo.name.toLowerCase().endsWith('.pdf')) {
-        const typedArray = new Uint8Array(arrayBuffer);
-        const pdfjsLib = await carregarPdfjs();
-        const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i); const content = await page.getTextContent();
-          textoCompleto += content.items.map((item: any) => item.str).join(" ") + "\n";
-        }
-      } else if (arquivoPdfAditivo.name.toLowerCase().endsWith('.docx')) {
-        const mammoth = await import('mammoth');
-        textoCompleto = (await mammoth.extractRawText({ arrayBuffer })).value;
-      } else textoCompleto = await arquivoPdfAditivo.text();
+      const textoCompleto = await extrairTextoDeArquivo(arquivoPdfAditivo);
 
       const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
       if (textoLimpo.trim().length < 50) throw new Error("Texto extraído é ilegível.");
@@ -133,12 +120,12 @@ export const useDetalhesContrato = (id: string | undefined) => {
         if (dados.valorAditivado) setAditivoValor(Number(dados.valorAditivado));
         if (dados.itens && dados.itens.length > 0) {
           setItensDoAditivo(dados.itens);
-          const soma = dados.itens.reduce((acc: number, item: any) => acc + (Number(item.valorTotalItem) || 0), 0);
+          const soma = dados.itens.reduce((acc: number, item: { valorTotalItem?: number }) => acc + (Number(item.valorTotalItem) || 0), 0);
           if (!dados.valorAditivado && soma > 0) setAditivoValor(soma);
           toast.success("A IA extraiu os dados!", { id: toastId });
         } else { toast.success("Dados lidos, sem itens.", { id: toastId }); }
       } else { toast.error("A IA falhou na estruturação.", { id: toastId }); }
-    } catch (error: any) { toast.error(error.message, { id: toastId }); 
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Erro ao processar o arquivo.', { id: toastId }); 
     } finally { setProcessandoPdfIA(false); }
   };
 
@@ -168,7 +155,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
     if (!window.confirm("Excluir este aditivo e recalcular valor global?")) return;
     const toastId = toast.loading('A excluir aditivo...'); setLoading(true);
     try {
-      const contratoRef = doc(db, 'contratos', id as string);
+      const contratoRef = doc(db, 'contratos', id);
       // Transação: lê o contrato mais recente do servidor em vez do estado
       // local (que pode estar desatualizado se outro fiscal alterou os
       // aditivos entretanto) antes de recalcular e regravar valorTotal +
@@ -186,7 +173,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
 
       await registrarLog('EXCLUSÃO ADITIVO', `Aditivo "${aditivo.descricao}" excluído do Contrato ${contrato.numeroContrato}.`);
       toast.success('Aditivo excluído com sucesso!', { id: toastId });
-    } catch (error) { toast.error("Erro ao excluir o aditivo.", { id: toastId });
+    } catch { toast.error("Erro ao excluir o aditivo.", { id: toastId });
     } finally { setLoading(false); }
   };
 
@@ -221,7 +208,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
       toastId = toast.loading('A guardar aditivo...'); setLoading(true);
 
       let novoAditivo: Aditivo | null = null;
-      const contratoRef = doc(db, 'contratos', id as string);
+      const contratoRef = doc(db, 'contratos', id);
       // Transação: lê o contrato mais recente do servidor em vez do estado
       // local antes de recalcular valorTotal/aditivos — evita a condição de
       // corrida do read-modify-write direto (CLAUDE.md, problema conhecido
@@ -272,10 +259,10 @@ export const useDetalhesContrato = (id: string | undefined) => {
     e.preventDefault(); if (!id || !contrato) return;
     const toastId = toast.loading('A registar distrato...'); setLoading(true);
     try {
-      await updateDoc(doc(db, 'contratos', id as string), { dataDistrato: distratoData, motivoDistrato: distratoMotivo, dataUltimaAtualizacao: new Date().toLocaleString('pt-BR') });
+      await updateDoc(doc(db, 'contratos', id), { dataDistrato: distratoData, motivoDistrato: distratoMotivo, dataUltimaAtualizacao: new Date().toLocaleString('pt-BR') });
       await registrarLog('DISTRATO', `Contrato ${contrato.numeroContrato} foi distratado. Motivo: ${distratoMotivo}`);
       toast.success('Distrato registado!', { id: toastId }); onSuccess();
-    } catch (error) { toast.error("Erro ao registar distrato.", { id: toastId }); 
+    } catch { toast.error("Erro ao registar distrato.", { id: toastId });
     } finally { setLoading(false); }
   };
 
@@ -303,7 +290,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
       // commit, não o do estado local (mesma condição de corrida do
       // problema conhecido nº 1 do CLAUDE.md).
       if (diferencaValor !== 0) {
-        const contratoRef = doc(db, 'contratos', id as string);
+        const contratoRef = doc(db, 'contratos', id);
         await runTransaction(db, async (transaction) => {
           const contratoSnap = await transaction.get(contratoRef);
           if (!contratoSnap.exists()) throw new Error('Contrato não encontrado.');
@@ -318,7 +305,7 @@ export const useDetalhesContrato = (id: string | undefined) => {
       await registrarLog('EDIÇÃO CATÁLOGO', `Item "${itemEditado.discriminacao}" do contrato ${contrato.numeroContrato} editado.`);
       toast.success('Item atualizado com sucesso!', { id: toastId });
       return true;
-    } catch (error) {
+    } catch {
       toast.error('Erro ao atualizar item.', { id: toastId });
       return false;
     } finally {

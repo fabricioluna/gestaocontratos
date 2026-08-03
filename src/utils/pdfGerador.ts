@@ -1,4 +1,5 @@
 // src/utils/pdfGerador.ts
+import type { jsPDF } from 'jspdf';
 
 // jsPDF + jspdf-autotable só são necessários quando o usuário efetivamente
 // pede um PDF (relatório, O.S.) — import() dinâmico para tirar as duas do
@@ -13,3 +14,10 @@ export const carregarJsPDF = async () => {
   ]);
   return { jsPDF, autoTable };
 };
+
+// jsPDF tipa `splitTextToSize` como retornando `any` (gap da própria lib —
+// o retorno real é sempre string[]). Centralizado aqui em vez de repetir o
+// cast em cada relatório (achado do /simplify, Fase 7 — antes duplicado 5x
+// entre DetalhesContrato.tsx e ModalEmitirOS.tsx).
+export const quebrarTexto = (doc: jsPDF, texto: string, largura: number): string[] =>
+  doc.splitTextToSize(texto, largura) as string[];

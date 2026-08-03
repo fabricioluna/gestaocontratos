@@ -1,5 +1,5 @@
 // src/components/Painel/ModalEditarContrato.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { db } from '../../firebase';
@@ -8,29 +8,25 @@ import { MODALIDADES_LICITACAO } from '../../utils/modalidades';
 import type { Contrato, FormContratoState } from '../../types/types';
 
 interface ModalEditarContratoProps {
-  isOpen: boolean;
   onClose: () => void;
-  contratoOriginal: Contrato | null;
+  contratoOriginal: Contrato;
 }
 
-export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal }: ModalEditarContratoProps) {
-  const [formEdit, setFormEdit] = useState<Partial<FormContratoState>>({});
+// O pai (Painel.tsx) só monta este componente quando o modal deve estar
+// aberto, então o formulário já nasce inicializado a partir de
+// `contratoOriginal` via lazy initializer — sem precisar de um useEffect
+// para sincronizar prop → state toda vez que abre (Fase 7; achado de lint
+// react-hooks/set-state-in-effect da Fase 1).
+export default function ModalEditarContrato({ onClose, contratoOriginal }: ModalEditarContratoProps) {
+  const [formEdit, setFormEdit] = useState<Partial<FormContratoState>>(() => ({
+    ...contratoOriginal,
+    valorTotal: contratoOriginal.valorTotal.toFixed(2).replace('.', ','),
+    modalidade: contratoOriginal.modalidade || '',
+    numeroModalidade: contratoOriginal.numeroModalidade || contratoOriginal.numeroPregao || '',
+    cnpjFornecedor: contratoOriginal.cnpjFornecedor || '',
+    emailSecretaria: contratoOriginal.emailSecretaria || ''
+  }));
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (isOpen && contratoOriginal) {
-      setFormEdit({ 
-        ...contratoOriginal, 
-        valorTotal: contratoOriginal.valorTotal.toFixed(2).replace('.', ','),
-        modalidade: contratoOriginal.modalidade || '',
-        numeroModalidade: contratoOriginal.numeroModalidade || contratoOriginal.numeroPregao || '',
-        cnpjFornecedor: contratoOriginal.cnpjFornecedor || '',
-        emailSecretaria: contratoOriginal.emailSecretaria || ''
-      });
-    }
-  }, [isOpen, contratoOriginal]);
-
-  if (!isOpen || !contratoOriginal) return null;
 
   const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormEdit(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -76,9 +72,9 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
       });
       toast.success('Contrato atualizado com sucesso!', { id: toastId });
       onClose();
-    } catch (error) { 
-      toast.error("Erro ao editar contrato.", { id: toastId }); 
-    } finally { 
+    } catch {
+      toast.error("Erro ao editar contrato.", { id: toastId });
+    } finally {
       setLoading(false); 
     }
   };

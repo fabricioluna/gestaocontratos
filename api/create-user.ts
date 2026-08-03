@@ -1,31 +1,19 @@
 // api/create-user.ts
 import { randomBytes } from 'crypto';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import nodemailer from 'nodemailer';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verificarAdmin } from './_shared/verificarAdmin.js';
+import { inicializarFirebaseAdmin } from './_shared/firebaseAdmin.js';
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Segurança
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, message: 'Método não permitido.' });
   }
 
-  // 1. TENTATIVA BLINDADA DE INICIALIZAR O FIREBASE
   try {
-    if (getApps().length === 0) {
-      const envVar = process.env.FIREBASE_ADMIN_CREDENTIALS;
-      if (!envVar) {
-         console.error('Falta a variável FIREBASE_ADMIN_CREDENTIALS na Vercel.');
-         return res.status(500).json({ success: false, message: 'Erro de configuração no servidor.' });
-      }
-
-      // Converte o texto da Vercel num objeto JSON
-      const serviceAccount = JSON.parse(envVar);
-      initializeApp({
-        credential: cert(serviceAccount)
-      });
-    }
+    inicializarFirebaseAdmin();
   } catch (error) {
     console.error('Erro ao ler a chave do Firebase:', error);
     return res.status(500).json({ success: false, message: 'Erro de configuração no servidor.' });
@@ -36,7 +24,7 @@ export default async function handler(req: any, res: any) {
   if (!admin) return;
 
   const auth = getAuth();
-  const { email, nomeOrgao } = req.body;
+  const { email, nomeOrgao } = req.body as { email?: string; nomeOrgao?: string };
   if (!email) return res.status(400).json({ success: false, message: 'E-mail não fornecido.' });
 
   try {
@@ -45,8 +33,9 @@ export default async function handler(req: any, res: any) {
     try {
       await auth.getUserByEmail(email);
       userExists = true;
-    } catch (error: any) {
-      if (error.code !== 'auth/user-not-found') throw error;
+    } catch (error) {
+      const codigo = error instanceof Object && 'code' in error ? (error as { code?: string }).code : undefined;
+      if (codigo !== 'auth/user-not-found') throw error;
     }
 
     if (userExists) {

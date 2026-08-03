@@ -8,14 +8,19 @@ import logo from '../assets/logopmp.png';
 import './Painel.css';
 
 import { formatarDataBr } from '../utils/formatters';
-import { diasAteVencimento, statusVencimento, parseDataLocal } from '../domain/vencimento';
+import { parseDataLocal } from '../domain/vencimento';
 import { carregarJsPDF } from '../utils/pdfGerador';
+import type { RowInput, Styles } from 'jspdf-autotable';
+import { gerarPlanilhaXlsx } from '../utils/xlsxGerador';
+import { NOMES_ORGAOS } from '../utils/orgaos';
 import { auth, db } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import ModalNovoContrato from '../components/Painel/ModalNovoContrato';
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
 import ModalRelatorioGlobal from '../components/Painel/ModalRelatorioGlobal';
 import ModalGerenciarUsuarios from '../components/Painel/ModalGerenciarUsuarios';
+import TabelaContratos from '../components/Painel/TabelaContratos';
+import { infoVencimento } from '../utils/statusContrato';
 import { useContratos } from '../hooks/useContratos';
 
 export default function Painel() {
@@ -37,13 +42,6 @@ export default function Painel() {
   const [isModalRelatorioOpen, setIsModalRelatorioOpen] = useState(false);
   const [opcIncluirAditivos, setOpcIncluirAditivos] = useState(false);
 
-  const nomesOrgaos: { [key: string]: string } = {
-    'prefeitura': 'Prefeitura Municipal de Pesqueira',
-    'fmas': 'Fundo Municipal de Assistência Social (FMAS)',
-    'fme': 'Fundo Municipal de Educação (FME)',
-    'fms': 'Fundo Municipal de Saúde (FMS)'
-  };
-
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -56,31 +54,6 @@ export default function Painel() {
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
-
-  const getRowStyle = (dataFim: string) => {
-    if (!dataFim) return {};
-    switch (statusVencimento(diasAteVencimento(dataFim))) {
-      case 'vencido': return { backgroundColor: '#64748b', color: '#ffffff' };
-      case 'critico': return { backgroundColor: '#ffd5d5', color: '#900' };
-      case 'atencao': return { backgroundColor: '#fff9c4', color: '#856404' };
-      default: return {};
-    }
-  };
-
-  const getRowTitle = (dataFim: string) => {
-    if (!dataFim) return "Status Desconhecido";
-    switch (statusVencimento(diasAteVencimento(dataFim))) {
-      case 'vencido': return "Contrato Vencido";
-      case 'critico': return "Atenção: Vencimento em menos de 30 dias";
-      case 'atencao': return "Aviso: Vencimento em menos de 3 meses";
-      default: return "Vigente";
-    }
-  };
-
-  const renderSeta = (campo: string) => {
-    if (ordenacao.campo !== campo) return <span style={{ color: '#ccc', marginLeft: '5px' }}>↕</span>;
-    return <span style={{ marginLeft: '5px' }}>{ordenacao.direcao === 'asc' ? '▲' : '▼'}</span>;
-  };
 
   // --- MOTOR DE FILTRO DE DATAS PARA RELATÓRIOS ---
   const filtrarContratosPorPeriodo = (lista: Contrato[], dataI: string, dataF: string) => {
@@ -123,18 +96,13 @@ export default function Painel() {
         'Data Início': formatarDataBr(c.dataInicio),
         'Data Fim (Validade)': formatarDataBr(c.dataFim),
         'Fiscal do Contrato': c.fiscalContrato || '-',
-        'Status Atual': getRowTitle(c.dataFim),
+        'Status Atual': infoVencimento(c.dataFim).titulo,
         'Qtd Aditivos': c.aditivos?.length || 0
       };
     });
 
-    const XLSX = await import('xlsx');
-    const worksheet = XLSX.utils.json_to_sheet(dadosPlanilha);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Contratos");
-
     const nomeFundo = orgaoLogado ? orgaoLogado.toUpperCase() : 'GERAL';
-    XLSX.writeFile(workbook, `Relatorio_Contratos_${nomeFundo}.xlsx`);
+    await gerarPlanilhaXlsx(dadosPlanilha, 'Contratos', `Relatorio_Contratos_${nomeFundo}.xlsx`);
   };
 
   // --- GERAÇÃO DE PDF COM FILTRO ---
@@ -146,7 +114,7 @@ export default function Painel() {
 
     const gerarTabela = () => {
       docPdf.setFontSize(16); docPdf.setTextColor(0, 74, 153);
-      docPdf.text(orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Relatório de Contratos', 45, 20);
+      docPdf.text(orgaoLogado ? NOMES_ORGAOS[orgaoLogado] : 'Relatório de Contratos', 45, 20);
       docPdf.setFontSize(11); docPdf.setTextColor(100, 100, 100);
       
       let textoFiltro = termoBusca ? ` (Filtro: "${termoBusca}")` : '';
@@ -159,8 +127,7 @@ export default function Painel() {
       docPdf.text(`Listagem de Contratos${textoFiltro} - Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 45, 28);
       
       const headRow = ['Nº Contrato', 'Objeto', 'Fornecedor', 'CPF/CNPJ', 'Validade', 'Valor Global\n/ Aditivo', 'Fiscal'];
-      type TableCell = string | { content: string, colSpan?: number, styles?: any };
-      const tableData: TableCell[][] = [];
+      const tableData: RowInput[] = [];
 
       listaFiltrada.forEach(c => {
         const vTotal = Number(c.valorTotal) || 0;
@@ -178,7 +145,7 @@ export default function Painel() {
           c.aditivos.forEach(ad => {
             const strValidade = ad.novaDataFim ? formatarDataBr(ad.novaDataFim) : '-';
             const strValor = ad.valorAditivado ? ad.valorAditivado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-';
-            const estiloAditivo = { fillColor: [248, 250, 252], textColor: [100, 100, 100], fontStyle: 'italic' };
+            const estiloAditivo: Partial<Styles> = { fillColor: [248, 250, 252], textColor: [100, 100, 100], fontStyle: 'italic' };
 
             tableData.push([
               { content: '+ ADITIVO', styles: { ...estiloAditivo, fontStyle: 'bold', halign: 'center' } },
@@ -191,10 +158,10 @@ export default function Painel() {
         }
       });
 
-      const colStyles: any = { 
-        0: { halign: 'center', cellWidth: 30 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 40 },                  
-        3: { halign: 'center', cellWidth: 26 }, 4: { halign: 'center', cellWidth: 26 }, 
-        5: { halign: 'right', cellWidth: 32 },  6: { halign: 'center', cellWidth: 24 }  
+      const colStyles: Record<number, Partial<Styles>> = {
+        0: { halign: 'center', cellWidth: 30 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 40 },
+        3: { halign: 'center', cellWidth: 26 }, 4: { halign: 'center', cellWidth: 26 },
+        5: { halign: 'right', cellWidth: 32 },  6: { halign: 'center', cellWidth: 24 }
       };
 
       autoTable(docPdf, {
@@ -258,7 +225,7 @@ export default function Painel() {
       <header className="header">
         <div className="header-logo">
           <img src={logo} alt="Logo PMP" className="logo-pequena" />
-          <h2 title={orgaoLogado ? nomesOrgaos[orgaoLogado] : ''}>{orgaoLogado ? nomesOrgaos[orgaoLogado] : 'Carregando...'}</h2>
+          <h2 title={orgaoLogado ? NOMES_ORGAOS[orgaoLogado] : ''}>{orgaoLogado ? NOMES_ORGAOS[orgaoLogado] : 'Carregando...'}</h2>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <span style={{ fontSize: '12px', color: isAdmin ? '#28a745' : '#64748b', fontWeight: 'bold', backgroundColor: 'white', padding: '5px 10px', borderRadius: '4px' }}>
@@ -292,71 +259,23 @@ export default function Painel() {
             {isAdmin && <button onClick={() => setIsModalOpen(true)} className="btn-salvar">Novo Contrato</button>}
           </div>
         </div>
-        <div className="legenda-container" style={{ display: 'flex', gap: '20px', marginBottom: '15px', fontSize: '12px', color: '#666' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', backgroundColor: '#ffd5d5', border: '1px solid #ff000033' }}></div> Vencimento em menos de 1 mês</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', backgroundColor: '#fff9c4', border: '1px solid #ffc10733' }}></div> Vencimento em menos de 3 meses</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><div style={{ width: '12px', height: '12px', backgroundColor: '#64748b', border: '1px solid #475569' }}></div> Contrato Vencido</div>
-        </div>
-
-        <table className="tabela-contratos">
-          <thead>
-            <tr>
-              <th onClick={() => lidarComOrdenacao('numeroContrato')} style={{ cursor: 'pointer' }}>Nº Contrato {renderSeta('numeroContrato')}</th>
-              <th onClick={() => lidarComOrdenacao('objetoResumido')} style={{ cursor: 'pointer' }}>Objeto Resumido {renderSeta('objetoResumido')}</th>
-              <th onClick={() => lidarComOrdenacao('fornecedor')} style={{ cursor: 'pointer' }}>Fornecedor {renderSeta('fornecedor')}</th>
-              <th onClick={() => lidarComOrdenacao('cnpjFornecedor')} style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>CPF / CNPJ {renderSeta('cnpjFornecedor')}</th>
-              <th onClick={() => lidarComOrdenacao('dataFim')} style={{ cursor: 'pointer' }}>Validade {renderSeta('dataFim')}</th>
-              <th onClick={() => lidarComOrdenacao('valorTotal')} style={{ cursor: 'pointer' }}>Valor Global {renderSeta('valorTotal')}</th>
-              <th onClick={() => lidarComOrdenacao('fiscalContrato')} style={{ cursor: 'pointer' }}>Fiscal {renderSeta('fiscalContrato')}</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {contratosFiltrados.length === 0 ? (
-              <tr><td colSpan={8} style={{ textAlign: 'center' }}>{termoBusca ? 'Nenhum contrato encontrado.' : 'Nenhum contrato cadastrado.'}</td></tr>
-            ) : (
-              contratosFiltrados.map((c) => {
-                const styleVencimento = getRowStyle(c.dataFim);
-                const isVencido = styleVencimento.backgroundColor === '#64748b'; 
-                
-                return (
-                  <tr key={c.id} style={styleVencimento} title={getRowTitle(c.dataFim)}>
-                    <td>
-                      <span style={{ fontWeight: 'bold' }}>{c.numeroContrato}</span>
-                      {c.aditivos && c.aditivos.length > 0 && (
-                        <span style={{ marginLeft: '8px', fontSize: '10px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 6px', borderRadius: '12px', fontWeight: 'bold', whiteSpace: 'nowrap' }} title={`${c.aditivos.length} aditivo(s) registado(s)`}>📝 +{c.aditivos.length}</span>
-                      )}
-                    </td>
-                    <td>{c.objetoResumido}</td>
-                    <td>{c.fornecedor}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{c.cnpjFornecedor || '-'}</td>
-                    <td style={{ fontWeight: 'bold' }}>{formatarDataBr(c.dataFim)}</td>
-                    <td style={{ fontWeight: 'bold', color: isVencido ? '#ffffff' : '#004a99' }}>{Number(c.valorTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                    <td>{c.fiscalContrato || '-'}</td>
-                    <td style={{ display: 'flex', gap: '5px' }}>
-                      <button style={{ backgroundColor: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => navigate(`/contrato/${c.id}`)}>Detalhes</button>
-                      
-                      {isAdmin && !c.dataDistrato && <button style={{ backgroundColor: '#ffc107', color: '#333', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => abrirEdicao(c)}>✏️</button>}
-                      {isAdmin && <button style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }} onClick={() => excluirContrato(c.id!)} disabled={loading}>🗑️</button>}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-
-        {temMais && (
-          <div style={{ textAlign: 'center', padding: '20px' }}>
-            <button onClick={carregarMaisContratos} className="btn-cancelar" style={{ backgroundColor: 'white' }}>
-              Carregar mais contratos
-            </button>
-          </div>
-        )}
+        <TabelaContratos
+          contratosFiltrados={contratosFiltrados}
+          loading={loading}
+          isAdmin={isAdmin}
+          termoBusca={termoBusca}
+          ordenacao={ordenacao}
+          lidarComOrdenacao={lidarComOrdenacao}
+          onDetalhes={(id) => navigate(`/contrato/${id}`)}
+          onEditar={abrirEdicao}
+          onExcluir={excluirContrato}
+          temMais={temMais}
+          carregarMaisContratos={carregarMaisContratos}
+        />
       </main>
 
-      {isAdmin && <ModalNovoContrato isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} orgaoLogado={orgaoLogado} />}
-      {isAdmin && <ModalEditarContrato isOpen={isModalEditOpen} onClose={() => setIsModalEditOpen(false)} contratoOriginal={contratoParaEditar} />}
+      {isAdmin && isModalOpen && <ModalNovoContrato onClose={() => setIsModalOpen(false)} orgaoLogado={orgaoLogado} />}
+      {isAdmin && isModalEditOpen && contratoParaEditar && <ModalEditarContrato onClose={() => setIsModalEditOpen(false)} contratoOriginal={contratoParaEditar} />}
       
       {isAdmin && <ModalGerenciarUsuarios isOpen={isModalUsuariosOpen} onClose={() => setIsModalUsuariosOpen(false)} />}
       
