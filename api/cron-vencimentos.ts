@@ -1,9 +1,23 @@
 // api/cron-vencimentos.ts
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import nodemailer from 'nodemailer';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { inicializarFirebaseAdmin } from './_shared/firebaseAdmin.js';
 
-export default async function handler(req: any, res: any) {
+// Só os campos que este cron efetivamente lê — definido localmente em vez
+// de importar `Contrato` de `src/types/types.ts` para não acoplar o
+// compile target de `api/` (moduleResolution mais estrito, ver
+// CLAUDE.md) ao do cliente.
+interface ContratoParaAlerta {
+  dataFim?: string;
+  dataDistrato?: string;
+  emailSecretaria?: string;
+  numeroContrato?: string;
+  fornecedor?: string;
+  objetoResumido?: string;
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 1. USO DA VARIÁVEL REQ (Resolve o Erro do TypeScript e aumenta a segurança)
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ success: false, message: 'Método não permitido.' });
@@ -21,19 +35,12 @@ export default async function handler(req: any, res: any) {
     // 2. Inicializa o firebase-admin (mesmo padrão dos outros handlers de /api).
     // O SDK admin lê com a service account, sem passar pelas Firestore Rules —
     // necessário aqui porque o cron precisa varrer contratos de todos os órgãos.
-    if (getApps().length === 0) {
-      const envVar = process.env.FIREBASE_ADMIN_CREDENTIALS;
-      if (!envVar) {
-        throw new Error('Falta a variável FIREBASE_ADMIN_CREDENTIALS na Vercel.');
-      }
-      const serviceAccount = JSON.parse(envVar);
-      initializeApp({ credential: cert(serviceAccount) });
-    }
+    inicializarFirebaseAdmin();
     const db = getFirestore();
 
     // 3. Busca todos os contratos
     const snapshot = await db.collection('contratos').get();
-    const contratos = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
+    const contratos = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as ContratoParaAlerta) }));
 
     // 4. Configura a sua conta do Gmail para enviar os alertas
     const transporter = nodemailer.createTransport({
@@ -47,6 +54,7 @@ export default async function handler(req: any, res: any) {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0); // Zera a hora para fazer conta de dias exatos
     let emailsEnviados = 0;
+    let emailsComFalha = 0;
 
     // 5. Analisa contrato a contrato
     for (const c of contratos) {
@@ -92,19 +100,30 @@ export default async function handler(req: any, res: any) {
         const emailExtra = process.env.EMAIL_CC || '';
         const listaCopias = [emailPrincipal, emailExtra].filter(e => e !== '').join(', ');
 
-        await transporter.sendMail({
-          from: '"Gestão de Contratos PMP" <notifica.licitacao.pesqueira@gmail.com>',
-          to: c.emailSecretaria,
-          cc: listaCopias, 
-          subject: `[ALERTA PMP] O Contrato ${c.numeroContrato} ${textoUrgencia}!`,
-          html: htmlEmail
-        });
-
-        emailsEnviados++;
+        // try/catch por contrato: um único emailSecretaria inválido não pode
+        // abortar o laço e cancelar o alerta dos demais contratos do dia —
+        // como o disparo é por igualdade exata de dias (90/30/0), a janela
+        // perdida não volta (achado A7 da auditoria, Fase 5).
+        try {
+          await transporter.sendMail({
+            from: '"Gestão de Contratos PMP" <notifica.licitacao.pesqueira@gmail.com>',
+            to: c.emailSecretaria,
+            cc: listaCopias,
+            subject: `[ALERTA PMP] O Contrato ${c.numeroContrato} ${textoUrgencia}!`,
+            html: htmlEmail
+          });
+          emailsEnviados++;
+        } catch (erroEnvio) {
+          console.error(`Erro ao enviar alerta do contrato ${c.numeroContrato} (${c.emailSecretaria}):`, erroEnvio);
+          emailsComFalha++;
+        }
       }
     }
 
-    res.status(200).json({ success: true, message: `Rotina concluída. ${emailsEnviados} alertas enviados.` });
+    res.status(200).json({
+      success: true,
+      message: `Rotina concluída. ${emailsEnviados} alertas enviados${emailsComFalha > 0 ? `, ${emailsComFalha} falharam` : ''}.`
+    });
   } catch (error) {
     console.error("Erro no Cron Job:", error);
     res.status(500).json({ success: false, message: 'Erro interno ao processar a rotina de vencimentos.' });

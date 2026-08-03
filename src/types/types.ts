@@ -85,3 +85,14 @@ export interface FormContratoState {
   fiscalContrato: string;
   observacao: string;
 }
+
+// Shape comum das respostas JSON de /api/create-user, /api/list-users e
+// /api/definir-perfil — usado para tipar `await response.json()` no
+// cliente (Fase 7: sem isso, cada `data.success`/`data.message` propagava
+// `any` para o resto da função).
+export interface RespostaApi {
+  success: boolean;
+  message?: string;
+  isNewUser?: boolean;
+  emails?: string[];
+}

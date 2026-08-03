@@ -473,47 +473,448 @@ login carregou sem erro de console.
 **Pendências:** nenhuma — a fase não tinha dependência de ação manual fora
 do repositório.
 
-## Fase 5 — Correção de bugs
+## Fase 5 — Correção de bugs (concluída em 02/08/2026)
 
-- [ ] Datas UTC vs. hora local (divergência de um dia)
-- [ ] `updateDoc` sem transação em `valorTotal`/`aditivos`
-- [ ] `ModalEditarContrato` regrava `id` e `aditivos` por engano
-- [ ] Modalidades divergentes entre cadastro e edição
-- [ ] Falha de e-mail no cron cancela todos os alertas do dia (janela de
-  vencimento perdida para sempre)
-- [ ] `onSnapshot` sem callback de erro em `useDetalhesContrato.ts`
-- [ ] Contrato inexistente = "A carregar..." eterno
-- [ ] Fiscal com lista vazia permanente (race condition no useEffect)
-- [ ] Toast preso sem `{ id: toastId }` no catch de `salvarAditivo`
-- [ ] Contrato distratado ainda editável pelo botão do painel
+- [x] **Datas UTC vs. hora local.** `src/domain/vencimento.ts` ganhou
+  `parseDataLocal` (interpreta `"YYYY-MM-DD"` como meia-noite local, mesma
+  leitura manual que `api/cron-vencimentos.ts` já fazia — o cliente foi
+  alinhado ao cron, não o contrário). `diasAteVencimento` passou a usá-la
+  internamente; `Painel.tsx` (`filtrarContratosPorPeriodo`) e
+  `DetalhesContrato.tsx` (`getStatus`, agora reaproveitando
+  `diasAteVencimento` em vez de reimplementar o cálculo) foram migrados
+  para a mesma função. `api/cron-vencimentos.ts` não foi tocado — seu
+  parsing manual já era o comportamento correto. `vencimento.test.ts`
+  ajustado: o parâmetro `hoje` dos testes passou a usar
+  `new Date(ano, mes-1, dia)` (data local) em vez de
+  `new Date('YYYY-MM-DD')` (UTC) — do jeito antigo o teste só passava por
+  coincidência de que ambos os lados sofriam o mesmo desvio de fuso;
+  confirmado que quebraria em fuso não-UTC antes desse ajuste (máquina de
+  desenvolvimento roda em America/Fortaleza, UTC-3).
+- [x] **`updateDoc` sem transação em `valorTotal`/`aditivos`.**
+  `useDetalhesContrato.ts`: `excluirAditivo`, `salvarAditivo` e a parte de
+  `salvarEdicaoItem` que ajusta o `valorTotal` do contrato agora usam
+  `runTransaction`, lendo o contrato do servidor no momento do commit em
+  vez do estado React (que pode estar desatualizado). Achado do
+  `revisor-pmp` nesta fase: a checagem da regra dos 25% (`excedeLimite25`)
+  ainda usava o valor em memória só para decidir se mostrava o
+  `window.confirm` — que não pode rodar dentro da transação, pois o
+  Firestore pode reexecutar o corpo em caso de conflito. Corrigido
+  repetindo a checagem *dentro* da transação contra o valor real: se o
+  usuário não tinha sido avisado (achava que era um acréscimo normal) mas
+  o valor base mudou nesse intervalo — outro fiscal registou aditivo — e
+  agora ultrapassa 25%, a transação aborta com um erro específico
+  (`CONCORRENCIA_25`) e pede para reabrir o aditivo, em vez de gravar
+  silenciosamente sem aviso. Se o aviso já tinha sido confirmado, prossegue
+  sem perguntar de novo.
+- [x] **`ModalEditarContrato` regrava `id` e `aditivos` por engano.**
+  `formEdit` continua inicializado com `{ ...contratoOriginal }` (mais
+  simples que reconstruir campo a campo), mas agora `id` e `aditivos` são
+  removidos do payload (`delete`) antes do `updateDoc` — evita o campo
+  `id` redundante no documento e, principalmente, a sobrescrita de
+  `aditivos` com o snapshot que estava em memória quando o modal abriu.
+- [x] **Modalidades divergentes entre cadastro e edição.** Lista única em
+  `src/utils/modalidades.ts` (`MODALIDADES_LICITACAO`), usada nos dois
+  `<select>`. É a união das duas listas antigas, **exceto** a opção
+  `"Pregão"` (sem qualificador), que só existia no modal de edição —
+  decisão consciente (achado do `revisor-pmp`): como o sistema ainda não
+  tem uso real (só contas de teste), o risco de um contrato salvo com
+  `modalidade === "Pregão"` ficar sem opção correspondente é aceitável;
+  não valia duplicar uma opção ambígua na lista unificada.
+- [x] **Falha de e-mail no cron cancela todos os alertas do dia.**
+  `api/cron-vencimentos.ts`: o `sendMail` dentro do laço agora tem
+  try/catch por contrato — um `emailSecretaria` inválido não aborta mais
+  os alertas dos contratos seguintes na mesma execução. Resposta do
+  endpoint passou a informar `emailsComFalha` na mensagem quando houver.
+- [x] **`onSnapshot` sem callback de erro em `useDetalhesContrato.ts`.**
+  Os dois listeners (contrato e itens do catálogo) ganharam callback de
+  erro, seguindo o padrão já usado em `useContratos.ts`.
+- [x] **Contrato inexistente = "A carregar..." eterno.** Novo estado
+  `erro` no hook: setado quando `docSnap.exists()` é falso ou quando
+  qualquer um dos `onSnapshot` falha; limpo quando o contrato carrega com
+  sucesso. `DetalhesContrato.tsx` mostra a mensagem de erro com botão
+  "Voltar ao Painel" em vez de manter o "A carregar..." para sempre.
+- [x] **Fiscal com lista vazia permanente (race condition no useEffect).**
+  Investigado e confirmado **já resolvido como efeito colateral da
+  reescrita do `AuthContext` na Fase 3** — nenhuma mudança de código
+  necessária nesta fase. O bug original (auditoria M-race, pré-Fase-3) era
+  o `useEffect` de `useContratos.ts` depender só de `orgaoLogado`
+  (`sessionStorage`) e desistir silenciosamente se `auth.currentUser`
+  ainda fosse `null`, sem nunca reexecutar. Hoje o efeito depende de
+  `[carregando, user, perfil, orgaoId, isAdmin]`, todos vindos de
+  `useAuth()`, e reexecuta corretamente assim que o auth state resolve.
+- [x] **Toast preso sem `{ id: toastId }` no catch de `salvarAditivo`.**
+  Corrigido — o catch agora sempre referencia o `toastId` do escopo
+  externo (precisou virar `let` no topo da função, já que o
+  `toast.loading` só roda depois das validações síncronas).
+- [x] **Contrato distratado ainda editável pelo botão do painel.**
+  `Painel.tsx`: o botão ✏️ de editar contrato agora só aparece quando
+  `!c.dataDistrato`, consistente com o resto da tela de detalhes.
 
-## Fase 6 — Desempenho
+**Build/lint/testes ao final da fase** (baseline da Fase 4: build 0 erros,
+lint 47 erros, 21 testes): build **0 erros** (idêntico). Lint **46 erros**
+(queda de 1) — o catch de `salvarAditivo` passou a referenciar `error`
+(para distinguir o abort por `CONCORRENCIA_25` do erro genérico), o que
+eliminou um dos `catch (error)` não usados já mapeados como padrão na
+Fase 1; confirmado por diff completo (`eslint --format json`, agrupado por
+arquivo+regra) contra a baseline da Fase 4 — nenhuma categoria nova de
+erro sobrando, só essa queda de 1. Vitest **21/21 passando** (mesmos
+testes da Fase 4, `vencimento.test.ts` ajustado para a nova leitura local
+de data sem mudar a cobertura).
 
-- [ ] `import()` dinâmico para `xlsx`, `pdfjs-dist`, `mammoth`, `jspdf`
-  (prioridade: `geminiService`, hoje 1,78 MB no bundle — ver Fase 1)
-- [ ] `pdf.worker` local em vez da CDN unpkg
-- [ ] Filtro por órgão do admin no servidor (hoje o navegador recebe todos
-  os contratos de todos os órgãos)
-- [ ] `limit()` + paginação nas queries do Firestore
-- [ ] `useMemo` na ordenação/filtragem de `useContratos.ts`
-- [ ] Limpar IndexedDB (cache persistente do Firestore) no logout
+**Revisão:** `revisor-pmp` rodado no diff completo desta fase. Dois
+achados, ambos endereçados nesta mesma sessão (não ficaram pendentes): a
+janela de checagem dos 25% dessincronizada da transação (corrigido, ver
+item acima) e a lista de modalidades unificada descartando a opção
+`"Pregão"` sem qualificador (decisão consciente, documentada acima, não
+corrigida por ser de baixo risco com o sistema ainda sem uso real).
 
-## Fase 7 — Refatoração
+**Teste visual**: `npm run dev` (porta 5174, a 5173 já estava em uso) +
+Playwright Chromium headless (reaproveitado de `node_modules`, mesma
+convenção `--no-save` das fases anteriores). Tela de login carregou sem
+erro de console. Não foi possível testar login real nem os fluxos de
+aditivo/transação fim-a-fim nesta sessão — mesma limitação já registrada na
+Fase 3 (sem `FIREBASE_ADMIN_CREDENTIALS`/senha de conta de teste no
+ambiente local desta sessão).
 
-- [ ] Quebrar `ModalNovoContrato` (494 linhas), `Painel` (327),
-  `DetalhesContrato` (454)
-- [ ] Corrigir os 4 `react-hooks/set-state-in-effect` (ver achado da Fase 1)
-- [ ] Eliminar duplicações: extração de PDF, init do firebase-admin,
-  funções do Gemini, `nomesOrgaos`, importação XLSX
-- [ ] Instalar `@vercel/node`, tipar os handlers de `/api`
-- [ ] Reduzir os `any` (baseline: 36 após Fase 1) — meta: menos de 5
-- [ ] ESLint type-aware (`recommendedTypeChecked` + `parserOptions.project`)
-- [ ] `/simplify` no final
+**Pendências:** nenhuma bloqueante. Nota para fases futuras: a opção de
+modalidade `"Pregão"` (sem qualificador) não existe mais em nenhum dos dois
+`<select>` — se algum contrato de teste antigo tiver esse valor exato
+salvo, o campo aparecerá em branco ao editar (ver decisão acima).
 
-## Fase 8 — Fechamento
+## Fase 6 — Desempenho (concluída em 02/08/2026)
 
-- [ ] README real substituindo o template do Vite
-- [ ] CI no GitHub Actions (`tsc` + lint + vitest)
-- [ ] `/security-review` final
-- [ ] Backlog: tela de consulta do log de auditoria; cobertura do log
-  para criação/edição de contrato (hoje só 5 ações são registradas)
+- [x] **`import()` dinâmico para `xlsx`, `pdfjs-dist`, `mammoth`,
+  `jspdf`/`jspdf-autotable`.** Dois helpers novos: `src/utils/pdfjs.ts`
+  (`carregarPdfjs`) e `src/utils/pdfGerador.ts` (`carregarJsPDF`, carrega
+  `jspdf`+`jspdf-autotable` juntos via `Promise.all`); `xlsx` e `mammoth`
+  importados diretamente no ponto de uso, sem helper (só uma função por
+  arquivo usa cada um). Tocou 6 arquivos: `useDetalhesContrato.ts`,
+  `ModalNovoContrato.tsx` (extração de PDF/DOCX/XLSX), `Painel.tsx`,
+  `DetalhesContrato.tsx` (relatórios PDF/Excel) e `ModalEmitirOS.tsx`
+  (O.S. em PDF) — as funções que chamavam essas libs viraram `async`.
+  Resultado do build: o bundle carregado de imediato (`index-*.js`, único
+  `<script>` referenciado no `index.html`) caiu de ~897 KB + o chunk de
+  1,78 MB (rotulado `geminiService` por um artefato de nomeação — era
+  jsPDF+html2canvas, o SDK do Gemini já tinha saído do cliente na Fase 2,
+  ver CLAUDE.md problema conhecido nº 6) para **~899 KB isolados**; xlsx
+  (425 KB), pdf.js (410 KB), jsPDF (400 KB), mammoth (497 KB, chunk `lib`)
+  e o plugin autoTable (30 KB) agora só carregam sob demanda, quando o
+  usuário efetivamente sobe um arquivo ou pede um relatório.
+- [x] **`pdf.worker` local em vez da CDN unpkg.** Resolvido junto do item
+  acima: `carregarPdfjs()` aponta `GlobalWorkerOptions.workerSrc` para
+  `new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).href` —
+  Vite empacota o worker como asset próprio (`pdf.worker-*.mjs`, ~2,1 MB,
+  também sob demanda). Confirmado por grep: zero referências a
+  `unpkg.com` restando no código-fonte (era o achado A3 da auditoria —
+  dependia de CDN externa em runtime, sem SRI).
+- [x] **Filtro por órgão do admin no servidor.** Investigado antes de
+  mexer: **já resolvido desde a Fase 3** (`useContratos.ts` já fazia
+  `where('orgaoId','==', orgaoId)` server-side) — nenhuma mudança de
+  código necessária nesta fase, mesmo padrão do achado do "fiscal com
+  lista vazia" na Fase 5.
+- [x] **`limit()` + paginação nas queries do Firestore.**
+  `useContratos.ts`: a query principal ganhou
+  `orderBy('numeroContrato', 'desc') + limit(tamanhoPagina)`
+  (`tamanhoPagina` começa em 200, cresce em passos de 200 via
+  `carregarMaisContratos`, novo botão "Carregar mais contratos" em
+  `Painel.tsx` condicionado a `temMais`). Não é paginação por cursor
+  (`startAfter`) — a cada "carregar mais" a query inteira é reexecutada
+  com um `limit` maior; decisão deliberada porque cursor real não
+  combina bem com `onSnapshot` em tempo real (documentos podem ser
+  inseridos/removidos entre páginas) e o app não tinha esse problema
+  antes. **Achado do `revisor-pmp`, corrigido nesta mesma sessão**:
+  `where()` em um campo + `orderBy()` em campo diferente normalmente
+  exige um índice composto do Firestore que não é coberto pelos índices
+  automáticos de campo único — sem ele, a query falha em runtime com
+  "the query requires an index", erro que não aparece no `tsc -b`/`vite
+  build` local (mesma classe de problema do incidente da Fase 3 com os
+  imports de `api/`, mas do lado do Firestore). Corrigido criando
+  `firestore.indexes.json` (dois índices: `orgaoId`+`numeroContrato` para
+  admin, `emailSecretaria`+`numeroContrato` para viewer) e referenciando
+  em `firebase.json`. **Não determinado**: os índices não foram
+  publicados nesta sessão — não há Firebase CLI configurado neste
+  ambiente (mesma limitação já registrada na Fase 2 para
+  `firestore.rules`). Publicar com `firebase deploy --only
+  firestore:indexes` (ou criar manualmente pelo link que o próprio erro
+  do Firestore mostra no console do navegador na primeira vez que a query
+  rodar) é pendência manual antes desta parte da fase valer em produção
+  — ver lista de pendências abaixo.
+- [x] **`useMemo` na ordenação/filtragem de `useContratos.ts`.**
+  `contratosOrdenados` e `contratosFiltrados` só recalculam quando
+  `contratos`/`ordenacao` ou `termoBusca` mudam, respectivamente — antes
+  rodavam a cada renderização (inclusive a cada tecla digitada na busca).
+- [x] **Limpar IndexedDB (cache persistente do Firestore) no logout.**
+  `Painel.tsx`: `lidarComSaida` faz `terminate(db)` seguido de
+  `clearIndexedDbPersistence(db)` após o `signOut()`, com reload completo
+  (`window.location.href`, não `navigate()`) porque `db` fica inutilizável
+  na aba depois do `terminate`. **Achado do `revisor-pmp`, corrigido
+  nesta mesma sessão**: `firebase.ts` usa `persistentMultipleTabManager`,
+  que compartilha o IndexedDB entre abas da mesma origem —
+  `clearIndexedDbPersistence` rejeita (comportamento documentado da
+  própria API de IndexedDB, não bug deste código) se houver outra aba do
+  sistema aberta, exatamente o cenário de "computador compartilhado" que
+  essa limpeza deveria cobrir (achado A9 da auditoria). O catch agora
+  mostra um toast avisando o usuário em vez de falhar em silêncio
+  ("Sessão encerrada, mas não foi possível limpar todos os dados locais
+  ... feche todas as abas"). `signOut()` também ganhou tratamento de erro
+  próprio (não tinha antes desta fase). **Não testado com múltiplas abas
+  reais nesta sessão** — o comportamento acima é inferido da documentação
+  do IndexedDB/Firestore, não confirmado empiricamente; candidato a
+  verificação manual (abrir duas abas, fazer logout numa, checar se a
+  outra ainda lê dados do cache).
+
+**Build/lint/testes ao final da fase** (baseline da Fase 5: build 0 erros,
+lint 46 erros, 21 testes): build **0 erros** (idêntico). Bundle inicial
+caiu de ~2,7 MB eager para ~899 KB (detalhe acima). Lint **46 erros**
+(idêntico) — confirmado por diff completo (`eslint --format json`,
+agrupado por arquivo+regra) contra a baseline da Fase 5: **zero
+diferenças**, nenhuma categoria nova, nenhuma removida. Vitest **21/21
+passando** (sem testes novos — nenhuma lógica de domínio financeira nova
+nesta fase, escopo do Vitest continua restrito a isso por decisão já
+tomada).
+
+**Revisão:** `revisor-pmp` rodado no diff completo desta fase. Três
+achados: o índice composto do Firestore ausente para a nova query paginada
+(corrigido — `firestore.indexes.json` criado, publicação pendente, ver
+acima), a limpeza de IndexedDB falhando em silêncio com múltiplas abas
+(corrigido — aviso ao usuário via toast, ver acima) e `auth.signOut()` sem
+tratamento de erro (corrigido, tratamento de erro adicionado). Os três
+ficaram resolvidos nesta mesma sessão, exceto a publicação do índice em
+si, que depende do Firebase CLI/Console (pendência manual, listada
+abaixo).
+
+**Teste visual**: `npm run dev` (porta 5174) + Playwright Chromium
+headless. Tela de login carregou sem erro de console. Não foi possível
+testar os fluxos de upload de PDF/DOCX/XLSX, geração de relatórios, nem o
+logout com múltiplas abas nesta sessão — mesma limitação de ambiente já
+registrada nas fases anteriores (sem conta de teste configurada
+localmente).
+
+**Pendências manuais:**
+1. Publicar os índices compostos de `firestore.indexes.json` no projeto
+   Firebase (`firebase deploy --only firestore:indexes`, ou criar
+   manualmente pelo link que aparece no erro "the query requires an
+   index" na primeira vez que a query de `useContratos.ts` rodar contra o
+   Firestore real). Sem isso, `/painel` vai quebrar com erro de
+   permissão/índice ao carregar a lista de contratos — testar antes do
+   próximo deploy.
+2. Confirmar manualmente o comportamento da limpeza de IndexedDB no
+   logout com duas abas do sistema abertas simultaneamente (ver achado do
+   `revisor-pmp` acima) — não bloqueia o uso do sistema de nenhuma forma
+   (o toast de aviso já cobre o caso de falha), mas vale confirmar que o
+   aviso aparece quando esperado.
+
+## Fase 7 — Refatoração (concluída em 03/08/2026)
+
+- [x] **Eliminar duplicações.** Seis extrações, cada uma com comentário no
+  código apontando os pontos de uso originais: `src/utils/extrairTexto.ts`
+  (leitura de PDF/DOCX, antes duplicada entre `useDetalhesContrato.ts` e
+  `ModalNovoContrato.tsx`), `api/_shared/firebaseAdmin.ts`
+  (`inicializarFirebaseAdmin`, consolidando o bloco de init repetido nos 5
+  arquivos de `api/`), `src/utils/xlsxGerador.ts` (`gerarPlanilhaXlsx`,
+  antes duplicada entre os dois relatórios Excel), `src/utils/orgaos.ts`
+  (`NOMES_ORGAOS`, antes duplicado — e ligeiramente divergente, uma cópia
+  tinha a sigla entre parênteses e a outra não — entre `Painel.tsx` e
+  `DetalhesContrato.tsx`), e os fragmentos repetidos dos dois prompts do
+  Gemini em `api/extrair-documento.ts` (`REGRA_ANTI_INJECAO`,
+  `SCHEMA_ITENS`, `envolverDocumento`). "Importação XLSX" do checklist
+  original já tinha virado `import()` dinâmico na Fase 6; o que restava
+  duplicado era a lógica de geração em si, coberta pelo `xlsxGerador.ts`.
+- [x] **Instalar `@vercel/node`, tipar os handlers de `/api`.** Os 6
+  arquivos (`create-user`, `list-users`, `definir-perfil`,
+  `cron-vencimentos`, `extrair-documento`, `_shared/verificarAdmin`)
+  trocaram `(req: any, res: any)` por `(req: VercelRequest, res:
+  VercelResponse)`. `req.body` continua sendo `any` no tipo da lib
+  (decisão do próprio `@vercel/node`), então cada handler faz
+  `req.body as { campo?: tipo }` no destructuring — só afeta o
+  TypeScript, a validação em runtime (`if (!email) return
+  res.status(400)...`, `PERFIS_VALIDOS.includes(...)`) continua
+  acontecendo depois, e em `definir-perfil.ts` ficou até mais estrita
+  (`!perfil`/`!orgaoId` explícitos antes do `.includes()`, evitando passar
+  `undefined` pra ele). `JSON.parse(envVar)` (service account) passou a
+  ser `as ServiceAccount` em vez de implícito `any`.
+- [x] **Reduzir os `any`.** Baseline real desta sessão: 33 (não os 36 do
+  CLAUDE.md, que já tinha caído um pouco nas fases anteriores). Resultado:
+  **zero** `any` explícito em todo o repositório (`src/`, `api/`,
+  `scripts/`) — muito além da meta de "menos de 5". A tipagem dos
+  handlers de `/api` (item acima) já eliminou 14 de uma vez; o resto foi
+  corrigido na origem: `geminiService.ts` ganhou um genérico
+  `chamarExtracaoIA<T>` (elimina a propagação de `any` para
+  `useDetalhesContrato.ts` e `ModalNovoContrato.tsx` de uma vez, em vez de
+  um cast em cada consumidor), `src/vite-env.d.ts` tipou
+  `import.meta.env.VITE_*`, `src/types/types.ts` ganhou `RespostaApi`
+  para tipar `await response.json()` nos três fetches para `/api` do
+  cliente, e casts pontuais (`as ServiceAccount`, `as Record<string,
+  unknown>`) substituíram os `any` que restavam em `JSON.parse`.
+- [x] **Corrigir os 4 `react-hooks/set-state-in-effect`**
+  (`ModalEditarItemCatalogo`, `ModalEmitirOS`, `ModalEditarContrato`,
+  `ModalNovoContrato`) — todos tinham o mesmo padrão: um `useEffect`
+  sincronizando prop→state toda vez que o modal abria. Corrigido pela
+  raiz, não com gambiarra: o componente pai passou a só montar o modal
+  quando `isOpen` é `true` (`{isOpen && <Modal ... />}`) em vez de manter
+  o componente sempre montado com um `if (!isOpen) return null` interno;
+  o estado inicial passou a vir de um lazy initializer do `useState`
+  (`useState(() => ({...itemOriginal}))`), que roda uma vez por
+  montagem — e como o componente só monta quando deve abrir, isso já
+  cobre o caso de sincronizar com a prop, sem efeito nenhum. Efeito
+  colateral positivo: `ModalNovoContrato.tsx` agora sempre abre com
+  formulário limpo (antes, cancelar sem salvar e reabrir mantinha os
+  campos preenchidos, já que o componente nunca desmontava).
+- [x] **Quebrar `ModalNovoContrato` (494→434 linhas), `Painel`
+  (360→288), `DetalhesContrato` (457→379).** Seis componentes novos,
+  todos puramente apresentacionais (recebem dados prontos e callbacks,
+  sem estado que precisasse ser movido com cuidado especial):
+  `TabelaContratos.tsx` e `CatalogoItensPreviaForm.tsx` (Painel/ModalNovoContrato),
+  `CatalogoItensContrato.tsx` e `HistoricoAditivos.tsx`
+  (DetalhesContrato), `ModalBuscarEmail.tsx` e `ModalCadastrarEmail.tsx`
+  (os dois sub-modais de e-mail do ModalNovoContrato). Não é uma reescrita
+  completa da arquitetura desses 3 arquivos — é uma primeira extração
+  segura e verificável; ainda sobra espaço para quebrar mais
+  (`ModalNovoContrato.tsx` continua o maior dos três).
+- [x] **ESLint type-aware** (`tseslint.configs.recommendedTypeChecked` +
+  `parserOptions.projectService`). Ligar a regra gerou **165 erros novos**
+  de uma vez — não foi corrigido erro a erro sem critério; a causa de
+  cada categoria foi resolvida na origem:
+  - `no-misused-promises` (~25 ocorrências): configurado com
+    `checksVoidReturn: { attributes: false }` — a opção oficial do
+    próprio typescript-eslint para o padrão `onClick={async () =>
+    ...}`, predominante neste projeto (toast.loading → await →
+    toast.success/error) e que o React já tolera de propósito.
+  - `no-unsafe-*` (~110 ocorrências): quase todas vinham de duas fontes —
+    `geminiService.ts` sem tipo de retorno e `import.meta.env` sem
+    augmentation — corrigidas na origem (ver item "Reduzir os any"
+    acima), o que fez a maioria cair em cascata.
+  - `lastAutoTable` do jspdf-autotable (propriedade injetada em runtime,
+    ausente dos tipos oficiais do jsPDF): em vez de castear em cada
+    ponto de uso, virou module augmentation
+    (`src/types/jspdf-autotable.d.ts`), então nenhum cast é mais
+    necessário nos dois call sites.
+  - Resto (`no-floating-promises`, `no-unnecessary-type-assertion`,
+    `no-base-to-string`, `require-await`): corrigidos um a um,
+    pontuais.
+- [x] **`/simplify` no final.** 4 agentes em paralelo (reuse,
+  simplification, efficiency, altitude) sobre o diff completo da fase.
+  Achados aplicados: helper `quebrarTexto()` em `src/utils/pdfGerador.ts`
+  substituindo o cast de `splitTextToSize` duplicado 5 vezes entre
+  `DetalhesContrato.tsx` e `ModalEmitirOS.tsx`; `src/utils/statusContrato.ts`
+  unificado numa função só `infoVencimento()` (antes
+  `corLinhaPorVencimento`/`tituloPorVencimento` recalculavam
+  `statusVencimento` cada uma por conta própria — `TabelaContratos.tsx`
+  chamava as duas por linha renderizada). Achado de "efficiency" sobre
+  esse mesmo ponto anotado como não-regressão (padrão já existia em
+  `Painel.tsx` antes desta fase) e resolvido do mesmo jeito.
+
+**Build/lint/testes ao final da fase** (baseline da Fase 6: build 0 erros,
+lint 46 erros, 21 testes): build **0 erros** (idêntico). Lint **0 erros** —
+não é "sem regressão", é uma redução real de 46 para 0 (os 46 da Fase 6
+incluíam os ~30 `any`/handlers de `/api` não tipados que este fase
+eliminou, mais o ganho líquido de ligar `recommendedTypeChecked` e ainda
+assim fechar em zero). Vitest **21/21 passando** (mesmos testes, nenhuma
+lógica de domínio nova nesta fase). `any` explícito: **zero** em todo o
+repositório (baseline desta sessão: 33).
+
+**Revisão:** duas rodadas. `/simplify` (4 agentes em paralelo) encontrou
+duplicação de casts jsPDF e cálculo de status duplicado, ambos corrigidos
+(ver acima). `revisor-pmp` no diff completo da fase: **nenhum achado** —
+conferiu especificamente que a tipagem de `req.body` não enfraqueceu
+nenhuma validação em runtime, que os 4 modais refatorados preservaram
+fechar por clique no overlay e (onde já existia) por ESC, que `RespostaApi`
+bate com o que cada endpoint devolve de verdade, e que nada das Fases 5/6
+(transações do Firestore, `parseDataLocal`, paginação, limpeza de
+IndexedDB) foi tocado por engano durante a extração de componentes.
+
+**Teste visual**: `npm run dev` + Playwright Chromium headless (Playwright
+precisou ser reinstalado com `--no-save` nesta sessão — tinha sumido do
+`node_modules` depois do `npm install @vercel/node`; confirmado que não
+vazou para `package-lock.json`). Tela de login carregou sem erro de
+console.
+
+**Achado não-crítico registrado, não corrigido nesta fase:** a extração de
+`extrairTexto.ts` unificou o comportamento para arquivos que não são
+`.pdf`/`.docx` — antes `ModalNovoContrato.tsx` produzia string vazia
+nesse caso, `useDetalhesContrato.ts` já fazia fallback para `file.text()`;
+agora os dois fazem `file.text()`. Mudança de comportamento pequena e
+provavelmente benéfica (efeito colateral da consolidação, não um bug
+introduzido de propósito), sinalizada pelo `revisor-pmp` como nuance, não
+como achado formal.
+
+**Pendências:** nenhuma bloqueante. `ModalNovoContrato.tsx` (434 linhas)
+continua o maior arquivo do projeto — candidato a uma segunda rodada de
+extração numa fase futura, se o incômodo justificar (não estava no
+critério de conclusão desta fase, que era "quebrar", não atingir um
+número de linhas específico).
+
+## Fase 8 — Fechamento (concluída em 03/08/2026)
+
+- [x] **README real** substituindo o template do Vite. Cobre stack,
+  variáveis de ambiente (tabela resumida + link para `.env.example`),
+  scripts, estrutura de pastas, deploy e testes; aponta para `CLAUDE.md`
+  (arquitetura/convenções) e `docs/PLANO.md` (histórico) em vez de
+  duplicar o conteúdo dos dois.
+- [x] **CI no GitHub Actions** (`.github/workflows/ci.yml`): `npm ci` →
+  `npm run build` (`tsc -b && vite build`) → `npm run lint` → `npm run
+  test`, em push/PR para `main`. Node 22 (LTS), sem step de deploy — a
+  Vercel já cuida disso separadamente a partir de `main`. Não verificável
+  a partir deste repositório se vai passar na primeira execução real no
+  GitHub (não determinado — depende do ambiente do runner, não testável
+  localmente); os 4 comandos rodam limpos localmente com o mesmo
+  `package-lock.json` que o `npm ci` vai usar.
+- [x] **`/security-review` final** no diff completo das Fases 5-8
+  (`main...HEAD`). Processo de 3 etapas (identificação → filtro de
+  falsos-positivos em paralelo → corte por confiança ≥8) collapsou na
+  primeira etapa: **nenhuma vulnerabilidade encontrada**, então não houve
+  achados para filtrar. Pontos checados especificamente e descartados:
+  os casts `req.body as {...}` nos handlers de `/api` não enfraqueceram
+  nenhuma validação de runtime (`definir-perfil.ts` até ficou mais
+  estrito); `verificarAdmin.ts` manteve a lógica de verificação de token
+  e claim idêntica, só mudou a assinatura de tipos; os delimitadores
+  `===DOCUMENTO===` contra prompt injection em `extrair-documento.ts`
+  saíram intactos da extração dos fragmentos compartilhados do prompt;
+  as transações do Firestore e a paginação (Fases 5 e 6) continuam
+  sujeitas às mesmas Firestore Rules, sem bypass de autorização
+  introduzido; nenhum `dangerouslySetInnerHTML`/`eval`/`innerHTML` em
+  todo o diff.
+- [x] **Backlog registrado** (não implementado nesta fase — o item do
+  checklist original já pedia só o registro, não a construção): o log de
+  auditoria (`src/services/auditService.ts`, coleção `auditoria_logs`)
+  hoje registra só 5 ações — `EXCLUSÃO CONTRATO`, `EXCLUSÃO ADITIVO`,
+  `ADITIVO` (criação/edição), `DISTRATO`, `EDIÇÃO CATÁLOGO` (todas em
+  `useDetalhesContrato.ts`). Faltam: criação de contrato
+  (`ModalNovoContrato.tsx`), edição de contrato
+  (`ModalEditarContrato.tsx`), criação de usuário (`ModalNovoContrato.tsx`
+  fluxo inline, `ModalGerenciarUsuarios.tsx`) e login — nenhum desses
+  fluxos chama `registrarLog`. Não há tela nenhuma que leia
+  `auditoria_logs`; a coleção só recebe escritas. Duas tarefas de backlog
+  distintas para uma fase futura: (1) adicionar `registrarLog` aos 4
+  fluxos que faltam; (2) construir uma tela (provavelmente só para admin)
+  que liste `auditoria_logs` ordenado por `timestamp`. Nenhuma das duas
+  é urgente — o sistema ainda não está em uso real — mas ambas exigem
+  atenção às Firestore Rules já publicadas (`auditoria_logs`: só
+  `create`, ninguém pode `read`/`update`/`delete` hoje; a tela de consulta
+  vai precisar de uma regra de leitura nova, provavelmente restrita a
+  `perfil == 'admin'`).
+
+**Build/lint/testes ao final da fase** (baseline da Fase 7: build 0 erros,
+lint 0 erros, 21 testes): build **0 erros**, lint **0 erros**, Vitest
+**21/21 passando** — idêntico, sem regressão. Nenhuma mudança de código de
+produção nesta fase (só documentação, CI e a revisão de segurança), então
+não havia expectativa de diferença.
+
+**Pendências:** nenhuma bloqueante. Itens que dependem de ações fora
+deste repositório, já registrados nas fases correspondentes e ainda em
+aberto: publicar os índices de `firestore.indexes.json` no console do
+Firebase (Fase 6, bloqueante para `/painel` funcionar em produção depois
+do próximo deploy), apagar a conta-robô `BOT_EMAIL` (Fase 3, item 5), e
+confirmar visualmente a primeira execução do workflow de CI no GitHub
+após o merge em `main` (não verificável a partir daqui).
+
+---
+
+## Fechamento do plano de evolução
+
+As 8 fases planejadas foram concluídas (Fase 0 em 31/07/2026 até Fase 8
+em 03/08/2026). Este arquivo continua sendo o registro histórico de cada
+fase — decisões, achados de revisão, incidentes e pendências — e deve
+continuar sendo atualizado se o trabalho no repositório continuar em
+fases futuras (ex: uma "Fase 9" para os itens de backlog registrados
+acima, ou para as pendências manuais que ainda restam nas Fases 3 e 6).

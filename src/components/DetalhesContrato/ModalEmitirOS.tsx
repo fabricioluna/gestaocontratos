@@ -1,38 +1,35 @@
 // src/components/DetalhesContrato/ModalEmitirOS.tsx
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import toast from 'react-hot-toast';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import logo from '../../assets/logopmp.png';
+import { carregarJsPDF, quebrarTexto } from '../../utils/pdfGerador';
 import type { Contrato, Item } from '../../types/types';
 
 interface ModalEmitirOSProps {
-  isOpen: boolean;
   onClose: () => void;
-  contrato: Contrato | null;
+  contrato: Contrato;
   itensCatalogo: Item[];
 }
 
-export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo }: ModalEmitirOSProps) {
+const formatarLocalData = () => {
+  const formatador = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+  return `Pesqueira-PE, ${formatador.format(new Date())}`;
+};
+
+// O pai (DetalhesContrato.tsx) só monta este componente quando o modal
+// deve estar aberto, então o estado inicial já nasce correto (lazy
+// initializer para `localData`) sem precisar de um useEffect (Fase 7;
+// achado de lint react-hooks/set-state-in-effect da Fase 1).
+export default function ModalEmitirOS({ onClose, contrato, itensCatalogo }: ModalEmitirOSProps) {
   const [quantidadesPedidas, setQuantidadesPedidas] = useState<{ [id: string]: number | '' }>({});
   const [tipoDocumento, setTipoDocumento] = useState<'Ordem de Serviço' | 'Solicitação de Compra'>('Ordem de Serviço');
-  const [localData, setLocalData] = useState('');
+  const [localData, setLocalData] = useState(formatarLocalData);
 
   const [orgao, setOrgao] = useState('');
   const [justificativa, setJustificativa] = useState('');
   const [nomeSolicitante, setNomeSolicitante] = useState('');
   const [documentoSolicitante, setDocumentoSolicitante] = useState('');
   const [cargoSolicitante, setCargoSolicitante] = useState('');
-
-  useEffect(() => {
-    if (isOpen) {
-      const hoje = new Date();
-      const formatador = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
-      setLocalData(`Pesqueira-PE, ${formatador.format(hoje)}`);
-    }
-  }, [isOpen]);
-
-  if (!isOpen || !contrato) return null;
 
   const orgaosQualificacao: Record<string, { nome: string, cnpj: string }> = {
     'prefeitura': { nome: 'Prefeitura Municipal de Pesqueira', cnpj: '10.264.406/0001-35' },
@@ -68,7 +65,7 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
       .replace(/(-\d{2})\d+?$/, '$1');
   };
 
-  const gerarDocumentoPDF = () => {
+  const gerarDocumentoPDF = async () => {
     const itensParaPedir = itensCatalogo.filter(item => Number(quantidadesPedidas[item.id!] || 0) > 0);
 
     if (itensParaPedir.length === 0) {
@@ -81,6 +78,7 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
       return;
     }
 
+    const { jsPDF, autoTable } = await carregarJsPDF();
     // MAGIA DE COMPRESSÃO AQUI: "compress: true"
     const docPdf = new jsPDF({ orientation: 'portrait', compress: true });
 
@@ -111,7 +109,7 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
         docPdf.setFont("helvetica", "bold"); 
         docPdf.text(titulo, 14, currentY);
         docPdf.setFont("helvetica", "normal"); 
-        const linhas = docPdf.splitTextToSize(valor || 'Não informado', 190 - offset);
+        const linhas = quebrarTexto(docPdf, valor || 'Não informado', 190 - offset);
         docPdf.text(linhas, offset, currentY);
         currentY += (linhas.length * 5) + 1;
       };
@@ -163,7 +161,7 @@ export default function ModalEmitirOS({ isOpen, onClose, contrato, itensCatalogo
         }
       });
 
-      const finalY = (docPdf as any).lastAutoTable.finalY || currentY;
+      const finalY = docPdf.lastAutoTable?.finalY || currentY;
       const valorTotalPedido = calcularTotalPedido();
 
       docPdf.setFont("helvetica", "bold");

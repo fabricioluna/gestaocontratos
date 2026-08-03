@@ -1,14 +1,16 @@
 // src/views/DetalhesContrato.tsx
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import logo from '../assets/logopmp.png';
 import './DetalhesContrato.css';
 
 import { formatarDataBr } from '../utils/formatters';
+import { diasAteVencimento } from '../domain/vencimento';
+import { carregarJsPDF, quebrarTexto } from '../utils/pdfGerador';
+import type { RowInput } from 'jspdf-autotable';
+import { gerarPlanilhaXlsx } from '../utils/xlsxGerador';
+import { NOMES_ORGAOS } from '../utils/orgaos';
 import { useDetalhesContrato } from '../hooks/useDetalhesContrato';
 import { useAuth } from '../hooks/useAuth';
 import type { Item } from '../types/types';
@@ -18,6 +20,8 @@ import ModalDistrato from '../components/DetalhesContrato/ModalDistrato';
 import ModalOpcoesRelatorio from '../components/DetalhesContrato/ModalOpcoesRelatorio';
 import ModalEmitirOS from '../components/DetalhesContrato/ModalEmitirOS';
 import ModalEditarItemCatalogo from '../components/DetalhesContrato/ModalEditarItemCatalogo';
+import CatalogoItensContrato from '../components/DetalhesContrato/CatalogoItensContrato';
+import HistoricoAditivos from '../components/DetalhesContrato/HistoricoAditivos';
 
 export default function DetalhesContrato() {
   const { id } = useParams<{ id: string }>();
@@ -27,7 +31,7 @@ export default function DetalhesContrato() {
   const isAdmin = perfil === 'admin';
 
   const {
-    contrato, itensCatalogo, loading, valorGlobalAtualizado, totalAditivosAplicados, valorOriginal,
+    contrato, itensCatalogo, loading, erro, valorGlobalAtualizado, totalAditivosAplicados, valorOriginal,
     aditivoEmEdicao, aditivoDataAditivo, setAditivoDataAditivo, aditivoDescricao, setAditivoDescricao, 
     aditivoTipo, setAditivoTipo, aditivoOperacao, setAditivoOperacao, aditivoValor, setAditivoValor,
     aditivoNovaData, setAditivoNovaData, itensDoAditivo, arquivoPdfAditivo, setArquivoPdfAditivo, 
@@ -47,32 +51,33 @@ export default function DetalhesContrato() {
   const [isModalEditarItemOpen, setIsModalEditarItemOpen] = useState(false);
   const [itemParaEditar, setItemParaEditar] = useState<Item | null>(null);
 
-  const nomesOrgaos: { [key: string]: string } = {
-    'prefeitura': 'Prefeitura Municipal de Pesqueira',
-    'fmas': 'Fundo Municipal de Assistência Social',
-    'fme': 'Fundo Municipal de Educação',
-    'fms': 'Fundo Municipal de Saúde'
-  };
-
+  if (erro) {
+    return (
+      <div className="loading">
+        <p>{erro}</p>
+        <button className="btn-voltar" onClick={() => navigate('/painel')} style={{ marginTop: '15px' }}>Voltar ao Painel</button>
+      </div>
+    );
+  }
   if (!contrato) return <div className="loading">A carregar detalhes do contrato...</div>;
 
   const getStatus = () => {
     if (contrato.dataDistrato) return { texto: 'Distratado', cor: '#dc3545' };
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    const vencimento = new Date(contrato.dataFim || ''); vencimento.setHours(0, 0, 0, 0);
-    if (hoje > vencimento) return { texto: 'Vencido', cor: '#64748b' }; 
+    if (!contrato.dataFim) return { texto: 'Vigente', cor: '#28a745' };
+    if (diasAteVencimento(contrato.dataFim) < 0) return { texto: 'Vencido', cor: '#64748b' };
     return { texto: 'Vigente', cor: '#28a745' };
   };
   
   const status = getStatus();
 
-  const gerarRelatorioPDF = () => {
+  const gerarRelatorioPDF = async () => {
     setIsModalRelatorioOpen(false);
+    const { jsPDF, autoTable } = await carregarJsPDF();
     // MAGIA DE COMPRESSÃO GLOBAL DO PDF
     const doc = new jsPDF({ compress: true });
-    
+
     const gerarConteudoPDF = () => {
-      const nomeOrgao = contrato.orgaoId && nomesOrgaos[contrato.orgaoId] ? nomesOrgaos[contrato.orgaoId] : 'Prefeitura Municipal de Pesqueira';
+      const nomeOrgao = contrato.orgaoId && NOMES_ORGAOS[contrato.orgaoId] ? NOMES_ORGAOS[contrato.orgaoId] : 'Prefeitura Municipal de Pesqueira';
 
       doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(0, 74, 153);
       doc.text(nomeOrgao.toUpperCase(), 45, 20);
@@ -88,17 +93,17 @@ export default function DetalhesContrato() {
       doc.text(`Processo: ${contrato.numeroProcesso || 'Não informado'}`, 14, currentY); currentY += 6;
       
       const txtFornecedor = `Fornecedor: ${contrato.fornecedor || 'Não informado'}`;
-      const linhasFornecedor = doc.splitTextToSize(txtFornecedor, 182);
+      const linhasFornecedor = quebrarTexto(doc, txtFornecedor, 182);
       doc.text(linhasFornecedor, 14, currentY); currentY += (linhasFornecedor.length * 6);
-      
+
       doc.text(`CNPJ do Fornecedor: ${contrato.cnpjFornecedor || 'Não informado'}`, 14, currentY); currentY += 6;
-      
+
       const txtObjeto = `Objeto: ${contrato.objetoCompleto || contrato.objetoResumido || 'Não informado'}`;
-      const linhasObjeto = doc.splitTextToSize(txtObjeto, 182);
+      const linhasObjeto = quebrarTexto(doc, txtObjeto, 182);
       doc.text(linhasObjeto, 14, currentY); currentY += (linhasObjeto.length * 6);
-      
+
       const txtFiscal = `Fiscal: ${contrato.fiscalContrato || 'Não informado'}`;
-      const linhasFiscal = doc.splitTextToSize(txtFiscal, 182);
+      const linhasFiscal = quebrarTexto(doc, txtFiscal, 182);
       doc.text(linhasFiscal, 14, currentY); currentY += (linhasFiscal.length * 6);
 
       doc.text(`Período Vigência: ${formatarDataBr(contrato.dataInicio || '')} a ${formatarDataBr(contrato.dataFim || '')}`, 14, currentY); currentY += 8;
@@ -115,7 +120,7 @@ export default function DetalhesContrato() {
         doc.setTextColor(220, 53, 69);
         doc.text(`Distratado em: ${formatarDataBr(contrato.dataDistrato || '')}`, 14, currentY); currentY += 6;
         const txtMotivo = `Motivo: ${contrato.motivoDistrato || 'Não informado'}`;
-        const linhasMotivo = doc.splitTextToSize(txtMotivo, 182);
+        const linhasMotivo = quebrarTexto(doc, txtMotivo, 182);
         doc.text(linhasMotivo, 14, currentY); currentY += (linhasMotivo.length * 6) + 2;
         doc.setTextColor(50, 50, 50);
       }
@@ -151,14 +156,14 @@ export default function DetalhesContrato() {
           startY: currentY, head: headAditivos, body: bodyAditivos, theme: 'grid',
           headStyles: { fillColor: [100, 116, 139] }, styles: { fontSize: 8 }
         });
-        currentY = (doc as any).lastAutoTable.finalY + 10; secNumber++;
+        currentY = doc.lastAutoTable!.finalY + 10; secNumber++;
       }
       
       if (itensCatalogo.length > 0 || (opcIncluirAditivos && contrato.aditivos && contrato.aditivos.some(a => a.itensAditivados && a.itensAditivados.length > 0))) {
         doc.setFont('helvetica', 'bold'); doc.text(`${secNumber}. ITENS CONTRATADOS (E ADITIVOS)`, 14, currentY); currentY += 6;
         
         const headSaldos = [['Lote', 'Item', 'Descrição', 'Qtd', 'Unitário', 'Total']];
-        const bodySaldos: any[] = [];
+        const bodySaldos: RowInput[] = [];
         
         itensCatalogo.forEach(i => {
            bodySaldos.push([
@@ -201,15 +206,15 @@ export default function DetalhesContrato() {
     img.onerror = () => { gerarConteudoPDF(); };
   };
 
-  const gerarRelatorioExcel = () => {
+  const gerarRelatorioExcel = async () => {
     setIsModalRelatorioOpen(false);
-    
+
     if (itensCatalogo.length === 0 && (!contrato.aditivos || contrato.aditivos.length === 0)) {
       toast.error("Este contrato não possui itens no catálogo para exportar.");
       return;
     }
 
-    const dadosPlanilha: any[] = [];
+    const dadosPlanilha: Record<string, string | number>[] = [];
 
     itensCatalogo.forEach(i => {
       dadosPlanilha.push({
@@ -243,10 +248,7 @@ export default function DetalhesContrato() {
       });
     }
 
-    const worksheet = XLSX.utils.json_to_sheet(dadosPlanilha);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Itens do Contrato");
-    XLSX.writeFile(workbook, `Itens_Contrato_${contrato.numeroContrato}.xlsx`);
+    await gerarPlanilhaXlsx(dadosPlanilha, 'Itens do Contrato', `Itens_Contrato_${contrato.numeroContrato}.xlsx`);
   };
 
   return (
@@ -294,7 +296,7 @@ export default function DetalhesContrato() {
             {isAdmin && (
                <div style={{ display: 'flex', gap: '8px' }}>
                  {!contrato.dataDistrato && <button className="btn-acao alerta" onClick={() => setIsModalDistratoOpen(true)}>Distratar Contrato</button>}
-                 <button className="btn-acao perigo" onClick={() => excluirContrato(() => navigate('/painel'))}>Excluir Contrato</button>
+                 <button className="btn-acao perigo" onClick={() => excluirContrato(() => { void navigate('/painel'); })}>Excluir Contrato</button>
                </div>
             )}
           </h3>
@@ -329,101 +331,21 @@ export default function DetalhesContrato() {
           </div>
         )}
 
-        <section className="card-detalhe">
-          <h3>Catálogo de Itens Contratados</h3>
-          {itensCatalogo.length === 0 ? (
-            <p style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>Nenhum item cadastrado no catálogo.</p>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="tabela-contratos">
-                <thead>
-                  <tr>
-                    <th>Lote</th><th>Item</th><th>Descrição</th><th>Unid.</th><th>Qtd</th><th>Valor Unit.</th><th>Valor Total</th>
-                    {isAdmin && !contrato.dataDistrato && <th>Ações</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {itensCatalogo.map((i, index) => (
-                    <tr key={index}>
-                      <td>{i.numeroLote || '-'}</td><td>{i.numeroItem || '-'}</td><td><strong>{i.discriminacao}</strong></td><td>{i.unidade || 'UND'}</td>
-                      <td>{i.quantidade}</td>
-                      <td>{Number(i.valorUnitario).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                      <td style={{ color: '#004a99', fontWeight: 'bold' }}>{Number(i.valorTotalItem).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                      
-                      {isAdmin && !contrato.dataDistrato && (
-                        <td style={{ textAlign: 'center' }}>
-                          <button 
-                            onClick={() => { setItemParaEditar(i); setIsModalEditarItemOpen(true); }} 
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }} 
-                            title="Editar Item"
-                          >
-                            ✏️
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+        <CatalogoItensContrato
+          itensCatalogo={itensCatalogo}
+          isAdmin={isAdmin}
+          contratoDistratado={!!contrato.dataDistrato}
+          onEditarItem={(item) => { setItemParaEditar(item); setIsModalEditarItemOpen(true); }}
+        />
 
-        <section className="card-detalhe">
-          <h3>
-            Histórico de Termos Aditivos
-            {isAdmin && !contrato.dataDistrato && (
-              <button className="btn-acao secundario" onClick={() => setIsModalAditivoOpen(true)}>+ Registrar Aditivo</button>
-            )}
-          </h3>
-          
-          {(!contrato.aditivos || contrato.aditivos.length === 0) ? (
-            <p style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>Não existem aditivos registados para este contrato.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              {contrato.aditivos.map((aditivo, index) => (
-                <div key={aditivo.id || index} className="card-aditivo">
-                  
-                  {isAdmin && (
-                    <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '8px' }}>
-                       <button onClick={() => { abrirEdicaoAditivo(aditivo); setIsModalAditivoOpen(true); }} style={{ background: 'white', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '6px', color: '#004a99', cursor: 'pointer' }} title="Editar">✏️</button>
-                       <button onClick={() => excluirAditivo(aditivo)} style={{ background: 'white', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '6px', color: '#dc3545', cursor: 'pointer' }} title="Excluir">🗑️</button>
-                    </div>
-                  )}
-                  
-                  <h4 style={{ margin: '0 0 15px 0', color: '#0f172a', fontSize: '16px' }}>{aditivo.descricao}</h4>
-                  <div className="grid-info" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-                    <div className="info-item"><span>Assinatura</span><strong>{formatarDataBr(aditivo.dataAditivo || '')}</strong></div>
-                    <div className="info-item"><span>Tipo</span><strong>{aditivo.tipo.toUpperCase()}</strong></div>
-                    {aditivo.novaDataFim && <div className="info-item"><span>Nova Validade</span><strong>{formatarDataBr(aditivo.novaDataFim || '')}</strong></div>}
-                    {aditivo.valorAditivado !== 0 && (
-                      <div className="info-item">
-                        <span>Valor Alterado</span>
-                        <strong style={{ color: aditivo.valorAditivado > 0 ? '#10b981' : '#ef4444' }}>
-                          {aditivo.valorAditivado > 0 ? '+' : ''}{aditivo.valorAditivado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                        </strong>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {aditivo.itensAditivados && aditivo.itensAditivados.length > 0 && (
-                    <div style={{ marginTop: '20px', borderTop: '1px solid #e2e8f0', paddingTop: '15px' }}>
-                      <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Itens Afetados</span>
-                      <table className="tabela-contratos" style={{ marginTop: '10px' }}>
-                        <thead><tr><th>Lote</th><th>Item</th><th>Descrição</th><th>Qtd</th><th>R$ Total</th></tr></thead>
-                        <tbody>
-                          {aditivo.itensAditivados.map((ia, idx) => (
-                            <tr key={idx}><td>{ia.numeroLote}</td><td>{ia.numeroItem}</td><td>{ia.discriminacao}</td><td>{ia.quantidade}</td><td>{ia.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td></tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+        <HistoricoAditivos
+          aditivos={contrato.aditivos}
+          isAdmin={isAdmin}
+          contratoDistratado={!!contrato.dataDistrato}
+          onNovoAditivo={() => setIsModalAditivoOpen(true)}
+          onEditarAditivo={(aditivo) => { abrirEdicaoAditivo(aditivo); setIsModalAditivoOpen(true); }}
+          onExcluirAditivo={excluirAditivo}
+        />
       </main>
 
       {isAdmin && <ModalAditivo isOpen={isModalAditivoOpen} onClose={() => { setIsModalAditivoOpen(false); fecharModalAditivoState(); }} aditivoEmEdicao={aditivoEmEdicao} aditivoDataAditivo={aditivoDataAditivo} setAditivoDataAditivo={setAditivoDataAditivo} aditivoDescricao={aditivoDescricao} setAditivoDescricao={setAditivoDescricao} aditivoTipo={aditivoTipo} setAditivoTipo={setAditivoTipo} aditivoOperacao={aditivoOperacao} setAditivoOperacao={setAditivoOperacao} aditivoValor={aditivoValor} setAditivoValor={setAditivoValor} aditivoNovaData={aditivoNovaData} setAditivoNovaData={setAditivoNovaData} itensDoAditivo={itensDoAditivo} arquivoPdfAditivo={arquivoPdfAditivo} setArquivoPdfAditivo={setArquivoPdfAditivo} processandoPdfIA={processandoPdfIA} lidarProcessamentoIA={lidarProcessamentoIA} itensCatalogo={itensCatalogo} itemManualSel={itemManualSel} setItemManualSel={setItemManualSel} itemManualQtd={itemManualQtd} setItemManualQtd={setItemManualQtd} itemManualVlUnit={itemManualVlUnit} setItemManualVlUnit={setItemManualVlUnit} lidarAdicionarItemManual={lidarAdicionarItemManual} removerItemAditivo={removerItemAditivo} salvarAditivo={salvarAditivo} loading={loading} />}
@@ -438,19 +360,21 @@ export default function DetalhesContrato() {
         gerarRelatorioExcel={gerarRelatorioExcel} 
       />
 
-      <ModalEmitirOS 
-        isOpen={isModalOSOpen} 
-        onClose={() => setIsModalOSOpen(false)} 
-        contrato={contrato} 
-        itensCatalogo={itensCatalogo} 
-      />
+      {isModalOSOpen && (
+        <ModalEmitirOS
+          onClose={() => setIsModalOSOpen(false)}
+          contrato={contrato}
+          itensCatalogo={itensCatalogo}
+        />
+      )}
 
-      <ModalEditarItemCatalogo
-        isOpen={isModalEditarItemOpen}
-        onClose={() => setIsModalEditarItemOpen(false)}
-        itemOriginal={itemParaEditar}
-        salvarEdicao={salvarEdicaoItem}
-      />
+      {isModalEditarItemOpen && itemParaEditar && (
+        <ModalEditarItemCatalogo
+          onClose={() => setIsModalEditarItemOpen(false)}
+          itemOriginal={itemParaEditar}
+          salvarEdicao={salvarEdicaoItem}
+        />
+      )}
     </div>
   );
 }

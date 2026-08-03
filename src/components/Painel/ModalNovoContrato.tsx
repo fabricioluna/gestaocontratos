@@ -1,24 +1,28 @@
 // src/components/Painel/ModalNovoContrato.tsx
 import React, { useState, useRef, useEffect } from 'react';
 import { collection, addDoc, writeBatch, doc } from 'firebase/firestore';
-import * as XLSX from 'xlsx';
-import * as mammoth from 'mammoth'; 
-import * as pdfjsLib from 'pdfjs-dist'; 
 import toast from 'react-hot-toast';
 import { db, auth } from '../../firebase';
 import { parseMoeda, extrairNumeroPlanilha } from '../../utils/formatters';
+import { MODALIDADES_LICITACAO } from '../../utils/modalidades';
+import { extrairTextoDeArquivo } from '../../utils/extrairTexto';
 import { extrairDadosContratoComIA } from '../../services/geminiService';
-import type { FormContratoState, Item } from '../../types/types';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
+import ModalBuscarEmail from './ModalBuscarEmail';
+import ModalCadastrarEmail from './ModalCadastrarEmail';
+import CatalogoItensPreviaForm from './CatalogoItensPreviaForm';
+import type { FormContratoState, Item, RespostaApi } from '../../types/types';
 
 interface ModalNovoContratoProps {
-  isOpen: boolean;
   onClose: () => void;
   orgaoLogado: string | null;
 }
 
-export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: ModalNovoContratoProps) {
+// O pai (Painel.tsx) só monta este componente quando o modal deve estar
+// aberto, então cada abertura já é uma montagem nova com estado limpo —
+// sem precisar de um useEffect condicionado a `isOpen` para buscar dados
+// ou resetar estado (Fase 7; achado de lint react-hooks/set-state-in-effect
+// da Fase 1).
+export default function ModalNovoContrato({ onClose, orgaoLogado }: ModalNovoContratoProps) {
   const docInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -35,36 +39,30 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
 
   const [formData, setFormData] = useState<FormContratoState>({
     numeroContrato: '', numeroProcesso: '', modalidade: '', numeroModalidade: '', numeroAta: '',
-    fornecedor: '', cnpjFornecedor: '', emailSecretaria: '', objetoCompleto: '', objetoResumido: '', 
+    fornecedor: '', cnpjFornecedor: '', emailSecretaria: '', objetoCompleto: '', objetoResumido: '',
     dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: ''
   });
 
-  // Busca a lista de e-mails sempre que o Modal abrir
+  // Busca a lista de e-mails ao montar (o modal só existe montado quando aberto)
   useEffect(() => {
-    if (isOpen) {
-      const carregarEmailsDoSistema = async () => {
-        try {
-          const idToken = await auth.currentUser?.getIdToken();
-          const res = await fetch('/api/list-users', {
-            headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success && data.emails) {
-              setSugestoesEmails(data.emails);
-            }
+    const carregarEmailsDoSistema = async () => {
+      try {
+        const idToken = await auth.currentUser?.getIdToken();
+        const res = await fetch('/api/list-users', {
+          headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
+        });
+        if (res.ok) {
+          const data = await res.json() as RespostaApi;
+          if (data.success && data.emails) {
+            setSugestoesEmails(data.emails);
           }
-        } catch (error) {
-          console.error("Aviso: Falha ao carregar as sugestões de e-mail.", error);
         }
-      };
-      carregarEmailsDoSistema();
-    } else {
-      setSugestoesEmails([]);
-    }
-  }, [isOpen]);
-
-  if (!isOpen) return null;
+      } catch (error) {
+        console.error("Aviso: Falha ao carregar as sugestões de e-mail.", error);
+      }
+    };
+    void carregarEmailsDoSistema();
+  }, []);
 
   const lidarComMudanca = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -113,10 +111,10 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
         body: JSON.stringify({ email: emailTemp, nomeOrgao: orgaoLogado })
       });
 
-      let data;
+      let data: RespostaApi;
       try {
-         data = await response.json();
-      } catch (err) {
+         data = await response.json() as RespostaApi;
+      } catch {
          throw new Error("Erro no servidor da Vercel (Erro 500).");
       }
 
@@ -132,14 +130,14 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ email: emailTemp, perfil: 'viewer', orgaoId: orgaoLogado })
       });
-      const dataPerfil = await responsePerfil.json();
+      const dataPerfil = await responsePerfil.json() as RespostaApi;
 
       if (!responsePerfil.ok || !dataPerfil.success) {
         toast.error("Usuário criado, mas o perfil de acesso não pôde ser definido. Tente cadastrá-lo novamente.", { id: toastId });
         return;
       }
 
-      toast.success(data.message, { id: toastId });
+      toast.success(data.message || 'Usuário cadastrado com sucesso!', { id: toastId });
       // Preenche o formulário e atualiza a lista em memória
       setFormData(prev => ({ ...prev, emailSecretaria: emailTemp }));
       if (!sugestoesEmails.includes(emailTemp)) {
@@ -147,15 +145,15 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       }
       setShowNovoEmail(false);
       setEmailTemp('');
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      toast.error(error.message || "Erro de comunicação. Tente novamente.", { id: toastId });
+      toast.error(error instanceof Error ? error.message : "Erro de comunicação. Tente novamente.", { id: toastId });
     } finally {
       setVerificandoEmail(false);
     }
   };
 
-  const tratarValorIA = (valor: unknown): string => {
+  const tratarValorIA = (valor: number | string | undefined | null): string => {
     if (valor === undefined || valor === null) return '';
     if (typeof valor === 'number') return valor.toFixed(2).replace('.', ',');
     const numLimpo = Number(String(valor).replace(/[^0-9.-]+/g, ""));
@@ -170,23 +168,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
     const toastId = toast.loading('A processar documento com IA...');
     
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      let textoCompleto = '';
-      
-      if (file.name.toLowerCase().endsWith('.pdf')) {
-        const typedArray = new Uint8Array(arrayBuffer);
-        const pdf = await pdfjsLib.getDocument({ data: typedArray }).promise;
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          const strings = content.items.map((item: any) => item.str || "");
-          textoCompleto += strings.join(" ") + "\n";
-        }
-      } else if (file.name.toLowerCase().endsWith('.docx')) {
-        const result = await mammoth.extractRawText({ arrayBuffer });
-        textoCompleto = result.value;
-      }
-
+      const textoCompleto = await extrairTextoDeArquivo(file);
       const textoLimpo = textoCompleto.replace(/\s+/g, ' ');
       if (textoLimpo.trim().length < 50) throw new Error("Texto ilegível.");
 
@@ -210,7 +192,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       }));
 
       if (dadosIA.itens && Array.isArray(dadosIA.itens) && dadosIA.itens.length > 0) {
-        const itensTratados: Item[] = dadosIA.itens.map((i: any, index: number) => ({
+        const itensTratados: Item[] = dadosIA.itens.map((i, index) => ({
            contratoId: '',
            numeroLote: String(i.numeroLote || 'Único'),
            numeroItem: String(i.numeroItem || (index + 1)),
@@ -226,8 +208,8 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       } else {
         toast.success("Dados gerais preenchidos. Sem itens encontrados.", { id: toastId, duration: 5000 });
       }
-    } catch (error: any) {
-      toast.error(error.message || "Erro ao processar o documento.", { id: toastId });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao processar o documento.", { id: toastId });
     } finally {
       setLoading(false);
       if (docInputRef.current) docInputRef.current.value = '';
@@ -266,16 +248,17 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
         const bstr = evt.target?.result;
+        const XLSX = await import('xlsx');
         const wb = XLSX.read(bstr, { type: 'binary' });
-        const data = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[wb.SheetNames[0]]);
+        const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]]);
         let somaImportacao = 0;
         const novosItens: Item[] = [];
         data.forEach((row) => {
           const linha: Record<string, string | number> = {};
-          for (const key in row) linha[key.trim().toUpperCase()] = row[key];
+          for (const key in row) linha[key.trim().toUpperCase()] = row[key] as string | number;
           
           const discriminacao = String(linha['DESCRIÇÃO'] || linha['DESCRICAO'] || '');
           const quantidade = extrairNumeroPlanilha(linha['QUANTIDADE'] || 0);
@@ -296,7 +279,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
           setFormData(prev => ({ ...prev, valorTotal: novoTotal.toFixed(2).replace('.', ',') }));
           toast.success(`${novosItens.length} itens carregados!`);
         }
-      } catch (error) { toast.error("Erro ao ler planilha."); } 
+      } catch { toast.error("Erro ao ler planilha."); }
       finally { if (fileInputRef.current) fileInputRef.current.value = ''; }
     };
     reader.readAsBinaryString(file);
@@ -330,7 +313,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
       setFormData({ numeroContrato: '', numeroProcesso: '', modalidade: '', numeroModalidade: '', numeroAta: '', fornecedor: '', cnpjFornecedor: '', emailSecretaria: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
       setItensPrevia([]);
       onClose();
-    } catch (error) { toast.error('Erro ao guardar contrato.', { id: toastId }); } 
+    } catch { toast.error('Erro ao guardar contrato.', { id: toastId }); }
     finally { setLoading(false); }
   };
 
@@ -356,12 +339,7 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
                 <label>Modalidade</label>
                 <select name="modalidade" value={formData.modalidade} onChange={lidarComMudanca} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
                   <option value="">Selecione...</option>
-                  <option value="Pregão Eletrônico">Pregão Eletrônico</option>
-                  <option value="Pregão Presencial">Pregão Presencial</option>
-                  <option value="Concorrência">Concorrência</option>
-                  <option value="Dispensa">Dispensa</option>
-                  <option value="Inexigibilidade">Inexigibilidade</option>
-                  <option value="Credenciamento">Credenciamento</option>
+                  {MODALIDADES_LICITACAO.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
               
@@ -418,36 +396,15 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
               <div className="form-group full-width"><label style={{ color: '#004a99', fontSize: '15px' }}>Valor Global do Contrato (R$)</label><input type="text" name="valorTotal" required value={formData.valorTotal} onChange={lidarComMudanca} style={{ border: '2px solid #004a99', fontWeight: 'bold' }} /></div>
             </div>
 
-            <h3 style={{ borderBottom: '1px solid #ddd', paddingBottom: '5px', marginTop: '30px' }}>2. Catálogo de Itens do Contrato (Opcional)</h3>
-            <div className="secao-itens-modal">
-              <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr 2fr 1fr 1fr 1fr', gap: '5px' }}>
-                <input type="text" name="numeroLote" placeholder="Lote" value={formItem.numeroLote} onChange={lidarComMudancaItem} />
-                <input type="text" name="numeroItem" placeholder="Nº Item" value={formItem.numeroItem} onChange={lidarComMudancaItem} />
-                <input type="text" name="discriminacao" placeholder="Descrição" value={formItem.discriminacao} onChange={lidarComMudancaItem} />
-                <input type="text" name="quantidade" placeholder="Qtd" value={formItem.quantidade} onChange={lidarComMudancaItem} />
-                <input type="text" name="valorUnitario" placeholder="R$ Unit" value={formItem.valorUnitario} onChange={lidarComMudancaItem} />
-                <button type="button" onClick={adicionarItemPrevia} style={{ backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>+ Add</button>
-              </div>
-              <div style={{ margin: '15px 0', textAlign: 'center' }}><strong>OU</strong></div>
-              <label htmlFor="upload-previa" style={{ display: 'block', textAlign: 'center', backgroundColor: '#28a745', color: 'white', padding: '10px', borderRadius: '4px', cursor: 'pointer' }}>📄 Importar Excel <input type="file" accept=".xlsx" ref={fileInputRef} onChange={importarPlanilhaPrevia} style={{ display: 'none' }} id="upload-previa" /></label>
-            </div>
-            {itensPrevia.length > 0 && (
-              <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '20px' }}>
-                <table className="tabela-previa">
-                  <thead><tr><th>Lote</th><th>Item</th><th>Descrição</th><th>Qtd</th><th>Unitário</th><th>Total</th><th>Ação</th></tr></thead>
-                  <tbody>
-                    {itensPrevia.map((item, index) => (
-                      <tr key={index}>
-                        <td>{item.numeroLote}</td><td>{item.numeroItem}</td><td>{item.discriminacao}</td><td>{item.quantidade}</td>
-                        <td>{item.valorUnitario.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                        <td>{item.valorTotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                        <td><button type="button" onClick={() => removerItemPrevia(index)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>❌</button></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <CatalogoItensPreviaForm
+              formItem={formItem}
+              onMudancaItem={lidarComMudancaItem}
+              onAdicionarItem={adicionarItemPrevia}
+              itensPrevia={itensPrevia}
+              onRemoverItem={removerItemPrevia}
+              onImportarPlanilha={importarPlanilhaPrevia}
+              fileInputRef={fileInputRef}
+            />
             <div className="modal-acoes">
               <button type="button" className="btn-cancelar" onClick={() => { onClose(); setItensPrevia([]); }}>Cancelar</button>
               <button type="submit" className="btn-salvar" disabled={loading}>{loading ? 'Salvando...' : 'Salvar Contrato'}</button>
@@ -456,62 +413,22 @@ export default function ModalNovoContrato({ isOpen, onClose, orgaoLogado }: Moda
         </div>
       </div>
 
-      {/* --- SUB-CAIXA: BUSCAR E-MAIL EXISTENTE --- */}
       {showBuscaEmail && (
-        <div className="modal-overlay" style={{ zIndex: 1050 }} onClick={() => setShowBuscaEmail(false)}>
-          <div className="modal-content" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0 }}>Selecione um E-mail Cadastrado</h3>
-            <div style={{ maxHeight: '250px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '15px' }}>
-              {sugestoesEmails.length === 0 ? (
-                <p style={{ textAlign: 'center', color: '#666' }}>Nenhum e-mail encontrado no sistema.</p>
-              ) : (
-                sugestoesEmails.map(e => (
-                  <button
-                    key={e}
-                    type="button"
-                    onClick={() => { setFormData(prev => ({ ...prev, emailSecretaria: e })); setShowBuscaEmail(false); }}
-                    style={{ padding: '12px', textAlign: 'left', border: '1px solid #e2e8f0', borderRadius: '6px', backgroundColor: '#f8fafc', cursor: 'pointer', transition: '0.2s' }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
-                  >
-                    📧 {e}
-                  </button>
-                ))
-              )}
-            </div>
-            <div style={{ marginTop: '20px', textAlign: 'right' }}>
-              <button type="button" className="btn-cancelar" onClick={() => setShowBuscaEmail(false)}>Fechar</button>
-            </div>
-          </div>
-        </div>
+        <ModalBuscarEmail
+          sugestoesEmails={sugestoesEmails}
+          onSelecionar={(email) => { setFormData(prev => ({ ...prev, emailSecretaria: email })); setShowBuscaEmail(false); }}
+          onClose={() => setShowBuscaEmail(false)}
+        />
       )}
 
-      {/* --- SUB-CAIXA: CADASTRAR NOVO E-MAIL --- */}
       {showNovoEmail && (
-        <div className="modal-overlay" style={{ zIndex: 1050 }} onClick={() => !verificandoEmail && setShowNovoEmail(false)}>
-          <div className="modal-content" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0 }}>Cadastrar Novo Acesso</h3>
-            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>
-              O sistema criará o acesso no banco de dados e enviará um e-mail com a senha provisória ao novo fiscal.
-            </p>
-            <div className="form-group full-width">
-              <label>E-mail do Novo Fiscal</label>
-              <input
-                type="email"
-                value={emailTemp}
-                onChange={e => setEmailTemp(e.target.value)}
-                placeholder="exemplo.fiscal@pesqueira.pe.gov.br"
-                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-              />
-            </div>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '25px', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn-cancelar" onClick={() => setShowNovoEmail(false)} disabled={verificandoEmail}>Cancelar</button>
-              <button type="button" className="btn-salvar" onClick={lidarCadastrarNovoEmail} disabled={verificandoEmail}>
-                {verificandoEmail ? 'A processar...' : 'Salvar e Utilizar'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ModalCadastrarEmail
+          emailTemp={emailTemp}
+          setEmailTemp={setEmailTemp}
+          verificandoEmail={verificandoEmail}
+          onSalvar={lidarCadastrarNovoEmail}
+          onClose={() => setShowNovoEmail(false)}
+        />
       )}
     </>
   );

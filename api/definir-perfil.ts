@@ -1,26 +1,19 @@
 // api/definir-perfil.ts
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verificarAdmin } from './_shared/verificarAdmin.js';
+import { inicializarFirebaseAdmin } from './_shared/firebaseAdmin.js';
 
 const PERFIS_VALIDOS = ['admin', 'viewer'];
 const ORGAOS_VALIDOS = ['prefeitura', 'fms', 'fme', 'fmas'];
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, message: 'Método não permitido.' });
   }
 
   try {
-    if (getApps().length === 0) {
-      const envVar = process.env.FIREBASE_ADMIN_CREDENTIALS;
-      if (!envVar) {
-        console.error('Falta a variável FIREBASE_ADMIN_CREDENTIALS na Vercel.');
-        return res.status(500).json({ success: false, message: 'Erro de configuração no servidor.' });
-      }
-      const serviceAccount = JSON.parse(envVar);
-      initializeApp({ credential: cert(serviceAccount) });
-    }
+    inicializarFirebaseAdmin();
   } catch (error) {
     console.error('Erro ao ler a chave do Firebase:', error);
     return res.status(500).json({ success: false, message: 'Erro de configuração no servidor.' });
@@ -29,8 +22,8 @@ export default async function handler(req: any, res: any) {
   const admin = await verificarAdmin(req, res);
   if (!admin) return;
 
-  const { email, perfil, orgaoId } = req.body;
-  if (!email || !PERFIS_VALIDOS.includes(perfil) || !ORGAOS_VALIDOS.includes(orgaoId)) {
+  const { email, perfil, orgaoId } = req.body as { email?: string; perfil?: string; orgaoId?: string };
+  if (!email || !perfil || !orgaoId || !PERFIS_VALIDOS.includes(perfil) || !ORGAOS_VALIDOS.includes(orgaoId)) {
     return res.status(400).json({ success: false, message: 'Dados inválidos: informe email, perfil (admin/viewer) e orgaoId válidos.' });
   }
 

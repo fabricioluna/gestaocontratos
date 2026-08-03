@@ -46,8 +46,8 @@ export default function Login() {
         return;
       }
 
-      navigate('/painel');
-    } catch (error: any) {
+      void navigate('/painel');
+    } catch (error) {
       console.error("Erro no login Firebase:", error);
       setErro('Usuário ou senha incorretos. Verifique os dados.');
     } finally {

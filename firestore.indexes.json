@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "contratos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "orgaoId", "order": "ASCENDING" },
+        { "fieldPath": "numeroContrato", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "contratos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "emailSecretaria", "order": "ASCENDING" },
+        { "fieldPath": "numeroContrato", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

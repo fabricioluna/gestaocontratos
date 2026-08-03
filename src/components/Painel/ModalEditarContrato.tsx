@@ -1,35 +1,32 @@
 // src/components/Painel/ModalEditarContrato.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { db } from '../../firebase';
 import { parseMoeda } from '../../utils/formatters';
+import { MODALIDADES_LICITACAO } from '../../utils/modalidades';
 import type { Contrato, FormContratoState } from '../../types/types';
 
 interface ModalEditarContratoProps {
-  isOpen: boolean;
   onClose: () => void;
-  contratoOriginal: Contrato | null;
+  contratoOriginal: Contrato;
 }
 
-export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal }: ModalEditarContratoProps) {
-  const [formEdit, setFormEdit] = useState<Partial<FormContratoState>>({});
+// O pai (Painel.tsx) só monta este componente quando o modal deve estar
+// aberto, então o formulário já nasce inicializado a partir de
+// `contratoOriginal` via lazy initializer — sem precisar de um useEffect
+// para sincronizar prop → state toda vez que abre (Fase 7; achado de lint
+// react-hooks/set-state-in-effect da Fase 1).
+export default function ModalEditarContrato({ onClose, contratoOriginal }: ModalEditarContratoProps) {
+  const [formEdit, setFormEdit] = useState<Partial<FormContratoState>>(() => ({
+    ...contratoOriginal,
+    valorTotal: contratoOriginal.valorTotal.toFixed(2).replace('.', ','),
+    modalidade: contratoOriginal.modalidade || '',
+    numeroModalidade: contratoOriginal.numeroModalidade || contratoOriginal.numeroPregao || '',
+    cnpjFornecedor: contratoOriginal.cnpjFornecedor || '',
+    emailSecretaria: contratoOriginal.emailSecretaria || ''
+  }));
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (isOpen && contratoOriginal) {
-      setFormEdit({ 
-        ...contratoOriginal, 
-        valorTotal: contratoOriginal.valorTotal.toFixed(2).replace('.', ','),
-        modalidade: contratoOriginal.modalidade || '',
-        numeroModalidade: contratoOriginal.numeroModalidade || contratoOriginal.numeroPregao || '',
-        cnpjFornecedor: contratoOriginal.cnpjFornecedor || '',
-        emailSecretaria: contratoOriginal.emailSecretaria || ''
-      });
-    }
-  }, [isOpen, contratoOriginal]);
-
-  if (!isOpen || !contratoOriginal) return null;
 
   const lidarComMudancaEdit = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormEdit(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -59,17 +56,25 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
     
     try {
       const novoValorGlobal = parseMoeda(formEdit.valorTotal || '0');
+      // `formEdit` foi inicializado com `{ ...contratoOriginal }`, que traz
+      // `id` e `aditivos` junto — gravar isso de volta criava um campo `id`
+      // redundante no documento e, pior, sobrescrevia `aditivos` com o
+      // snapshot que estava em memória quando o modal abriu (perdendo
+      // qualquer aditivo registado por outra pessoa nesse intervalo).
+      const dadosParaGravar = { ...(formEdit as Partial<Contrato>) };
+      delete dadosParaGravar.id;
+      delete dadosParaGravar.aditivos;
 
       await updateDoc(doc(db, 'contratos', contratoOriginal.id!), {
-        ...formEdit, 
-        valorTotal: novoValorGlobal, 
+        ...dadosParaGravar,
+        valorTotal: novoValorGlobal,
         dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
       });
       toast.success('Contrato atualizado com sucesso!', { id: toastId });
       onClose();
-    } catch (error) { 
-      toast.error("Erro ao editar contrato.", { id: toastId }); 
-    } finally { 
+    } catch {
+      toast.error("Erro ao editar contrato.", { id: toastId });
+    } finally {
       setLoading(false); 
     }
   };
@@ -87,12 +92,7 @@ export default function ModalEditarContrato({ isOpen, onClose, contratoOriginal 
               <label>Modalidade</label>
               <select name="modalidade" value={formEdit.modalidade || ''} onChange={lidarComMudancaEdit} style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', height: '36px' }}>
                 <option value="">Selecione...</option>
-                <option value="Pregão">Pregão</option>
-                <option value="Concorrência">Concorrência</option>
-                <option value="Dispensa">Dispensa</option>
-                <option value="Inexigibilidade">Inexigibilidade</option>
-                <option value="Credenciamento">Credenciamento</option>
-                <option value="Contratação Direta">Contratação Direta</option>
+                {MODALIDADES_LICITACAO.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
             
