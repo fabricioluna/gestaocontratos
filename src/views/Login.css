@@ -113,3 +113,34 @@
   font-size: 12px;
   color: #64748b;
 }
+
+.link-esqueci-senha {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: #004a99;
+  font-size: 13px;
+  margin-top: 14px;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.link-esqueci-senha:hover {
+  color: #003366;
+}
+
+.link-voltar-login {
+  background: none;
+  border: none;
+  color: #004a99;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.link-voltar-login:hover {
+  color: #003366;
+}
