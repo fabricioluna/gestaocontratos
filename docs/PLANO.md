@@ -844,10 +844,77 @@ extração numa fase futura, se o incômodo justificar (não estava no
 critério de conclusão desta fase, que era "quebrar", não atingir um
 número de linhas específico).
 
-## Fase 8 — Fechamento
+## Fase 8 — Fechamento (concluída em 03/08/2026)
 
-- [ ] README real substituindo o template do Vite
-- [ ] CI no GitHub Actions (`tsc` + lint + vitest)
-- [ ] `/security-review` final
-- [ ] Backlog: tela de consulta do log de auditoria; cobertura do log
-  para criação/edição de contrato (hoje só 5 ações são registradas)
+- [x] **README real** substituindo o template do Vite. Cobre stack,
+  variáveis de ambiente (tabela resumida + link para `.env.example`),
+  scripts, estrutura de pastas, deploy e testes; aponta para `CLAUDE.md`
+  (arquitetura/convenções) e `docs/PLANO.md` (histórico) em vez de
+  duplicar o conteúdo dos dois.
+- [x] **CI no GitHub Actions** (`.github/workflows/ci.yml`): `npm ci` →
+  `npm run build` (`tsc -b && vite build`) → `npm run lint` → `npm run
+  test`, em push/PR para `main`. Node 22 (LTS), sem step de deploy — a
+  Vercel já cuida disso separadamente a partir de `main`. Não verificável
+  a partir deste repositório se vai passar na primeira execução real no
+  GitHub (não determinado — depende do ambiente do runner, não testável
+  localmente); os 4 comandos rodam limpos localmente com o mesmo
+  `package-lock.json` que o `npm ci` vai usar.
+- [x] **`/security-review` final** no diff completo das Fases 5-8
+  (`main...HEAD`). Processo de 3 etapas (identificação → filtro de
+  falsos-positivos em paralelo → corte por confiança ≥8) collapsou na
+  primeira etapa: **nenhuma vulnerabilidade encontrada**, então não houve
+  achados para filtrar. Pontos checados especificamente e descartados:
+  os casts `req.body as {...}` nos handlers de `/api` não enfraqueceram
+  nenhuma validação de runtime (`definir-perfil.ts` até ficou mais
+  estrito); `verificarAdmin.ts` manteve a lógica de verificação de token
+  e claim idêntica, só mudou a assinatura de tipos; os delimitadores
+  `===DOCUMENTO===` contra prompt injection em `extrair-documento.ts`
+  saíram intactos da extração dos fragmentos compartilhados do prompt;
+  as transações do Firestore e a paginação (Fases 5 e 6) continuam
+  sujeitas às mesmas Firestore Rules, sem bypass de autorização
+  introduzido; nenhum `dangerouslySetInnerHTML`/`eval`/`innerHTML` em
+  todo o diff.
+- [x] **Backlog registrado** (não implementado nesta fase — o item do
+  checklist original já pedia só o registro, não a construção): o log de
+  auditoria (`src/services/auditService.ts`, coleção `auditoria_logs`)
+  hoje registra só 5 ações — `EXCLUSÃO CONTRATO`, `EXCLUSÃO ADITIVO`,
+  `ADITIVO` (criação/edição), `DISTRATO`, `EDIÇÃO CATÁLOGO` (todas em
+  `useDetalhesContrato.ts`). Faltam: criação de contrato
+  (`ModalNovoContrato.tsx`), edição de contrato
+  (`ModalEditarContrato.tsx`), criação de usuário (`ModalNovoContrato.tsx`
+  fluxo inline, `ModalGerenciarUsuarios.tsx`) e login — nenhum desses
+  fluxos chama `registrarLog`. Não há tela nenhuma que leia
+  `auditoria_logs`; a coleção só recebe escritas. Duas tarefas de backlog
+  distintas para uma fase futura: (1) adicionar `registrarLog` aos 4
+  fluxos que faltam; (2) construir uma tela (provavelmente só para admin)
+  que liste `auditoria_logs` ordenado por `timestamp`. Nenhuma das duas
+  é urgente — o sistema ainda não está em uso real — mas ambas exigem
+  atenção às Firestore Rules já publicadas (`auditoria_logs`: só
+  `create`, ninguém pode `read`/`update`/`delete` hoje; a tela de consulta
+  vai precisar de uma regra de leitura nova, provavelmente restrita a
+  `perfil == 'admin'`).
+
+**Build/lint/testes ao final da fase** (baseline da Fase 7: build 0 erros,
+lint 0 erros, 21 testes): build **0 erros**, lint **0 erros**, Vitest
+**21/21 passando** — idêntico, sem regressão. Nenhuma mudança de código de
+produção nesta fase (só documentação, CI e a revisão de segurança), então
+não havia expectativa de diferença.
+
+**Pendências:** nenhuma bloqueante. Itens que dependem de ações fora
+deste repositório, já registrados nas fases correspondentes e ainda em
+aberto: publicar os índices de `firestore.indexes.json` no console do
+Firebase (Fase 6, bloqueante para `/painel` funcionar em produção depois
+do próximo deploy), apagar a conta-robô `BOT_EMAIL` (Fase 3, item 5), e
+confirmar visualmente a primeira execução do workflow de CI no GitHub
+após o merge em `main` (não verificável a partir daqui).
+
+---
+
+## Fechamento do plano de evolução
+
+As 8 fases planejadas foram concluídas (Fase 0 em 31/07/2026 até Fase 8
+em 03/08/2026). Este arquivo continua sendo o registro histórico de cada
+fase — decisões, achados de revisão, incidentes e pendências — e deve
+continuar sendo atualizado se o trabalho no repositório continuar em
+fases futuras (ex: uma "Fase 9" para os itens de backlog registrados
+acima, ou para as pendências manuais que ainda restam nas Fases 3 e 6).
