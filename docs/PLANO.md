@@ -1027,13 +1027,18 @@ Branch `feature/concorrencia-e-auditoria`, PR aberto para o usuário
 revisar e mergear (não mergeado automaticamente).
 
 **Pendências:**
-1. Publicar a `firestore.rules` atualizada no console do Firebase depois
-   do merge — sem isso, o botão "📋 Auditoria" carrega e mostra
-   "permissão negada" (a regra de leitura nova não existe em produção até
-   ser publicada manualmente, mesmo processo já feito para os índices
-   compostos na Fase 6).
-2. Testar manualmente, com uma conta admin real: (a) editar um contrato
-   enquanto um aditivo é lançado por outra sessão/conta, confirmando que
-   a segunda gravação é bloqueada com o aviso correto; (b) abrir a tela
-   de Auditoria e confirmar que os 4 novos tipos de ação aparecem
-   (CRIAÇÃO CONTRATO, EDIÇÃO CONTRATO, CRIAÇÃO USUÁRIO, LOGIN).
+1. ~~Publicar a `firestore.rules` atualizada no console do Firebase~~ —
+   **feito pelo usuário em 04/08/2026**, publicada diretamente do console
+   (independente do merge do PR #7 — Rules e código da Vercel são
+   publicados por caminhos separados). A regra de leitura de
+   `auditoria_logs` para admin já vale em produção.
+2. **PR #7 ainda aberto, não mergeado** — a tela "📋 Auditoria" e a
+   proteção por transação em `ModalEditarContrato.tsx` só existem no app
+   depois do merge + deploy da Vercel. Publicar as Rules antes não
+   adianta nada sozinho.
+3. Depois do merge, testar manualmente com uma conta admin real: (a)
+   editar um contrato enquanto um aditivo é lançado por outra
+   sessão/conta, confirmando que a segunda gravação é bloqueada com o
+   aviso correto; (b) abrir a tela de Auditoria e confirmar que os 4
+   novos tipos de ação aparecem (CRIAÇÃO CONTRATO, EDIÇÃO CONTRATO,
+   CRIAÇÃO USUÁRIO, LOGIN).
