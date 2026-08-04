@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import { auth } from '../../firebase';
+import { registrarLog } from '../../services/auditService';
 import type { RespostaApi } from '../../types/types';
 
 interface ModalGerenciarUsuariosProps {
@@ -64,6 +65,7 @@ export default function ModalGerenciarUsuarios({ isOpen, onClose }: ModalGerenci
         return;
       }
 
+      await registrarLog('CRIAÇÃO USUÁRIO', `Usuário ${emailUsuario} cadastrado com perfil viewer no órgão ${orgaoVinculado}.`);
       toast.success(data.message || 'Usuário cadastrado com sucesso!', { id: toastId });
       setEmailUsuario('');
       setOrgaoVinculado('');

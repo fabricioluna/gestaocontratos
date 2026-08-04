@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import toast from 'react-hot-toast';
 import { auth } from '../firebase';
+import { registrarLog } from '../services/auditService';
 import logo from '../assets/logopmp.png';
 import type { RespostaApi } from '../types/types';
 import './Login.css';
@@ -56,6 +57,7 @@ export default function Login() {
         return;
       }
 
+      await registrarLog('LOGIN', 'Login realizado no sistema.');
       void navigate('/painel');
     } catch (error) {
       console.error("Erro no login Firebase:", error);
