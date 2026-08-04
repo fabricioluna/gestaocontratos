@@ -1,10 +1,11 @@
 // src/views/Login.tsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import toast from 'react-hot-toast';
 import { auth } from '../firebase';
 import logo from '../assets/logopmp.png';
+import type { RespostaApi } from '../types/types';
 import './Login.css';
 
 // Mapeamento de palavra curta -> e-mail institucional real. Usado tanto no
@@ -75,26 +76,29 @@ export default function Login() {
     setEnviandoRecuperacao(true);
     const toastId = toast.loading('A enviar o link de redefinição...');
 
-    const mensagemGenerica = 'Se este e-mail estiver cadastrado, você vai receber um link de redefinição em instantes.';
-
     try {
       const emailToUse = resolverEmail(emailRecuperacao);
-      await sendPasswordResetEmail(auth, emailToUse);
-      toast.success(mensagemGenerica, { id: toastId, duration: 6000 });
-      setMostrarRecuperar(false);
-    } catch (error) {
-      // Não revela se o e-mail existe ou não (evita enumerar contas) — a
-      // mesma mensagem genérica cobre "não encontrado" e sucesso real.
-      const codigo = error instanceof Object && 'code' in error ? (error as { code?: string }).code : undefined;
-      if (codigo === 'auth/user-not-found') {
-        toast.success(mensagemGenerica, { id: toastId, duration: 6000 });
+      // Passa pelo nosso /api em vez do sendPasswordResetEmail do SDK: o
+      // e-mail padrão do Firebase Auth (remetente noreply@<projeto>.
+      // firebaseapp.com) cai quase sempre em spam. O endpoint gera o link
+      // pelo Admin SDK e envia pela mesma conta Gmail já usada nos alertas
+      // de vencimento, com texto sempre em pt-BR.
+      const response = await fetch('/api/recuperar-senha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailToUse })
+      });
+      const data = await response.json() as RespostaApi;
+
+      if (data.success) {
+        toast.success(data.message ?? 'Se este e-mail estiver cadastrado, você vai receber um link de redefinição em instantes.', { id: toastId, duration: 6000 });
         setMostrarRecuperar(false);
-      } else if (codigo === 'auth/invalid-email') {
-        toast.error('E-mail inválido. Confira o que foi digitado.', { id: toastId });
       } else {
-        console.error('Erro ao enviar redefinição de senha:', error);
-        toast.error('Não foi possível enviar o e-mail agora. Tente novamente em instantes.', { id: toastId });
+        toast.error(data.message ?? 'Não foi possível enviar o e-mail agora. Tente novamente em instantes.', { id: toastId });
       }
+    } catch (error) {
+      console.error('Erro ao enviar redefinição de senha:', error);
+      toast.error('Não foi possível enviar o e-mail agora. Tente novamente em instantes.', { id: toastId });
     } finally {
       setEnviandoRecuperacao(false);
     }

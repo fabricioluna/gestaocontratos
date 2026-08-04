@@ -918,3 +918,52 @@ fase — decisões, achados de revisão, incidentes e pendências — e deve
 continuar sendo atualizado se o trabalho no repositório continuar em
 fases futuras (ex: uma "Fase 9" para os itens de backlog registrados
 acima, ou para as pendências manuais que ainda restam nas Fases 3 e 6).
+
+### Pós-fechamento (03/08/2026): "Esqueci minha senha" trocado para envio próprio
+
+A funcionalidade de recuperação de senha (PR #5, mergeada no dia do
+fechamento) usava `sendPasswordResetEmail` do SDK client-side do Firebase
+Auth. Na prática, o e-mail estava caindo sempre em spam — problema
+conhecido do remetente padrão do Firebase
+(`noreply@<projeto>.firebaseapp.com`, sem reputação/SPF/DKIM próprios).
+
+**Correção:** novo endpoint `api/recuperar-senha.ts`, mesmo padrão já
+usado em `api/create-user.ts` para o e-mail de "conta criada" — gera o
+link pelo Admin SDK (`getAuth().generatePasswordResetLink()`) e envia via
+`nodemailer` pela mesma conta Gmail (`EMAIL_USER`/`EMAIL_PASS`) já usada
+nos alertas de vencimento, com HTML 100% escrito por nós em pt-BR (a
+questão do idioma inconsistente do template do Firebase deixa de existir
+porque não usamos mais o template dele). `src/views/Login.tsx` passou a
+chamar esse endpoint via `fetch` em vez do SDK diretamente.
+
+**revisor-pmp** encontrou um achado real antes do commit: o endpoint é
+público (sem autenticação, por natureza — o usuário ainda não fez login
+nesse ponto do fluxo) e, ao sair de trás da API do próprio Firebase
+Identity Toolkit (que tem sua própria contenção de abuso do lado da
+Google), perdeu essa proteção — sem limite de tentativas, alguém que
+soubesse um dos 4 e-mails institucionais (previsíveis:
+`prefeitura@`/`saude@`/`educacao@`/`assistencia@pesqueira.pe.gov.br`)
+poderia inundar a caixa dessa pessoa em loop, e ainda arriscar a conta
+Gmail ser sinalizada por comportamento anômalo — o que derrubaria também
+os e-mails de criação de usuário e de alerta de vencimento, que dependem
+da mesma conta. Corrigido com um cooldown de 60s por e-mail, guardado
+numa coleção nova do Firestore (`recuperacaoSenhaCooldown`) via Admin SDK
+(não precisa de regra nova — Admin SDK ignora as Security Rules, e a
+regra padrão `allow read, write: if false` já cobre qualquer acesso
+direto do cliente a essa coleção). Um segundo achado (canal lateral de
+timing: a resposta para e-mail existente é mensuravelmente mais lenta que
+para "não encontrado", por causa do round-trip SMTP real) foi registrado
+mas não corrigido — risco baixo dado que o sistema ainda não tem uso
+real, e mitigá-lo exigiria adicionar atraso artificial só para mascarar
+timing, o que não parecia valer a complexidade nesta fase.
+
+Build **0 erros**, lint **0 erros**, Vitest **21/21 passando** — sem
+regressão. Branch `feature/recuperar-senha-email-proprio`, PR aberto pelo
+usuário para merge (não mergeado automaticamente, conforme convenção do
+projeto).
+
+**Pendência:** confirmar manualmente, após o deploy, que o e-mail de
+redefinição chega na caixa de entrada (não no spam) das contas
+institucionais — é o próprio motivo desta correção, mas a entrega real
+por essa conta Gmail específica ainda não tinha sido testada com esse
+conteúdo/assunto até o momento deste registro.
