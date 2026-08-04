@@ -1,10 +1,11 @@
 // src/components/Painel/ModalEditarContrato.tsx
 import React, { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, runTransaction } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import { db } from '../../firebase';
 import { parseMoeda } from '../../utils/formatters';
 import { MODALIDADES_LICITACAO } from '../../utils/modalidades';
+import { registrarLog } from '../../services/auditService';
 import type { Contrato, FormContratoState } from '../../types/types';
 
 interface ModalEditarContratoProps {
@@ -65,17 +66,39 @@ export default function ModalEditarContrato({ onClose, contratoOriginal }: Modal
       delete dadosParaGravar.id;
       delete dadosParaGravar.aditivos;
 
-      await updateDoc(doc(db, 'contratos', contratoOriginal.id!), {
-        ...dadosParaGravar,
-        valorTotal: novoValorGlobal,
-        dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
+      const contratoRef = doc(db, 'contratos', contratoOriginal.id!);
+      // Transação: se um aditivo (ou outra edição) mudou o valorTotal no
+      // servidor depois que este modal abriu — com o valor antigo já
+      // carregado no formulário —, gravar aqui sobrescreveria esse ajuste
+      // em silêncio. Mesma condição de corrida do problema conhecido nº 1
+      // (CLAUDE.md), agora também no caminho de edição direta do contrato,
+      // que os fluxos de aditivo já resolveram desde a Fase 5.
+      await runTransaction(db, async (transaction) => {
+        const contratoSnap = await transaction.get(contratoRef);
+        if (!contratoSnap.exists()) throw new Error('Contrato não encontrado.');
+        const contratoAtual = contratoSnap.data() as Contrato;
+        if (Number(contratoAtual.valorTotal) !== Number(contratoOriginal.valorTotal)) {
+          throw new Error('CONCORRENCIA_VALOR');
+        }
+        transaction.update(contratoRef, {
+          ...dadosParaGravar,
+          valorTotal: novoValorGlobal,
+          dataUltimaAtualizacao: new Date().toLocaleString('pt-BR')
+        });
       });
+
+      await registrarLog('EDIÇÃO CONTRATO', `Dados do Contrato ${contratoOriginal.numeroContrato} foram editados.`);
       toast.success('Contrato atualizado com sucesso!', { id: toastId });
       onClose();
-    } catch {
-      toast.error("Erro ao editar contrato.", { id: toastId });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'CONCORRENCIA_VALOR') {
+        toast.error('O valor deste contrato foi alterado por outra pessoa (provavelmente um aditivo) enquanto este formulário estava aberto. Feche e reabra a edição para continuar com os dados atualizados.', { id: toastId, duration: 7000 });
+      } else {
+        console.error('Erro ao editar contrato:', error);
+        toast.error("Erro ao editar contrato.", { id: toastId });
+      }
     } finally {
-      setLoading(false); 
+      setLoading(false);
     }
   };
 

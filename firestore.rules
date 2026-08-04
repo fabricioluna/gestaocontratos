@@ -58,7 +58,14 @@ service cloud.firestore {
     match /auditoria_logs/{logId} {
       allow create: if request.auth != null
         && request.resource.data.usuario == request.auth.token.email;
-      allow read, update, delete: if false;
+      // Leitura liberada a qualquer admin (não restrita ao orgaoId de quem
+      // lê) — os logs não guardam orgaoId próprio hoje, e o item de
+      // backlog registado no fechamento do plano de evolução (Fase 8,
+      // docs/PLANO.md) já previa só "restrita a perfil == 'admin'". Um
+      // admin de um órgão consegue ver ações de outro órgão nesta tela —
+      // trade-off aceito por ora, não um esquecimento.
+      allow read: if ehAdmin();
+      allow update, delete: if false;
     }
 
     match /{document=**} {

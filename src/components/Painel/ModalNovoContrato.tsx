@@ -7,6 +7,7 @@ import { parseMoeda, extrairNumeroPlanilha } from '../../utils/formatters';
 import { MODALIDADES_LICITACAO } from '../../utils/modalidades';
 import { extrairTextoDeArquivo } from '../../utils/extrairTexto';
 import { extrairDadosContratoComIA } from '../../services/geminiService';
+import { registrarLog } from '../../services/auditService';
 import ModalBuscarEmail from './ModalBuscarEmail';
 import ModalCadastrarEmail from './ModalCadastrarEmail';
 import CatalogoItensPreviaForm from './CatalogoItensPreviaForm';
@@ -137,6 +138,7 @@ export default function ModalNovoContrato({ onClose, orgaoLogado }: ModalNovoCon
         return;
       }
 
+      await registrarLog('CRIAÇÃO USUÁRIO', `Usuário ${emailTemp} cadastrado com perfil viewer no órgão ${orgaoLogado}.`);
       toast.success(data.message || 'Usuário cadastrado com sucesso!', { id: toastId });
       // Preenche o formulário e atualiza a lista em memória
       setFormData(prev => ({ ...prev, emailSecretaria: emailTemp }));
@@ -308,8 +310,9 @@ export default function ModalNovoContrato({ onClose, orgaoLogado }: ModalNovoCon
         });
         await batch.commit();
       }
+      await registrarLog('CRIAÇÃO CONTRATO', `Contrato ${formData.numeroContrato} do fornecedor ${formData.fornecedor} foi cadastrado.`);
       toast.success('Contrato e catálogo salvos!', { id: toastId });
-      
+
       setFormData({ numeroContrato: '', numeroProcesso: '', modalidade: '', numeroModalidade: '', numeroAta: '', fornecedor: '', cnpjFornecedor: '', emailSecretaria: '', objetoCompleto: '', objetoResumido: '', dataInicio: '', dataFim: '', valorTotal: '', fiscalContrato: '', observacao: '' });
       setItensPrevia([]);
       onClose();

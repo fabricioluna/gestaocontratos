@@ -966,4 +966,74 @@ projeto).
 redefinição chega na caixa de entrada (não no spam) das contas
 institucionais — é o próprio motivo desta correção, mas a entrega real
 por essa conta Gmail específica ainda não tinha sido testada com esse
-conteúdo/assunto até o momento deste registro.
+conteúdo/assunto até o momento deste registro. **Confirmado pelo usuário
+em 04/08/2026: e-mail chegou fora do spam.**
+
+### Pós-fechamento (04/08/2026): itens 1 e 2 do backlog de robustez
+
+Dois itens da lista de robustez levantada após o fechamento da Fase 8
+("o que falta para liberar o sistema para uso"):
+
+**Item 1 — concorrência na edição direta de contrato.** Os fluxos de
+aditivo (`useDetalhesContrato.ts`) já protegiam `valorTotal` com
+`runTransaction` desde a Fase 5, mas `ModalEditarContrato.tsx` — a edição
+direta dos dados do contrato, incluindo o campo "Valor Global" digitado
+manualmente — ainda fazia um `updateDoc` simples. Corrigido: dentro de
+uma `runTransaction`, o `valorTotal` lido do servidor no momento do
+commit é comparado com o `valorTotal` que estava carregado no formulário
+quando o modal abriu; se divergirem (sinal de que um aditivo mudou o
+valor nesse intervalo), a transação aborta e um toast pede para reabrir
+o modal com os dados atualizados — mesmo padrão do achado `CONCORRENCIA_25`
+de `salvarAditivo` (Fase 5/7). **Escopo assumido conscientemente:** a
+transação protege só `valorTotal` (o campo do problema conhecido nº 1 do
+CLAUDE.md); os demais campos do formulário (fornecedor, datas, e-mail da
+secretaria etc.) continuam sem proteção contra dois admins editando o
+mesmo contrato ao mesmo tempo — risco preexistente, fora do escopo deste
+problema específico, não abordado aqui.
+
+**Item 2 — log de auditoria incompleto.** `auditoria_logs` só registrava
+5 ações (todas em `useDetalhesContrato.ts`); criação de contrato, edição
+de contrato, criação de usuário e login não geravam registro, e não
+existia tela nenhuma para consultar os logs (só escrita). Adicionado
+`registrarLog` em `ModalNovoContrato.tsx` (criação de contrato e criação
+de usuário inline), `ModalGerenciarUsuarios.tsx` (criação de usuário) e
+`Login.tsx` (login bem-sucedido, depois da checagem de custom claims).
+Nova regra em `firestore.rules`: `auditoria_logs` passa a permitir
+`allow read: if ehAdmin()` (antes ninguém lia). **Decisão consciente:** a
+leitura não é restrita por `orgaoId` — os logs não guardam `orgaoId`
+próprio hoje, então qualquer admin de qualquer órgão (prefeitura/fms/
+fme/fmas) pode ler logs de qualquer órgão nesta tela. Trade-off aceito
+para não precisar migrar/backfillar `orgaoId` em cada entrada; revisar se
+o uso real expuser isso como problema. Nova tela `ModalAuditoria.tsx`
+(botão "📋 Auditoria", admin-only, montagem condicional pelo pai — mesmo
+padrão da Fase 7), lista os 100 registos mais recentes via `onSnapshot`
+com callback de erro.
+
+**revisor-pmp** encontrou 1 achado real: o `catch` novo em
+`ModalEditarContrato.tsx` diferenciava `CONCORRENCIA_VALOR` de qualquer
+outro erro, mas não logava esse "qualquer outro erro" no console —
+inconsistente com os demais arquivos tocados no mesmo diff. Corrigido com
+um `console.error` no ramo `else`. Um segundo ponto (a transação só cobre
+`valorTotal`, não o restante dos campos do formulário) foi levantado
+como observação, não como achado — já é o escopo documentado do problema
+conhecido nº 1, não uma regressão.
+
+Build **0 erros**, lint **0 erros**, Vitest **21/21 passando**. Teste
+visual: `npm run dev` + Playwright headless na tela de login, sem erros
+de console — a tela de auditoria e a edição de contrato em si **não**
+foram testadas visualmente nesta sessão por exigirem login com uma das 4
+contas institucionais reais, que não estão disponíveis neste ambiente.
+Branch `feature/concorrencia-e-auditoria`, PR aberto para o usuário
+revisar e mergear (não mergeado automaticamente).
+
+**Pendências:**
+1. Publicar a `firestore.rules` atualizada no console do Firebase depois
+   do merge — sem isso, o botão "📋 Auditoria" carrega e mostra
+   "permissão negada" (a regra de leitura nova não existe em produção até
+   ser publicada manualmente, mesmo processo já feito para os índices
+   compostos na Fase 6).
+2. Testar manualmente, com uma conta admin real: (a) editar um contrato
+   enquanto um aditivo é lançado por outra sessão/conta, confirmando que
+   a segunda gravação é bloqueada com o aviso correto; (b) abrir a tela
+   de Auditoria e confirmar que os 4 novos tipos de ação aparecem
+   (CRIAÇÃO CONTRATO, EDIÇÃO CONTRATO, CRIAÇÃO USUÁRIO, LOGIN).

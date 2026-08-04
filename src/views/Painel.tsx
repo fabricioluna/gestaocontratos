@@ -19,6 +19,7 @@ import ModalNovoContrato from '../components/Painel/ModalNovoContrato';
 import ModalEditarContrato from '../components/Painel/ModalEditarContrato';
 import ModalRelatorioGlobal from '../components/Painel/ModalRelatorioGlobal';
 import ModalGerenciarUsuarios from '../components/Painel/ModalGerenciarUsuarios';
+import ModalAuditoria from '../components/Painel/ModalAuditoria';
 import TabelaContratos from '../components/Painel/TabelaContratos';
 import { infoVencimento } from '../utils/statusContrato';
 import { useContratos } from '../hooks/useContratos';
@@ -36,7 +37,8 @@ export default function Painel() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isModalEditOpen, setIsModalEditOpen] = useState(false);
-  const [isModalUsuariosOpen, setIsModalUsuariosOpen] = useState(false); 
+  const [isModalUsuariosOpen, setIsModalUsuariosOpen] = useState(false);
+  const [isModalAuditoriaOpen, setIsModalAuditoriaOpen] = useState(false);
   const [contratoParaEditar, setContratoParaEditar] = useState<Contrato | null>(null);
 
   const [isModalRelatorioOpen, setIsModalRelatorioOpen] = useState(false);
@@ -49,6 +51,7 @@ export default function Painel() {
         setIsModalEditOpen(false);
         setIsModalRelatorioOpen(false);
         setIsModalUsuariosOpen(false);
+        setIsModalAuditoriaOpen(false);
       }
     };
     window.addEventListener('keydown', handleEsc);
@@ -256,6 +259,12 @@ export default function Painel() {
               </button>
             )}
 
+            {isAdmin && (
+              <button onClick={() => setIsModalAuditoriaOpen(true)} style={{ backgroundColor: '#475569', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                📋 Auditoria
+              </button>
+            )}
+
             {isAdmin && <button onClick={() => setIsModalOpen(true)} className="btn-salvar">Novo Contrato</button>}
           </div>
         </div>
@@ -278,6 +287,7 @@ export default function Painel() {
       {isAdmin && isModalEditOpen && contratoParaEditar && <ModalEditarContrato onClose={() => setIsModalEditOpen(false)} contratoOriginal={contratoParaEditar} />}
       
       {isAdmin && <ModalGerenciarUsuarios isOpen={isModalUsuariosOpen} onClose={() => setIsModalUsuariosOpen(false)} />}
+      {isAdmin && isModalAuditoriaOpen && <ModalAuditoria onClose={() => setIsModalAuditoriaOpen(false)} />}
       
       <ModalRelatorioGlobal 
         isOpen={isModalRelatorioOpen} onClose={() => setIsModalRelatorioOpen(false)}
